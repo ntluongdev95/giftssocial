@@ -179,20 +179,3 @@ export const clearAllPasskeyUsers = () => {
   }
 };
 
-// Onboarding completed storage
-const ONBOARDING_COMPLETED_KEY = 'onboarding_completed';
-
-export const isOnboardingCompleted = (): boolean => {
-  if (!isClient) return false;
-  return localStorage.getItem(ONBOARDING_COMPLETED_KEY) === 'true';
-};
-
-export const setOnboardingCompleted = (completed: boolean = true) => {
-  if (isClient) {
-    if (completed) {
-      localStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
-    } else {
-      localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
-    }
-  }
-};

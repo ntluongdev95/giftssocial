@@ -3,7 +3,7 @@
 import { checkAccountApi } from '@/app/api/calls/apiAccounts';
 import { getPasskeyNonceApi, passKeyLoginApi, passKeyRegisterApi } from '@/app/api/calls/apiAuth';
 import { getMe } from '@/app/api/calls/apiUser';
-import { findPasskeyUserByCredentialId, getSavedPasskeyUsers, SavedPasskeyUser, savePasskeyUser, setAccessTokenToLocal, setOnboardingCompleted, setRefreshTokenToLocal, updatePasskeyUserInfo, updatePasskeyUserLastLogin } from '@/lib/clients/storage.helper';
+import { findPasskeyUserByCredentialId, getSavedPasskeyUsers, SavedPasskeyUser, savePasskeyUser, setAccessTokenToLocal, setRefreshTokenToLocal, updatePasskeyUserInfo, updatePasskeyUserLastLogin } from '@/lib/clients/storage.helper';
 import { createPasskeyCredential, getPasskeyCredential, isPasskeyCancelError, isWebAuthnSupported } from '@/lib/passkey';
 import { getFCMToken, requestFCMToken } from '@/lib/passkey/fcm';
 import { useAccountStore } from '@/stores/account-store';
@@ -154,8 +154,6 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
       if (registerRes.access_token && registerRes.refresh_token) {
         setTokens(registerRes.access_token, registerRes.refresh_token);
       }
-      setOnboardingCompleted(true);
-
       // Step 6: Save passkey user
       savePasskeyUser({
         credentialId: credential.id,

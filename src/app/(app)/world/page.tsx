@@ -134,25 +134,19 @@ export default function WorldPage() {
     }));
   }, []);
 
-  // Location permission prompt
-  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
-  const [locationDismissed, setLocationDismissed] = useState(false);
-
+  // Auto-request location on mount (browser handles the permission prompt)
   useEffect(() => {
-    if (granted || locationDismissed) return;
-    // Check if already granted via Permissions API
+    if (granted) return;
     navigator.permissions?.query({ name: 'geolocation' }).then((result) => {
-      if (result.state === 'granted') {
+      if (result.state === 'granted' || result.state === 'prompt') {
         requestLocation();
-      } else if (result.state === 'prompt') {
-        setShowLocationPrompt(true);
       }
       // 'denied' → do nothing
     }).catch(() => {
-      // Permissions API not supported — show prompt
-      setShowLocationPrompt(true);
+      // Permissions API not supported — try requesting directly
+      requestLocation();
     });
-  }, [granted, locationDismissed, requestLocation]);
+  }, [granted, requestLocation]);
 
   // Build query params
   const queryParams = useMemo(() => {
@@ -445,52 +439,6 @@ export default function WorldPage() {
             developer={selectedDeveloper}
             onClose={() => setSelectedMarker(null)}
           />
-        )}
-        {/* ── Location Permission Prompt ────────────── */}
-        {showLocationPrompt && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div
-              className="mx-4 w-full max-w-sm rounded-2xl p-6"
-              style={{
-                background: 'rgba(10,11,15,0.97)',
-                border: '1px solid rgba(0,212,255,0.12)',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-              }}
-            >
-              <div className="flex flex-col items-center text-center">
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-2xl mb-4"
-                  style={{ background: 'rgba(0,212,255,0.1)' }}
-                >
-                  <MapPin size={28} style={{ color: '#00d4ff' }} />
-                </div>
-                <h3 className="text-lg font-bold text-white mb-2">Enable Location</h3>
-                <p className="text-sm text-[#a3adc3] mb-6 leading-relaxed">
-                  Gao uses your location to show nearby signals, events, and people on the map. Your location is never stored or shared.
-                </p>
-                <div className="flex w-full flex-col gap-2">
-                  <button
-                    onClick={() => {
-                      setShowLocationPrompt(false);
-                      requestLocation();
-                    }}
-                    className="btn-primary w-full rounded-xl py-3 text-sm font-semibold"
-                  >
-                    Allow Location
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowLocationPrompt(false);
-                      setLocationDismissed(true);
-                    }}
-                    className="w-full rounded-xl py-3 text-sm font-medium text-[#4a5068] transition-colors hover:text-[#a3adc3]"
-                  >
-                    Not now
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         )}
       </WorldMap>
     </div>

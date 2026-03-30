@@ -28,7 +28,7 @@ export default function MePage() {
 
   const handleLogout = () => {
     logout();
-    router.push('/onboarding');
+    router.push('/world');
   };
 
   return (
