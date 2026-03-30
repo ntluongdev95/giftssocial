@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
-import type { Signal, Agent, Friend, Developer, Profile, EntityType, MarkerState } from '@/types';
+import type { Signal, Agent, Friend, Developer, Profile, Business, Event, EntityType, MarkerState } from '@/types';
 import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
 import { useFriendStore } from '@/stores/friendStore';
@@ -368,7 +368,9 @@ export function useMapMarkers(
   map: maplibregl.Map | null,
   signals: Signal[],
   agents: Agent[],
-  profiles: Profile[] = []
+  profiles: Profile[] = [],
+  businesses: Business[] = [],
+  events: Event[] = []
 ) {
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const { activeLayers, setSelectedMarker, addMarker, removeMarker } =
@@ -580,6 +582,68 @@ export function useMapMarkers(
       }
     }
 
+    // Add / update business markers
+    if (activeLayers.has('business')) {
+      for (const biz of businesses) {
+        if (!biz.location_lat || !biz.location_lng) continue;
+        const bid = biz.id;
+        currentIds.add(bid);
+        if (markersRef.current.has(bid)) continue;
+
+        const el = createMarkerElement('business', 'default', biz.trust_score >= 60);
+        el.addEventListener('click', () => setSelectedMarker(bid));
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([biz.location_lng, biz.location_lat])
+          .addTo(map);
+
+        markersRef.current.set(bid, marker);
+        addMarker({
+          id: bid, entity_type: 'business',
+          lat: biz.location_lat, lng: biz.location_lng,
+          title: biz.name, state: biz.open_now ? 'live' : 'default',
+          trust_level: biz.trust_level as EntityType | undefined,
+          metadata: { category: biz.category, open_now: biz.open_now },
+        });
+      }
+    } else {
+      for (const biz of businesses) {
+        const existing = markersRef.current.get(biz.id);
+        if (existing) { existing.remove(); markersRef.current.delete(biz.id); removeMarker(biz.id); }
+      }
+    }
+
+    // Add / update event markers
+    if (activeLayers.has('event')) {
+      for (const evt of events) {
+        if (!evt.location_lat || !evt.location_lng) continue;
+        const eid = evt.id;
+        currentIds.add(eid);
+        if (markersRef.current.has(eid)) continue;
+
+        const isLive = evt.status === 'live';
+        const el = createMarkerElement('event', isLive ? 'live' : 'default', evt.verified);
+        el.addEventListener('click', () => setSelectedMarker(eid));
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([evt.location_lng, evt.location_lat])
+          .addTo(map);
+
+        markersRef.current.set(eid, marker);
+        addMarker({
+          id: eid, entity_type: 'event',
+          lat: evt.location_lat, lng: evt.location_lng,
+          title: evt.title, state: isLive ? 'live' : 'default',
+          metadata: { start_time: evt.start_time, joined_count: evt.joined_count, capacity: evt.capacity },
+        });
+      }
+    } else {
+      for (const evt of events) {
+        const existing = markersRef.current.get(evt.id);
+        if (existing) { existing.remove(); markersRef.current.delete(evt.id); removeMarker(evt.id); }
+      }
+    }
+
     // Add / update landmark markers (only in globe/3D mode or always)
     if (showLandmarksOnMap) {
       for (const lm of landmarks) {
@@ -611,13 +675,13 @@ export function useMapMarkers(
 
     // Remove stale signal/agent markers only — keep friends, developers, landmarks
     for (const [id, marker] of markersRef.current) {
-      if (!currentIds.has(id) && !id.startsWith('friend_') && !id.startsWith('dev_') && !id.startsWith('lm_')) {
+      if (!currentIds.has(id) && !id.startsWith('friend_') && !id.startsWith('dev_') && !id.startsWith('lm_') && !id.startsWith('biz_') && !id.startsWith('evt_') && !id.startsWith('profile_')) {
         marker.remove();
         markersRef.current.delete(id);
         removeMarker(id);
       }
     }
-  }, [map, signals, agents, profiles, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker]);
+  }, [map, signals, agents, profiles, businesses, events, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker]);
 
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {

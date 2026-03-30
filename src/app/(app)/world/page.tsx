@@ -13,7 +13,7 @@ import LayerFilterPanel from '@/components/map/LayerFilterPanel';
 import MarkerDetailSheet from '@/components/map/MarkerDetailSheet';
 import DeveloperProfileSheet from '@/components/developers/DeveloperProfileSheet';
 import ProfileSheet from '@/components/profiles/ProfileSheet';
-import type { Signal, Agent, Profile, EntityType } from '@/types';
+import type { Signal, Agent, Profile, Business, Event, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
 const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
@@ -42,13 +42,17 @@ function WorldMapInner({
   signals,
   agents,
   profiles,
+  businesses,
+  events,
 }: {
   signals: Signal[];
   agents: Agent[];
   profiles: Profile[];
+  businesses: Business[];
+  events: Event[];
 }) {
   const { map } = useMap();
-  useMapMarkers(map, signals, agents, profiles);
+  useMapMarkers(map, signals, agents, profiles, businesses, events);
   return null;
 }
 
@@ -190,9 +194,25 @@ export default function WorldPage() {
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
+  // Fetch businesses
+  const { data: businessesData } = useSWR<{ data: Business[] }>(
+    `/api/v1/businesses?${queryParams}`,
+    fetcher,
+    { refreshInterval: 60000, fallbackData: { data: [] } }
+  );
+
+  // Fetch events
+  const { data: eventsData } = useSWR<{ data: Event[] }>(
+    `/api/v1/events?${queryParams}`,
+    fetcher,
+    { refreshInterval: 60000, fallbackData: { data: [] } }
+  );
+
   const signals = signalsData?.data ?? [];
   const agents = agentsData?.data ?? [];
   const profiles = profilesData?.data ?? [];
+  const businesses = businessesData?.data ?? [];
+  const events = eventsData?.data ?? [];
 
   // Count signals by type for summary
   const counts = useMemo(() => {
@@ -228,7 +248,7 @@ export default function WorldPage() {
     <div className="relative h-full w-full">
       <WorldMap onMapReady={handleMapReady}>
         {/* Marker sync */}
-        <WorldMapInner signals={signals} agents={agents} profiles={profiles} />
+        <WorldMapInner signals={signals} agents={agents} profiles={profiles} businesses={businesses} events={events} />
 
         {/* ── Top Bar ─────────────────────────────────── */}
         <div className="absolute left-0 right-0 top-0 z-30">

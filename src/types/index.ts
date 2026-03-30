@@ -413,6 +413,7 @@ export interface NearbyResponse {
   events: Event[];
   offers: Signal[];
   agents: Agent[];
+  profiles: Profile[];
 }
 
 export interface AskGaoResponse {

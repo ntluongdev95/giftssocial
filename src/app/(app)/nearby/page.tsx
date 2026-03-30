@@ -10,11 +10,12 @@ import EventCard from '@/components/cards/EventCard';
 import OfferCard from '@/components/cards/OfferCard';
 import AgentCard from '@/components/cards/AgentCard';
 import CircleCard from '@/components/cards/CircleCard';
-import type { NearbyResponse, Business, Event, Signal, Agent, Circle } from '@/types';
+import ProfileCard from '@/components/cards/ProfileCard';
+import type { NearbyResponse, Business, Event, Signal, Agent, Circle, Profile } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
-const TABS = ['People', 'Events', 'Businesses', 'Offers', 'Agents'] as const;
+const TABS = ['Businesses', 'Events', 'Profiles', 'People', 'Offers', 'Agents'] as const;
 type Tab = (typeof TABS)[number];
 
 const SORTS = ['Closest', 'Trusted', 'Live Now', 'Relevant'] as const;
@@ -181,7 +182,7 @@ export default function NearbyPage() {
       refreshInterval: 30000,
       revalidateOnFocus: true,
       fallbackData: {
-        data: { people: [], businesses: [], events: [], offers: [], agents: [] },
+        data: { people: [], businesses: [], events: [], offers: [], agents: [], profiles: [] },
       },
     }
   );
@@ -192,6 +193,7 @@ export default function NearbyPage() {
     events: [],
     offers: [],
     agents: [],
+    profiles: [],
   };
 
   // Sort helper
@@ -254,6 +256,15 @@ export default function NearbyPage() {
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (
           offers.map((s) => <OfferCard key={s.id} signal={s} />)
+        );
+      }
+
+      case 'Profiles': {
+        const profs = nearby.profiles || [];
+        return profs.length === 0 ? (
+          <EmptyState onSelectCircle={setSelectedCircle} />
+        ) : (
+          profs.map((p) => <ProfileCard key={p._id} profile={p} />)
         );
       }
 

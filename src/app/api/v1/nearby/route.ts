@@ -1,131 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ngeohash from 'ngeohash';
-import { connectMongo, pgPool, redis } from '@/lib/db';
-import Signal from '@/models/Signal';
-import AgentModel from '@/models/Agent';
+import { pgPool } from '@/lib/db';
+
+// Haversine distance SQL
+const haversine = (latP: number, lngP: number) =>
+  `(6371 * acos(cos(radians($${latP})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(location_lat))))`;
+
+const profileHaversine = (latP: number, lngP: number) =>
+  `(6371 * acos(cos(radians($${latP})) * cos(radians(lat)) * cos(radians(lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(lat))))`;
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
     const lat = parseFloat(searchParams.get('lat') || '32.7767');
     const lng = parseFloat(searchParams.get('lng') || '-96.797');
-    const radius = Math.min(parseInt(searchParams.get('radius') || '5000'), 50000);
+    const radiusKm = Math.min(parseInt(searchParams.get('radius') || '5000'), 50000) / 1000;
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
-    // ─── Check Redis cache ────────────────────────────────────────────
-    const geohash6 = ngeohash.encode(lat, lng, 6);
-    const cacheKey = `nearby:${geohash6}`;
+    const [businesses, events, profiles] = await Promise.all([
+      pgPool.query(
+        `SELECT *, ${haversine(1, 2)} AS distance_km
+         FROM businesses
+         WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(1, 2)} < $3
+         ORDER BY trust_score DESC LIMIT $4`,
+        [lat, lng, radiusKm, limit]
+      ).then(r => r.rows).catch(() => []),
 
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        return NextResponse.json({ data: JSON.parse(cached) });
-      }
-    } catch {
-      // Redis down — continue without cache
-    }
+      pgPool.query(
+        `SELECT *, ${haversine(1, 2)} AS distance_km
+         FROM events
+         WHERE status IN ('scheduled', 'live') AND start_time > NOW() AND location_lat IS NOT NULL AND ${haversine(1, 2)} < $3
+         ORDER BY start_time ASC LIMIT 10`,
+        [lat, lng, radiusKm]
+      ).then(r => r.rows).catch(() => []),
 
-    // ─── Parallel queries ─────────────────────────────────────────────
-
-    await connectMongo();
-
-    const geoQuery = {
-      $nearSphere: {
-        $geometry: { type: 'Point', coordinates: [lng, lat] },
-        $maxDistance: radius,
-      },
-    };
-
-    const [signals, businesses, events, agents] = await Promise.all([
-      // MongoDB — active signals
-      Signal.find({
-        location: geoQuery,
-        status: 'active',
-        expires_at: { $gt: new Date() },
-        visibility: 'public',
-      })
-        .limit(30)
-        .lean(),
-
-      // PostgreSQL — businesses
-      pgPool
-        .query(
-          `SELECT *,
-            (6371000 * acos(
-              cos(radians($1)) * cos(radians(location_lat)) *
-              cos(radians(location_lng) - radians($2)) +
-              sin(radians($1)) * sin(radians(location_lat))
-            )) AS distance_meters
-          FROM businesses
-          WHERE status = 'active'
-            AND location_lat IS NOT NULL
-            AND (6371000 * acos(
-              cos(radians($1)) * cos(radians(location_lat)) *
-              cos(radians(location_lng) - radians($2)) +
-              sin(radians($1)) * sin(radians(location_lat))
-            )) < $3
-          ORDER BY trust_score DESC
-          LIMIT $4`,
-          [lat, lng, radius, limit]
-        )
-        .then((r) => r.rows)
-        .catch(() => []),
-
-      // PostgreSQL — upcoming events
-      pgPool
-        .query(
-          `SELECT *,
-            (6371000 * acos(
-              cos(radians($1)) * cos(radians(location_lat)) *
-              cos(radians(location_lng) - radians($2)) +
-              sin(radians($1)) * sin(radians(location_lat))
-            )) AS distance_meters
-          FROM events
-          WHERE status IN ('scheduled', 'live')
-            AND start_time > NOW()
-            AND location_lat IS NOT NULL
-            AND (6371000 * acos(
-              cos(radians($1)) * cos(radians(location_lat)) *
-              cos(radians(location_lng) - radians($2)) +
-              sin(radians($1)) * sin(radians(location_lat))
-            )) < $3
-          ORDER BY start_time ASC
-          LIMIT 10`,
-          [lat, lng, radius]
-        )
-        .then((r) => r.rows)
-        .catch(() => []),
-
-      // MongoDB — agents
-      AgentModel.find({
-        location: geoQuery,
-        status: 'active',
-        map_visible: true,
-      })
-        .limit(10)
-        .lean(),
+      pgPool.query(
+        `SELECT *, ${profileHaversine(1, 2)} AS distance_km
+         FROM profiles
+         WHERE status = 'active' AND available = true AND ${profileHaversine(1, 2)} < $3
+         ORDER BY trust_score_snapshot DESC LIMIT $4`,
+        [lat, lng, radiusKm, limit]
+      ).then(r => r.rows).catch(() => []),
     ]);
 
-    // ─── Separate signals by type ─────────────────────────────────────
-    const offers = signals.filter((s) => s.type === 'offer');
-    const people = signals.filter((s) => s.type === 'presence' || s.type === 'intent');
+    const profilesFormatted = profiles.map((p: Record<string, unknown>) => ({
+      _id: p.id, user_id: p.user_id, headline: p.headline, bio: p.bio,
+      industry: p.industry, skills: p.skills, experience: p.experience,
+      education: p.education, languages: p.languages,
+      location: { type: 'Point', coordinates: [p.lng, p.lat] },
+      city: p.city, available: p.available, work_type: p.work_type,
+      trust_score_snapshot: p.trust_score_snapshot, status: p.status, distance_km: p.distance_km,
+    }));
 
-    const result = {
-      people,
-      businesses,
-      events,
-      offers,
-      agents,
-    };
-
-    // ─── Cache in Redis (30s TTL) ─────────────────────────────────────
-    try {
-      await redis.setex(cacheKey, 30, JSON.stringify(result));
-    } catch {
-      // Redis down — skip cache
-    }
-
-    return NextResponse.json({ data: result });
+    return NextResponse.json({
+      data: { businesses, events, profiles: profilesFormatted, people: [], offers: [], agents: [] },
+    });
   } catch (err) {
     console.error('[Nearby GET]', err);
     return NextResponse.json(
