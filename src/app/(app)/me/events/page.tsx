@@ -39,16 +39,16 @@ export default function EventCreatePage() {
   const today = new Date().toISOString().split('T')[0];
 
   const [form, setForm] = useState<EventForm>({
-    title: '',
-    description: '',
-    category: 'meetup',
-    location_name: '',
-    city: '',
-    start_date: today,
-    start_time: '18:00',
-    end_date: today,
-    end_time: '20:00',
-    capacity: '',
+    title: 'AI Builders DFW — Monthly Meetup #12',
+    description: 'Join 50+ developers, founders, and AI enthusiasts for demos, lightning talks, and networking. This month: building production AI agents with Claude API, live-coding session, and pizza! Bring your laptop for the hands-on workshop.',
+    category: 'tech',
+    location_name: 'Gao Coffee & Workspace, Deep Ellum',
+    city: 'Dallas, TX',
+    start_date: '2026-04-15',
+    start_time: '18:30',
+    end_date: '2026-04-15',
+    end_time: '21:00',
+    capacity: '50',
     visibility: 'public',
   });
 

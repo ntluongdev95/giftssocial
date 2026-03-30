@@ -13,6 +13,8 @@ import LayerFilterPanel from '@/components/map/LayerFilterPanel';
 import MarkerDetailSheet from '@/components/map/MarkerDetailSheet';
 import DeveloperProfileSheet from '@/components/developers/DeveloperProfileSheet';
 import ProfileSheet from '@/components/profiles/ProfileSheet';
+import BusinessSheet from '@/components/map/BusinessSheet';
+import EventSheet from '@/components/map/EventSheet';
 import type { Signal, Agent, Profile, Business, Event, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
@@ -240,6 +242,16 @@ export default function WorldPage() {
     ? profiles.find((p) => p._id === selectedMarkerId)
     : null;
 
+  // Check if selected marker is a business
+  const selectedBusiness = selectedMarkerId
+    ? businesses.find((b) => b.id === selectedMarkerId)
+    : null;
+
+  // Check if selected marker is an event
+  const selectedEvent = selectedMarkerId
+    ? events.find((e) => e.id === selectedMarkerId)
+    : null;
+
   const handleMapReady = useCallback(() => {
     // Map ready — could subscribe to WebSocket here
   }, []);
@@ -465,7 +477,7 @@ export default function WorldPage() {
         </div>
 
         {/* ── Marker Detail Sheet ─────────────────────── */}
-        {selectedMarker && !selectedDeveloper && !selectedProfile && (
+        {selectedMarker && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && (
           <MarkerDetailSheet
             entityType={selectedMarker.entity_type as EntityType}
             data={selectedMarker.metadata ?? { name: selectedMarker.title }}
@@ -484,6 +496,22 @@ export default function WorldPage() {
         {selectedProfile && (
           <ProfileSheet
             profile={selectedProfile}
+            onClose={() => setSelectedMarker(null)}
+          />
+        )}
+
+        {/* ── Business Sheet ──────────────────────────── */}
+        {selectedBusiness && (
+          <BusinessSheet
+            business={selectedBusiness}
+            onClose={() => setSelectedMarker(null)}
+          />
+        )}
+
+        {/* ── Event Sheet ─────────────────────────────── */}
+        {selectedEvent && (
+          <EventSheet
+            event={selectedEvent}
             onClose={() => setSelectedMarker(null)}
           />
         )}

@@ -39,15 +39,23 @@ export default function BusinessEditPage() {
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<BusinessForm>({
-    name: '',
-    category: '',
-    description: '',
-    address: '',
-    city: '',
-    phone: '',
-    website: '',
-    hours: Object.fromEntries(DAYS.map(d => [d, { open: '09:00', close: '18:00', closed: d === 'Sun' }])),
-    booking_enabled: false,
+    name: 'Gao Coffee & Workspace',
+    category: 'cafe',
+    description: 'Premium specialty coffee meets creative coworking. We serve single-origin pour-overs, craft espresso, and fresh pastries. Fast WiFi, power outlets everywhere, and meeting rooms available for booking.',
+    address: '2901 Main St, Deep Ellum',
+    city: 'Dallas, TX',
+    phone: '+1 (214) 555-0188',
+    website: 'https://gaocoffee.com',
+    hours: {
+      Mon: { open: '07:00', close: '22:00', closed: false },
+      Tue: { open: '07:00', close: '22:00', closed: false },
+      Wed: { open: '07:00', close: '22:00', closed: false },
+      Thu: { open: '07:00', close: '23:00', closed: false },
+      Fri: { open: '07:00', close: '23:00', closed: false },
+      Sat: { open: '08:00', close: '23:00', closed: false },
+      Sun: { open: '09:00', close: '20:00', closed: false },
+    },
+    booking_enabled: true,
   });
 
   useEffect(() => {
