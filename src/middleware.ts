@@ -12,7 +12,7 @@ function isPublicPath(pathname: string): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Only protect API routes
+  // Only handle API routes
   if (!pathname.startsWith('/api/v1/')) {
     return NextResponse.next();
   }
@@ -22,33 +22,37 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Extract token
+  // Extract token from header or cookie
   const authHeader = req.headers.get('authorization');
   const cookieToken = req.cookies.get('gao_token')?.value;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken;
 
+  // No token — allow GET (public read), block writes
   if (!token) {
+    if (req.method === 'GET') {
+      return NextResponse.next();
+    }
     return NextResponse.json(
       { error: { code: 'unauthorized', message: 'Authentication required' } },
       { status: 401 }
     );
   }
 
+  // Try local JWT verify first
   const payload = await verifyToken(token);
 
-  if (!payload) {
-    return NextResponse.json(
-      { error: { code: 'invalid_token', message: 'Invalid or expired token' } },
-      { status: 401 }
-    );
+  if (payload) {
+    // Local token — attach user info via request headers
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set('x-user-id', payload.sub);
+    requestHeaders.set('x-user-role', payload.role);
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
-  // Attach user info to headers for downstream routes
-  const response = NextResponse.next();
-  response.headers.set('x-user-id', payload.sub);
-  response.headers.set('x-user-role', payload.role);
-
-  return response;
+  // External token (e.g. from passkey auth) — forward token in request headers
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-auth-token', token);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

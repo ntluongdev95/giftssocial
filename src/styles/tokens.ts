@@ -91,6 +91,7 @@ export const ENTITY_MARKER_CONFIG: Record<EntityType, { shape: string; color: st
   circle:   { shape: 'cluster',  color: COLORS.circle,   label: 'Circle' },
   friend:   { shape: 'circle',   color: COLORS.accent,   label: 'Friend' },
   developer:{ shape: 'hexagon',  color: '#34d399',       label: 'Developer' },
+  profile:  { shape: 'circle',   color: '#3B82F6',       label: 'Profiles' },
 } as const;
 
 // ─── Agent Colors ─────────────────────────────────────────────────────────

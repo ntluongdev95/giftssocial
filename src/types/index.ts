@@ -304,10 +304,35 @@ export interface Notification {
   created_at: string;
 }
 
+// ─── Profile ─────────────────────────────────────────────────────────────
+
+export interface Profile {
+  _id: string;
+  user_id: string;
+  headline: string;
+  bio: string;
+  industry: string;
+  skills: string[];
+  experience: { title: string; company: string; start_year: number; end_year?: number | null; description?: string }[];
+  education: { degree: string; school: string; year: number }[];
+  languages: string[];
+  location: GeoPoint;
+  city: string;
+  available: boolean;
+  work_type: 'remote' | 'onsite' | 'hybrid';
+  salary_range?: { min: number; max: number; currency: string };
+  portfolio_url?: string;
+  contact_visible: boolean;
+  trust_score_snapshot: number;
+  status: 'active' | 'hidden' | 'suspended';
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Map Marker ───────────────────────────────────────────────────────────
 
 export type MarkerState = 'default' | 'selected' | 'live' | 'verified' | 'executing' | 'suppressed';
-export type EntityType = 'people' | 'business' | 'event' | 'offer' | 'proof' | 'alert' | 'agent' | 'circle' | 'friend' | 'developer';
+export type EntityType = 'people' | 'business' | 'event' | 'offer' | 'proof' | 'alert' | 'agent' | 'circle' | 'friend' | 'developer' | 'profile';
 
 // ─── Developer ───────────────────────────────────────────────────────────
 

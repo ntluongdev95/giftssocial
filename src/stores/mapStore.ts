@@ -24,6 +24,7 @@ const DEFAULT_LAYERS = new Set([
   'offer',
   'agent',
   'circle',
+  'profile',
 ]);
 
 export const useMapStore = create<MapStore>((set) => ({

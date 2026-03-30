@@ -11,9 +11,11 @@ import {
   Shield,
   Settings,
   LogOut,
+  UserCheck,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
+  { icon: UserCheck, label: 'Professional Profile', href: '/me/profile' },
   { icon: MapPin, label: 'My Signals', href: '#' },
   { icon: CalendarCheck, label: 'My Bookings', href: '#' },
   { icon: Bot, label: 'My Agents', href: '#' },
@@ -90,10 +92,11 @@ export default function MePage() {
         className="relative space-y-0.5 rounded-2xl overflow-hidden"
         style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
       >
-        {MENU_ITEMS.map(({ icon: Icon, label }) => (
+        {MENU_ITEMS.map(({ icon: Icon, label, href }) => (
           <button
             key={label}
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-sm text-[#f0f4ff] transition-colors hover:bg-[rgba(0,212,255,0.04)]"
+            onClick={() => href !== '#' && router.push(href)}
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-sm text-[#f0f4ff] transition-colors hover:bg-[rgba(0,212,255,0.04)] cursor-pointer"
             style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
           >
             <Icon size={18} className="text-[#4a5068]" />

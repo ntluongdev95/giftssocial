@@ -12,7 +12,8 @@ import { useMap } from '@/components/map/WorldMap';
 import LayerFilterPanel from '@/components/map/LayerFilterPanel';
 import MarkerDetailSheet from '@/components/map/MarkerDetailSheet';
 import DeveloperProfileSheet from '@/components/developers/DeveloperProfileSheet';
-import type { Signal, Agent, EntityType } from '@/types';
+import ProfileSheet from '@/components/profiles/ProfileSheet';
+import type { Signal, Agent, Profile, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
 const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
@@ -26,7 +27,10 @@ const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
 
 // ─── Fetcher ──────────────────────────────────────────────────────────────
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const fetcher = (url: string) =>
+  fetch(url, {
+    headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  }).then((r) => r.json());
 
 // ─── Time filter options ──────────────────────────────────────────────────
 
@@ -37,12 +41,14 @@ const TIME_FILTERS = ['live', '24h', '7d'] as const;
 function WorldMapInner({
   signals,
   agents,
+  profiles,
 }: {
   signals: Signal[];
   agents: Agent[];
+  profiles: Profile[];
 }) {
   const { map } = useMap();
-  useMapMarkers(map, signals, agents);
+  useMapMarkers(map, signals, agents, profiles);
   return null;
 }
 
@@ -177,8 +183,16 @@ export default function WorldPage() {
     { refreshInterval: 30000, fallbackData: { data: [] } }
   );
 
+  // Fetch profiles
+  const { data: profilesData } = useSWR<{ data: Profile[] }>(
+    `/api/v1/profiles?${queryParams}&available=true`,
+    fetcher,
+    { refreshInterval: 60000, fallbackData: { data: [] } }
+  );
+
   const signals = signalsData?.data ?? [];
   const agents = agentsData?.data ?? [];
+  const profiles = profilesData?.data ?? [];
 
   // Count signals by type for summary
   const counts = useMemo(() => {
@@ -201,6 +215,11 @@ export default function WorldPage() {
     ? developers.find((d) => d.id === selectedMarkerId)
     : null;
 
+  // Check if selected marker is a profile
+  const selectedProfile = selectedMarkerId
+    ? profiles.find((p) => p._id === selectedMarkerId)
+    : null;
+
   const handleMapReady = useCallback(() => {
     // Map ready — could subscribe to WebSocket here
   }, []);
@@ -209,7 +228,7 @@ export default function WorldPage() {
     <div className="relative h-full w-full">
       <WorldMap onMapReady={handleMapReady}>
         {/* Marker sync */}
-        <WorldMapInner signals={signals} agents={agents} />
+        <WorldMapInner signals={signals} agents={agents} profiles={profiles} />
 
         {/* ── Top Bar ─────────────────────────────────── */}
         <div className="absolute left-0 right-0 top-0 z-30">
@@ -426,7 +445,7 @@ export default function WorldPage() {
         </div>
 
         {/* ── Marker Detail Sheet ─────────────────────── */}
-        {selectedMarker && !selectedDeveloper && (
+        {selectedMarker && !selectedDeveloper && !selectedProfile && (
           <MarkerDetailSheet
             entityType={selectedMarker.entity_type as EntityType}
             data={selectedMarker.metadata ?? { name: selectedMarker.title }}
@@ -437,6 +456,14 @@ export default function WorldPage() {
         {selectedDeveloper && (
           <DeveloperProfileSheet
             developer={selectedDeveloper}
+            onClose={() => setSelectedMarker(null)}
+          />
+        )}
+
+        {/* ── Profile Sheet ───────────────────────────── */}
+        {selectedProfile && (
+          <ProfileSheet
+            profile={selectedProfile}
             onClose={() => setSelectedMarker(null)}
           />
         )}

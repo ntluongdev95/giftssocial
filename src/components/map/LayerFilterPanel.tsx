@@ -13,6 +13,7 @@ const LAYERS: { key: EntityType; icon: string }[] = [
   { key: 'agent', icon: '⬡' },
   { key: 'alert', icon: '⊙' },
   { key: 'circle', icon: '⦿' },
+  { key: 'profile', icon: '👤' },
 ];
 
 export default function LayerFilterPanel() {

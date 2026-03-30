@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
-import type { Signal, Agent, Friend, Developer, EntityType, MarkerState } from '@/types';
+import type { Signal, Agent, Friend, Developer, Profile, EntityType, MarkerState } from '@/types';
 import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
 import { useFriendStore } from '@/stores/friendStore';
@@ -219,6 +219,28 @@ function createDeveloperMarkerElement(dev: Developer): HTMLDivElement {
   return el;
 }
 
+// ─── Profile marker element ─────────────────────────────────────────────
+
+function createProfileMarkerElement(profile: Profile): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'gao-friend-marker';
+
+  const initial = profile.headline.charAt(0).toUpperCase();
+  const borderColor = profile.available ? '#3B82F6' : '#4a5068';
+
+  el.innerHTML = `
+    <div class="gao-friend-avatar" style="border-color:${borderColor};box-shadow:0 0 12px ${borderColor}44;font-size:14px;">
+      ${initial}
+      ${profile.available ? '<div class="gao-friend-online" style="background:#3B82F6;box-shadow:0 0 6px rgba(59,130,246,0.6);"></div>' : ''}
+    </div>
+    <div class="gao-friend-name" style="border-color:${borderColor}33;">
+      ${profile.headline.split(' ').slice(0, 2).join(' ')}
+    </div>
+  `;
+
+  return el;
+}
+
 // ─── Landmark-specific silhouette SVGs ───────────────────────────────────
 // Each landmark gets a unique recognizable silhouette icon
 
@@ -345,7 +367,8 @@ function signalToEntityType(type: string): EntityType {
 export function useMapMarkers(
   map: maplibregl.Map | null,
   signals: Signal[],
-  agents: Agent[]
+  agents: Agent[],
+  profiles: Profile[] = []
 ) {
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const { activeLayers, setSelectedMarker, addMarker, removeMarker } =
@@ -524,6 +547,39 @@ export function useMapMarkers(
       }
     }
 
+    // Add / update profile markers
+    if (activeLayers.has('profile')) {
+      for (const profile of profiles) {
+        if (!profile.location) continue;
+        const pid = profile._id;
+        currentIds.add(pid);
+        if (markersRef.current.has(pid)) continue;
+
+        const el = createProfileMarkerElement(profile);
+        el.addEventListener('click', () => setSelectedMarker(pid));
+
+        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat(profile.location.coordinates as [number, number])
+          .addTo(map);
+
+        markersRef.current.set(pid, marker);
+        addMarker({
+          id: pid,
+          entity_type: 'profile',
+          lat: profile.location.coordinates[1],
+          lng: profile.location.coordinates[0],
+          title: profile.headline,
+          state: profile.available ? 'live' : 'default',
+          metadata: { industry: profile.industry, city: profile.city, skills: profile.skills },
+        });
+      }
+    } else {
+      for (const profile of profiles) {
+        const existing = markersRef.current.get(profile._id);
+        if (existing) { existing.remove(); markersRef.current.delete(profile._id); removeMarker(profile._id); }
+      }
+    }
+
     // Add / update landmark markers (only in globe/3D mode or always)
     if (showLandmarksOnMap) {
       for (const lm of landmarks) {
@@ -561,7 +617,7 @@ export function useMapMarkers(
         removeMarker(id);
       }
     }
-  }, [map, signals, agents, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker]);
+  }, [map, signals, agents, profiles, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker]);
 
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {
