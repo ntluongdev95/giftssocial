@@ -12,10 +12,14 @@ import {
   Settings,
   LogOut,
   UserCheck,
+  Store,
+  Calendar,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
   { icon: UserCheck, label: 'Professional Profile', href: '/me/profile' },
+  { icon: Store, label: 'My Business', href: '/me/business' },
+  { icon: Calendar, label: 'Create Event', href: '/me/events' },
   { icon: MapPin, label: 'My Signals', href: '#' },
   { icon: CalendarCheck, label: 'My Bookings', href: '#' },
   { icon: Bot, label: 'My Agents', href: '#' },
