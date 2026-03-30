@@ -60,6 +60,8 @@ export default function WorldPage() {
   const [searchResults, setSearchResults] = useState<Array<{ id: string; place_name: string; center: [number, number] }>>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || '';
 
@@ -173,10 +175,11 @@ export default function WorldPage() {
 
   // Count signals by type for summary
   const counts = useMemo(() => {
-    const c = { signals: signals.length, events: 0, offers: 0 };
+    const c = { signals: signals.length, events: 0, offers: 0, businesses: 0 };
     for (const s of signals) {
       if (s.type === 'event') c.events++;
-      if (s.type === 'offer') c.offers++;
+      else if (s.type === 'offer') c.offers++;
+      else if (s.type === 'business') c.businesses++;
     }
     return c;
   }, [signals]);
@@ -204,13 +207,81 @@ export default function WorldPage() {
         {/* ── Top Bar ─────────────────────────────────── */}
         <div className="absolute left-0 right-0 top-0 z-30">
           {/* Search + controls */}
-          <div className="flex items-center gap-2 px-4 pb-1 pt-[env(safe-area-inset-top,12px)] lg:pt-4 lg:px-6 max-w-4xl lg:mx-auto backdrop-blur-md">
-            {/* Search */}
-            <div className="relative flex-1">
+          <div className="flex items-center gap-2 px-4 pb-1 pt-[env(safe-area-inset-top,12px)] lg:pt-4 lg:px-6 max-w-4xl lg:mx-auto">
+            {/* Search — mobile: icon only, expand on tap */}
+            {/* Mobile search icon */}
+            <button
+              onClick={() => { setSearchExpanded(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+              className="flex lg:hidden items-center justify-center rounded-xl px-3 py-2.5 transition-colors"
+              style={{ background: 'rgba(10,11,15,0.7)', border: '1px solid rgba(0,212,255,0.1)' }}
+            >
+              <Search size={15} style={{ color: '#4a5068' }} />
+            </button>
+
+            {/* Mobile expanded search overlay */}
+            {searchExpanded && (
+              <div className="fixed inset-x-0 top-0 z-50 lg:hidden px-4 pt-[env(safe-area-inset-top,12px)]" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(16px)' }}>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="relative flex-1 flex items-center gap-2 rounded-xl px-3 py-2"
+                    style={{ background: 'rgba(10,11,15,0.95)', border: '1px solid rgba(0,212,255,0.4)', boxShadow: '0 0 20px rgba(0,212,255,0.15)' }}
+                  >
+                    {searchLoading ? (
+                      <Loader2 size={15} className="animate-spin shrink-0" style={{ color: '#00d4ff' }} />
+                    ) : (
+                      <Search size={15} className="shrink-0" style={{ color: '#00d4ff' }} />
+                    )}
+                    <input
+                      ref={searchInputRef}
+                      value={searchQuery}
+                      onChange={(e) => handleSearchInput(e.target.value)}
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+                      placeholder="Search places, cities, countries…"
+                      className="flex-1 bg-transparent text-sm text-white placeholder:text-[#4a5068] outline-none"
+                    />
+                    {searchQuery && (
+                      <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="shrink-0" style={{ color: '#4a5068' }}>
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { setSearchExpanded(false); setSearchFocused(false); setSearchQuery(''); setSearchResults([]); }}
+                    className="text-xs font-medium py-2 px-2"
+                    style={{ color: '#a3adc3' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {/* Mobile search results */}
+                {searchResults.length > 0 && (
+                  <div
+                    className="mt-1.5 rounded-xl overflow-hidden"
+                    style={{ background: 'rgba(10,11,15,0.95)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
+                  >
+                    {searchResults.map((r) => (
+                      <button
+                        key={r.id}
+                        onMouseDown={() => { handleSelectPlace(r); setSearchExpanded(false); }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,212,255,0.06)]"
+                        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                      >
+                        <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
+                        <span className="text-xs text-[#a3adc3] truncate">{r.place_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Desktop search — always visible */}
+            <div className="relative flex-1 hidden lg:block">
               <div
                 className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all"
                 style={{
-                  background: searchFocused ? 'rgba(10,11,15,0.95)' : 'rgba(10,11,15,0.7)',
+                  background: 'rgba(10,11,15,0.95)',
                   border: searchFocused ? '1px solid rgba(0,212,255,0.4)' : '1px solid rgba(0,212,255,0.1)',
                   boxShadow: searchFocused ? '0 0 20px rgba(0,212,255,0.15)' : 'none',
                   backdropFilter: 'blur(16px)',
@@ -236,7 +307,7 @@ export default function WorldPage() {
                 )}
               </div>
 
-              {/* Results dropdown */}
+              {/* Desktop results dropdown */}
               {searchFocused && searchResults.length > 0 && (
                 <div
                   className="absolute left-0 right-0 top-full mt-1.5 rounded-xl overflow-hidden z-50"
@@ -267,80 +338,83 @@ export default function WorldPage() {
               onClick={() => setShowLayers((v) => !v)}
               className={`flex items-center gap-1 rounded-xl border px-3 py-2.5 text-xs font-medium transition-colors ${
                 showLayers
-                  ? 'border-[#00d4ff]/60 bg-[#00d4ff]/10 text-[#00d4ff]'
-                  : 'border-[rgba(0,212,255,0.15)]/40 bg-[#0a0b0f]/70 text-[#4a5068]'
+                  ? 'border-[#00d4ff]/60 bg-[#0a0b0f]/95 text-[#00d4ff]'
+                  : 'border-[rgba(0,212,255,0.15)]/40 bg-[#0a0b0f]/95 text-[#4a5068]'
               }`}
             >
               <Layers size={14} />
             </button>
 
-            {/* Time filter */}
-            <div className="flex items-center gap-0.5 rounded-xl border border-[rgba(0,212,255,0.15)]/40 bg-[#0a0b0f]/70 px-1 py-1">
-              {TIME_FILTERS.map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setTimeFilter(f)}
-                  className={`rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${
-                    timeFilter === f
-                      ? 'bg-[#00d4ff]/20 text-[#00d4ff]'
-                      : 'text-[#4a5068] hover:text-[#f0f4ff]'
-                  }`}
-                >
-                  {f === 'live' ? 'Live' : f.toUpperCase()}
-                </button>
-              ))}
+            {/* 2D / 3D segment toggle */}
+            <div className="flex items-center gap-0.5 rounded-xl border border-[rgba(0,212,255,0.15)] bg-[#0a0b0f]/95 px-1 py-1">
+              <button
+                onClick={() => setViewMode('2d')}
+                className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                  viewMode === '2d'
+                    ? 'bg-[#00d4ff]/20 text-[#00d4ff]'
+                    : 'text-[#4a5068] hover:text-[#f0f4ff]'
+                }`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" />
+                </svg>
+                Flat
+              </button>
+              <button
+                onClick={() => setViewMode('3d')}
+                className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                  viewMode === '3d'
+                    ? 'bg-[#00d4ff]/20 text-[#00d4ff]'
+                    : 'text-[#4a5068] hover:text-[#f0f4ff]'
+                }`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20" />
+                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                </svg>
+                Globe
+              </button>
             </div>
-
-            {/* 2D / 3D Globe toggle */}
-            <button
-              onClick={() => setViewMode(viewMode === '2d' ? '3d' : '2d')}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-all duration-300"
-              style={{
-                background: viewMode === '3d'
-                  ? 'linear-gradient(135deg, rgba(0,212,255,0.25), rgba(99,102,241,0.2))'
-                  : 'rgba(10,11,15,0.7)',
-                border: viewMode === '3d'
-                  ? '1px solid rgba(0,212,255,0.4)'
-                  : '1px solid rgba(0,212,255,0.1)',
-                color: viewMode === '3d' ? '#00d4ff' : '#4a5068',
-                boxShadow: viewMode === '3d' ? '0 0 15px rgba(0,212,255,0.25)' : 'none',
-              }}
-            >
-              {/* Globe / Map icon */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {viewMode === '3d' ? (
-                  <>
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M2 12h20" />
-                    <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                  </>
-                ) : (
-                  <>
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <path d="M3 9h18" />
-                    <path d="M3 15h18" />
-                    <path d="M9 3v18" />
-                  </>
-                )}
-              </svg>
-              {viewMode === '3d' ? 'Globe' : 'Flat'}
-            </button>
           </div>
 
           {/* Layer chips */}
           {showLayers && <LayerFilterPanel />}
         </div>
 
-        {/* ── Bottom Summary Sheet (collapsed) ────────── */}
+        {/* ── Bottom Summary Sheet ────────────────────── */}
         <div className="absolute bottom-16 lg:bottom-4 left-0 right-0 z-30 max-w-2xl lg:mx-auto">
-          <div className="glass-card mx-4 flex items-center justify-between rounded-2xl px-4 py-3">
-            <p className="text-xs text-[#4a5068]">
-              <span className="font-medium text-[#f0f4ff]">Nearby now</span>
-              {' · '}
-              {counts.signals} signals · {counts.events} events ·{' '}
-              {counts.offers} offers
-            </p>
-            <ChevronDown size={16} className="text-[#4a5068]" />
+          <div
+            className="mx-4 rounded-2xl px-4 py-3"
+            style={{
+              background: 'rgba(10,11,15,0.92)',
+              border: '1px solid rgba(0,212,255,0.08)',
+              backdropFilter: 'blur(20px)',
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-1.5 rounded-full bg-[#22C55E] animate-pulse" />
+                <span className="text-xs font-semibold text-[#f0f4ff]">Live nearby</span>
+              </div>
+              <ChevronDown size={14} className="text-[#4a5068]" />
+            </div>
+            <div className="flex items-center gap-3">
+              {[
+                { label: 'Signals', count: counts.signals, color: '#3B82F6' },
+                { label: 'Events', count: counts.events, color: '#EF4444' },
+                { label: 'Offers', count: counts.offers, color: '#EAB308' },
+                { label: 'Businesses', count: counts.businesses, color: '#22C55E' },
+                { label: 'Agents', count: agents.length, color: '#A855F7' },
+              ].map(({ label, count, color }) => (
+                <div key={label} className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}40` }} />
+                  <span className="text-[11px] font-medium" style={{ color }}>{count}</span>
+                  <span className="text-[10px] text-[#4a5068]">{label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
