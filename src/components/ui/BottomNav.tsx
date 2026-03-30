@@ -17,8 +17,7 @@ const TABS = [
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const { token, isGuest } = useAuthStore();
-  const isLoggedIn = !!token && !isGuest;
+  const isLoggedIn = useAuthStore((s) => s.isAuthed);
   const [showAuth, setShowAuth] = useState(false);
 
   return (

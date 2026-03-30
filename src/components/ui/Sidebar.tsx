@@ -4,10 +4,12 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Globe, MapPin, Users, Zap, User, Plus, ScanFace } from 'lucide-react';
+import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut } from 'lucide-react';
 import { DomainBadge } from '@/components/gao/DomainBadge';
 import { useAuthStore } from '@/stores/auth-store';
 import AuthPopup from '@/components/ui/AuthPopup';
+import { logoutApi } from '@/app/api/calls/apiAuth';
+import { clearLoginSessionStorage, deleteAccessTokenFromLocal, deleteRefreshTokenFromLocal } from '@/lib/clients/storage.helper';
 
 const TABS = [
   { href: '/world', label: 'World', Icon: Globe },
@@ -18,10 +20,21 @@ const TABS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { token, isGuest } = useAuthStore();
-  const isLoggedIn = !!token && !isGuest;
+   const logoutStorage = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
   const [showAuth, setShowAuth] = useState(false);
-
+  
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } finally {
+      deleteAccessTokenFromLocal();
+      deleteRefreshTokenFromLocal();
+      clearLoginSessionStorage();
+      logoutStorage();
+      
+    }
+  };
   return (
     <>
       <aside
@@ -66,7 +79,8 @@ export default function Sidebar() {
           })}
 
           {/* Profile or Login */}
-          {isLoggedIn ? (
+          {user  ? (
+            <>
             <Link
               href="/me"
               className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150"
@@ -80,6 +94,15 @@ export default function Sidebar() {
               <User size={18} strokeWidth={pathname === '/me' ? 2.2 : 1.5} className="shrink-0" />
               Profile
             </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 w-full cursor-pointer"
+              style={{ color: '#a3adc3', borderLeft: '3px solid transparent' }}
+            >
+              <LogOut size={18} strokeWidth={1.5} className="shrink-0" />
+              Logout
+            </button>
+            </>
           ) : (
             <button
               onClick={() => setShowAuth(true)}

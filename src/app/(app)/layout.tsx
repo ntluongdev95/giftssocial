@@ -5,22 +5,24 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import BottomNav from '@/components/ui/BottomNav';
 import Sidebar from '@/components/ui/Sidebar';
+import AuthHydrator from '@/components/AuthHydrator';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { token, isGuest } = useAuthStore();
+  const isAuthed = useAuthStore((s) => s.isAuthed);
 
   useEffect(() => {
-    if (!token && !isGuest) {
+    if (!isAuthed) {
       const done = localStorage.getItem('gao_onboarding_done');
       if (done !== 'true') {
         router.replace('/onboarding');
       }
     }
-  }, [token, isGuest, router]);
+  }, [isAuthed, router]);
 
   return (
     <div className="flex h-full">
+      <AuthHydrator />
       {/* Desktop sidebar — hidden on mobile */}
       <Sidebar />
 
