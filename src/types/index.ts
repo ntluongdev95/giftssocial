@@ -82,6 +82,12 @@ export interface User {
 
 // ─── Business ─────────────────────────────────────────────────────────────
 
+export interface BusinessService {
+  name: string;
+  price: number;
+  duration: number;
+}
+
 export interface Business {
   id: string;
   owner_user_id: string;
@@ -92,13 +98,25 @@ export interface Business {
   domain?: string;
   location_lat: number;
   location_lng: number;
+  address?: string;
   address_line1?: string;
   address_city?: string;
   address_state?: string;
   address_postal_code?: string;
-  address_country: string;
-  hours: Record<string, string[]>;
-  verification_level: 0 | 1 | 2 | 3;
+  address_country?: string;
+  city?: string;
+  phone?: string;
+  website?: string;
+  hours: Record<string, { open?: string; close?: string; closed?: boolean }>;
+  services?: BusinessService[];
+  price_range?: string;
+  images?: string[];
+  cover_image?: string;
+  accepts_walkins?: boolean;
+  languages_spoken?: string[];
+  license_verified?: boolean;
+  amenities?: string[];
+  verification_level?: 0 | 1 | 2 | 3;
   trust_score: number;
   trust_level: TrustLevel;
   badges: Badge[];
@@ -107,8 +125,8 @@ export interface Business {
   rating_count: number;
   open_now: boolean;
   booking_enabled: boolean;
-  payment_enabled: boolean;
-  status: 'active' | 'suspended' | 'deleted';
+  payment_enabled?: boolean;
+  status: 'active' | 'suspended' | 'deleted' | 'hidden';
   created_at: string;
   updated_at: string;
 }
@@ -145,11 +163,14 @@ export interface Event {
   id: string;
   title: string;
   description?: string;
+  category?: string;
   host_type: 'user' | 'business' | 'circle';
   host_id: string;
+  host_user_id?: string;
   location_name?: string;
   location_lat?: number;
   location_lng?: number;
+  city?: string;
   start_time: string;
   end_time: string;
   capacity?: number;

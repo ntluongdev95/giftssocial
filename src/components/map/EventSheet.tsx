@@ -102,11 +102,11 @@ export default function EventSheet({ event: e, onClose }: Props) {
             </Sect>
 
             {/* Location */}
-            {(e.location_name || (e as Record<string, unknown>).city) && (
+            {(e.location_name || e.city) && (
               <Sect title="Location">
                 <div className="flex items-center gap-2 text-xs text-[#a3adc3]">
                   <MapPin size={13} className="text-[#4a5068] shrink-0" />
-                  <span>{e.location_name}{(e as Record<string, unknown>).city ? `, ${(e as Record<string, unknown>).city}` : ''}</span>
+                  <span>{e.location_name}{e.city ? `, ${e.city}` : ''}</span>
                 </div>
               </Sect>
             )}

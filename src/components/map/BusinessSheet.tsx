@@ -1,6 +1,6 @@
 'use client';
 
-import { X, MapPin, Phone, Globe, Clock, Star, Bookmark, CheckCircle, DollarSign, Sparkles, Shield, Users } from 'lucide-react';
+import { X, MapPin, Phone, Globe, Clock, Star, Bookmark, CheckCircle, Sparkles, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Business } from '@/types';
 
@@ -9,16 +9,9 @@ interface Props {
   onClose: () => void;
 }
 
-interface Service { name: string; price: number; duration: number; }
-
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function BusinessSheet({ business: b, onClose }: Props) {
-  const biz = b as Business & {
-    services?: Service[]; subcategories?: string[]; price_range?: string;
-    accepts_walkins?: boolean; languages_spoken?: string[]; license_verified?: boolean;
-    amenities?: string[]; address?: string; phone?: string; website?: string;
-  };
+export default function BusinessSheet({ business: biz, onClose }: Props) {
 
   const todayIdx = new Date().getDay();
   const todayKey = DAYS[todayIdx];
@@ -175,7 +168,7 @@ export default function BusinessSheet({ business: b, onClose }: Props) {
             <Sect title="Contact">
               <div className="space-y-2">
                 {(biz.address || biz.address_line1) && (
-                  <InfoRow icon={<MapPin size={13} />} text={biz.address || `${biz.address_line1}${biz.address_city ? `, ${biz.address_city}` : ''}`} />
+                  <InfoRow icon={<MapPin size={13} />} text={biz.address || `${biz.address_line1 || ''}${biz.address_city ? `, ${biz.address_city}` : ''}`} />
                 )}
                 {biz.phone && <InfoRow icon={<Phone size={13} />} text={biz.phone} />}
                 {(biz.website || biz.domain) && <InfoRow icon={<Globe size={13} />} text={biz.website || biz.domain || ''} link />}
