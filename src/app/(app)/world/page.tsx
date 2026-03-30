@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { Search, Layers, ChevronDown, X, MapPin, Loader2 } from 'lucide-react';
+import { Search, Layers, ChevronDown, X, MapPin, Loader2, Store } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
 import { useDeveloperStore } from '@/stores/developerStore';
@@ -69,7 +69,7 @@ export default function WorldPage() {
 
   // ── Search ──────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; place_name: string; center: [number, number] }>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; place_name: string; center: [number, number]; type?: 'place' | 'business' }>>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -116,6 +116,21 @@ export default function WorldPage() {
           // OSM fallback failed — keep MapTiler results
         }
       }
+
+      // Also search businesses in parallel
+      try {
+        const bizRes = await fetch(`/api/v1/businesses?q=${encodeURIComponent(q)}&limit=5`);
+        const bizData = await bizRes.json();
+        const bizResults = (bizData.data || []).map((b: any) => ({
+          id: `biz_search_${b.id}`,
+          place_name: `${b.name} · ${b.category} · ${b.city || b.address || ''}`,
+          center: [b.location_lng, b.location_lat] as [number, number],
+          type: 'business' as const,
+        }));
+        if (bizResults.length > 0) {
+          results = [...bizResults, ...results].slice(0, 8);
+        }
+      } catch { /* ignore */ }
 
       setSearchResults(results);
     } catch {
@@ -325,7 +340,10 @@ export default function WorldPage() {
                         className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,212,255,0.06)]"
                         style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
                       >
-                        <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
+                        {r.type === 'business'
+                          ? <Store size={13} className="shrink-0" style={{ color: '#34d399' }} />
+                          : <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
+                        }
                         <span className="text-xs text-[#a3adc3] truncate">{r.place_name}</span>
                       </button>
                     ))}
@@ -383,7 +401,10 @@ export default function WorldPage() {
                       className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,212,255,0.06)]"
                       style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
                     >
-                      <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
+                      {r.type === 'business'
+                        ? <Store size={13} className="shrink-0" style={{ color: '#34d399' }} />
+                        : <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
+                      }
                       <span className="text-xs text-[#a3adc3] truncate">{r.place_name}</span>
                     </button>
                   ))}

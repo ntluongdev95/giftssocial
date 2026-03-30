@@ -12,15 +12,24 @@ export async function GET(req: NextRequest) {
     const lng = parseFloat(searchParams.get('lng') || '0');
     const radiusKm = Math.min(parseInt(searchParams.get('radius') || '10000'), 100000) / 1000;
     const category = searchParams.get('category');
+    const q = searchParams.get('q')?.trim();
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
     const conditions: string[] = ["status = 'active'"];
     const values: unknown[] = [];
     let idx = 1;
 
+    // Name search (full-text + ILIKE fallback)
+    if (q) {
+      conditions.push(`(to_tsvector('english', name) @@ plainto_tsquery('english', $${idx}) OR name ILIKE $${idx + 1} OR address ILIKE $${idx + 1} OR city ILIKE $${idx + 1})`);
+      values.push(q, `%${q}%`);
+      idx += 2;
+    }
+
     if (category) {
-      conditions.push(`category = $${idx++}`);
+      conditions.push(`(category = $${idx} OR $${idx} = ANY(subcategories))`);
       values.push(category);
+      idx++;
     }
 
     if (lat !== 0 || lng !== 0) {
@@ -29,9 +38,14 @@ export async function GET(req: NextRequest) {
       idx += 3;
     }
 
+    // Order: if searching by name, rank by relevance; otherwise by trust
+    const orderBy = q
+      ? `ts_rank(to_tsvector('english', name), plainto_tsquery('english', '${q.replace(/'/g, "''")}')) DESC, trust_score DESC`
+      : 'trust_score DESC';
+
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await pgPool.query(
-      `SELECT * FROM businesses ${where} ORDER BY trust_score DESC LIMIT ${limit}`,
+      `SELECT * FROM businesses ${where} ORDER BY ${orderBy} LIMIT ${limit}`,
       values
     );
 
