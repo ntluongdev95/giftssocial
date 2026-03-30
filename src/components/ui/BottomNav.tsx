@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Globe, MapPin, Users, Zap, User, ScanFace } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/auth-store';
 import AuthPopup from '@/components/ui/AuthPopup';
 
 const TABS = [

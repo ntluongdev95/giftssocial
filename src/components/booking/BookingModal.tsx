@@ -7,7 +7,7 @@ import { Check, X, User } from 'lucide-react';
 import { format, addMinutes, startOfHour, addHours } from 'date-fns';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import TrustBadgeRow from '@/components/trust/TrustBadgeRow';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/auth-store';
 import type { Business } from '@/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────

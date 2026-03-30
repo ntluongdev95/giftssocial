@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/auth-store';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 

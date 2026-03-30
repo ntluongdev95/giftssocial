@@ -11,7 +11,7 @@ import OfferForm from '@/components/signals/forms/OfferForm';
 import EventForm from '@/components/signals/forms/EventForm';
 import UpdateForm from '@/components/signals/forms/UpdateForm';
 import ProofForm from '@/components/signals/forms/ProofForm';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/auth-store';
 import { useLocationStore } from '@/stores/locationStore';
 import { SIGNAL_LABELS, SIGNAL_ICONS } from '@/styles/tokens';
 import type { SignalType } from '@/types';

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/auth-store';
 import BottomNav from '@/components/ui/BottomNav';
 import Sidebar from '@/components/ui/Sidebar';
 

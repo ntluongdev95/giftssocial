@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/auth-store';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import {
   MapPin,

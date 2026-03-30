@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Globe, MapPin, Users, Zap, User, Plus, ScanFace } from 'lucide-react';
 import { DomainBadge } from '@/components/gao/DomainBadge';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore } from '@/stores/auth-store';
 import AuthPopup from '@/components/ui/AuthPopup';
 
 const TABS = [
