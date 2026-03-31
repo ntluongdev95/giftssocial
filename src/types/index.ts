@@ -176,6 +176,7 @@ export interface Event {
   capacity?: number;
   joined_count: number;
   checkin_count: number;
+  images?: string[];
   visibility: 'public' | 'private';
   verified: boolean;
   status: EventStatus;

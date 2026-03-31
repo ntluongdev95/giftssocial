@@ -242,13 +242,11 @@ export default function NearbyPage() {
       }
 
       case 'Events': {
-        const sorted = sortItems(
-          nearby.events.map((e) => ({ ...e, trust_score: 0 }))
-        ) as (Event & { trust_score: number })[];
-        return sorted.length === 0 ? (
+        const evts = nearby.events || [];
+        return evts.length === 0 ? (
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (
-          sorted.map((e) => <EventCard key={e.id} event={e} />)
+          evts.map((e) => <EventCard key={e.id} event={e} />)
         );
       }
 
