@@ -99,20 +99,50 @@ export default function CreateSignalPage() {
     setStep('publishing');
 
     try {
-      await fetch('/api/v1/signals', {
+      // Map form data to API payload — each form type has different fields
+      const titleMap: Record<string, string> = {
+        presence: formData.note as string || "I'm here",
+        intent: formData.title as string || formData.what as string || 'Looking for something',
+        offer: formData.title as string || 'New offer',
+        event: formData.title as string || 'New event',
+        update: formData.title as string || formData.message as string || 'Update',
+        proof: formData.title as string || 'Proof',
+      };
+
+      const payload: Record<string, unknown> = {
+        type: signalType,
+        title: titleMap[signalType] || 'Signal',
+        description: (formData.description || formData.note || formData.message || formData.details || '') as string,
+        category: (formData.category || 'general') as string,
+        visibility: (formData.visibility || 'public') as string,
+        radius: (formData.radius || 300) as number,
+        metadata: formData,
+        location: {
+          type: 'Point' as const,
+          coordinates: [lng ?? -96.797, lat ?? 32.7767],
+        },
+      };
+
+      // Calculate expiry from duration if provided
+      if (formData.duration) {
+        const hours = Number(formData.duration);
+        payload.expires_at = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+      }
+
+      const res = await fetch('/api/v1/signals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
-        body: JSON.stringify({
-          type: signalType,
-          ...formData,
-          location: {
-            type: 'Point',
-            coordinates: [lng ?? -96.797, lat ?? 32.7767],
-          },
-        }),
+        body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        const err = await res.json();
+        console.error('[Signal Create Error]', err);
+        setStep('preview');
+        return;
+      }
       setStep('success');
-    } catch {
+    } catch (err) {
+      console.error('[Signal Create Error]', err);
       setStep('preview');
     }
   };
