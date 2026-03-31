@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { ArrowLeft, Loader2, MapPin, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, MapPin, Clock, Pencil, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 
 const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string }> = {
   presence: { emoji: '📍', color: '#3B82F6', label: "I'm Here" },
@@ -20,8 +21,24 @@ const fetcher = (url: string) => fetch(url, {
 
 export default function MySignalsPage() {
   const router = useRouter();
-  const { data, isLoading } = useSWR('/api/v1/signals/me', fetcher);
+  const { data, isLoading, mutate } = useSWR('/api/v1/signals/me', fetcher);
   const signals = (data?.data || []) as Record<string, unknown>[];
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this signal?')) return;
+    try {
+      const res = await fetch(`/api/v1/signals/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      });
+      if (res.ok) {
+        toast.success('Signal deleted');
+        mutate();
+      } else {
+        toast.error('Failed to delete');
+      }
+    } catch { toast.error('Network error'); }
+  };
 
   return (
     <div className="h-full overflow-y-auto">
@@ -67,6 +84,26 @@ export default function MySignalsPage() {
                     <div className="flex items-center gap-3 mt-2 text-[10px] text-[#4a5068]">
                       <span className="flex items-center gap-1"><Clock size={9} /> {timeAgo}</span>
                       {isActive && <span className="flex items-center gap-1 text-[#00d4ff]"><MapPin size={9} /> expires {expiresIn}</span>}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 mt-3">
+                      {isActive && (
+                        <button
+                          onClick={() => router.push(`/me/signals/${s.id}/edit`)}
+                          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer"
+                          style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
+                        >
+                          <Pencil size={11} /> Edit
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(s.id as string)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer"
+                        style={{ background: 'rgba(239,68,68,0.08)', color: '#f87171' }}
+                      >
+                        <Trash2 size={11} /> Delete
+                      </button>
                     </div>
                   </div>
                 </div>
