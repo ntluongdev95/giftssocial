@@ -57,7 +57,7 @@ const DURATIONS = [
 ];
 
 export default function IntentForm({ onSubmit }: IntentFormProps) {
-  const { lat, lng, city } = useLocationStore();
+  const { lat, lng, city, requestLocation } = useLocationStore();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [budget, setBudget] = useState('');
@@ -322,8 +322,15 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
 
       {/* Submit */}
       <button
-        onClick={handleSubmit}
-        disabled={submitting || activeLat === null}
+        onClick={() => {
+          if (activeLat === null) {
+            toast.info('Please allow location access');
+            requestLocation();
+            return;
+          }
+          handleSubmit();
+        }}
+        disabled={submitting}
         className="w-full rounded-xl py-3.5 text-sm font-bold cursor-pointer disabled:opacity-40"
         style={{ background: 'linear-gradient(135deg, #00d4ff, #22C55E)', color: '#0a0b0f', boxShadow: '0 4px 20px rgba(0,212,255,0.3)' }}
       >
