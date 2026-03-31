@@ -461,27 +461,27 @@ export default function WorldPage() {
         </div>
 
         {/* ── Bottom Summary Grid ─────────────────────── */}
-        <div className="absolute bottom-16 lg:bottom-4 left-0 right-0 z-30 max-w-md lg:mx-auto">
+        <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+8px)] lg:bottom-4 left-0 right-0 z-30 max-w-sm lg:max-w-md mx-auto">
           <div
-            className="mx-4 rounded-2xl px-4 py-4"
+            className="mx-3 rounded-2xl px-3 py-3 lg:px-4 lg:py-4"
             style={{
-              background: 'rgba(10,11,15,0.92)',
-              border: '1px solid rgba(0,212,255,0.08)',
+              background: 'rgba(10,11,15,0.88)',
+              border: '1px solid rgba(255,255,255,0.06)',
               backdropFilter: 'blur(20px)',
             }}
           >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               {[
                 { label: 'Live Signals', sub: `${counts.signals} nearby`, count: counts.signals, color: '#3B82F6' },
                 { label: 'Events Tonight', sub: `${counts.events} upcoming`, count: counts.events, color: '#EF4444' },
                 { label: 'Active Deals', sub: `${counts.offers} offers`, count: counts.offers, color: '#EAB308' },
                 { label: 'Businesses', sub: `${counts.businesses} open`, count: counts.businesses, color: '#22C55E' },
               ].map(({ label, sub, count, color }) => (
-                <div key={label} className="flex items-center gap-3">
-                  <span className="text-2xl font-black" style={{ color }}>{count}</span>
+                <div key={label} className="flex items-center gap-2.5">
+                  <span className="text-xl font-light tabular-nums w-6 text-right" style={{ color }}>{count}</span>
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-[#f0f4ff] truncate">{label}</p>
-                    <p className="text-[10px] text-[#4a5068] truncate">{sub}</p>
+                    <p className="text-[11px] font-medium text-[#f0f4ff] truncate">{label}</p>
+                    <p className="text-[9px] text-[#4a5068] truncate">{sub}</p>
                   </div>
                 </div>
               ))}
