@@ -5,6 +5,7 @@ import { X, MapPin, Phone, Globe, Clock, Star, Bookmark, CheckCircle, Sparkles, 
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import type { Business } from '@/types';
+import NailBookingModal from '@/components/booking/NailBookingModal';
 
 interface Props {
   business: Business;
@@ -15,30 +16,12 @@ interface Props {
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function BusinessSheet({ business: biz, onClose, onViewDetail }: Props) {
-  const [booking, setBooking] = useState(false);
-  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [showBooking, setShowBooking] = useState(false);
+  const [bookingService, setBookingService] = useState<string | undefined>();
 
-  const handleBook = async (serviceName?: string) => {
-    setBooking(true);
-    try {
-      const res = await fetch('/api/v1/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
-        body: JSON.stringify({
-          business_id: biz.id,
-          service_name: serviceName || 'General booking',
-          amount: services.find(s => s.name === serviceName)?.price || 0,
-        }),
-      });
-      if (res.ok) {
-        toast.success('Booked! Check My Bookings for details.');
-        setSelectedService(serviceName || null);
-      } else {
-        const err = await res.json();
-        toast.error(err.error?.message || 'Failed to book');
-      }
-    } catch { toast.error('Network error'); }
-    finally { setBooking(false); }
+  const openBooking = (serviceName?: string) => {
+    setBookingService(serviceName);
+    setShowBooking(true);
   };
 
   const todayIdx = new Date().getDay();
@@ -48,7 +31,7 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
   const services = biz.services || [];
 
   return (
-    <AnimatePresence>
+    <><AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -143,12 +126,11 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
                       <span className="text-sm font-semibold text-[#00d4ff] ml-3">${svc.price}</span>
                       {biz.booking_enabled && (
                         <button
-                          onClick={() => handleBook(svc.name)}
-                          disabled={booking || selectedService === svc.name}
-                          className="ml-2 rounded-lg px-2.5 py-1 text-[9px] font-semibold cursor-pointer disabled:opacity-50"
-                          style={{ background: selectedService === svc.name ? 'rgba(52,211,153,0.15)' : 'rgba(0,212,255,0.1)', color: selectedService === svc.name ? '#34d399' : '#00d4ff' }}
+                          onClick={() => openBooking(svc.name)}
+                          className="ml-2 rounded-lg px-2.5 py-1 text-[9px] font-semibold cursor-pointer"
+                          style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
                         >
-                          {selectedService === svc.name ? '✓ Booked' : 'Book'}
+                          Book
                         </button>
                       )}
                     </div>
@@ -222,8 +204,8 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
               </a>
             )}
             {biz.booking_enabled && (
-              <button onClick={() => handleBook()} disabled={booking} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
-                <Bookmark size={15} /> {booking ? 'Booking...' : 'Book Now'}
+              <button onClick={() => openBooking()} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
+                <Bookmark size={15} /> Book Now
               </button>
             )}
             {!biz.booking_enabled && !biz.phone && (
@@ -235,6 +217,17 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    {/* Nail Booking Modal */}
+    {showBooking && (
+      <NailBookingModal
+        business={biz}
+        initialService={bookingService}
+        onClose={() => setShowBooking(false)}
+        onBooked={() => { setShowBooking(false); }}
+      />
+    )}
+    </>
   );
 }
 
