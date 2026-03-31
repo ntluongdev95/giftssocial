@@ -133,6 +133,19 @@ const MARKER_STYLES = `
     color: #f0f4ff; white-space: nowrap; max-width: 80px;
     overflow: hidden; text-overflow: ellipsis; text-align: center;
   }
+
+  /* Landmark popup */
+  .gao-landmark-popup .maplibregl-popup-content {
+    background: rgba(10,11,15,0.92) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 10px !important;
+    padding: 8px 12px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+  }
+  .gao-landmark-popup .maplibregl-popup-tip {
+    border-top-color: rgba(10,11,15,0.92) !important;
+  }
 `;
 
 let stylesInjected = false;
@@ -285,87 +298,27 @@ const LANDMARK_COLORS: Record<string, string> = {
 };
 
 function createLandmarkMarkerElement(lm: Landmark): HTMLDivElement {
-  const el = document.createElement('div');
   const color = LANDMARK_COLORS[lm.type] || '#00d4ff';
 
-  // Use specific SVG if available, otherwise fallback to type
-  const specificSvg = LANDMARK_SVGS[lm.id];
-  const typeSvg = LANDMARK_TYPE_SVGS[lm.type] || LANDMARK_TYPE_SVGS.wonder;
-
+  const el = document.createElement('div');
   el.style.cssText = `
-    display:flex;flex-direction:column;align-items:center;gap:2px;
-    cursor:pointer;transition:transform 0.15s;
-  `;
-
-  if (specificSvg) {
-    // Specific landmark silhouette — render directly with glow
-    el.innerHTML = `
-      <div style="
-        width:40px;height:40px;
-        display:flex;align-items:center;justify-content:center;
-        filter:drop-shadow(0 0 8px ${color}88) drop-shadow(0 0 16px ${color}44);
-      ">${specificSvg.replace('<svg ', '<svg width="40" height="40" ')}</div>
-      <div style="
-        background:rgba(10,11,15,0.8);backdrop-filter:blur(4px);
-        border:1px solid ${color}40;border-radius:4px;
-        padding:1px 4px;
-        font-family:Inter,system-ui,sans-serif;
-        font-size:7px;font-weight:700;color:${color};
-        white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;
-        text-shadow:0 0 4px ${color}66;
-      ">${lm.name}</div>
-    `;
-  } else {
-    // Type-based fallback with color
-    el.innerHTML = `
-      <div style="
-        width:36px;height:36px;color:${color};
-        display:flex;align-items:center;justify-content:center;
-        filter:drop-shadow(0 0 8px ${color}88) drop-shadow(0 0 14px ${color}44);
-      ">${typeSvg.replace('<svg ', '<svg width="36" height="36" ')}</div>
-      <div style="
-        background:rgba(10,11,15,0.8);backdrop-filter:blur(4px);
-        border:1px solid ${color}40;border-radius:4px;
-        padding:1px 4px;
-        font-family:Inter,system-ui,sans-serif;
-        font-size:7px;font-weight:700;color:${color};
-        white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;
-        text-shadow:0 0 4px ${color}66;
-      ">${lm.name}</div>
-    `;
-  }
-
-  // Popup on hover
-  const popup = document.createElement('div');
-  popup.style.cssText = `
-    position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
-    background:rgba(10,11,15,0.95);backdrop-filter:blur(12px);
-    border:1px solid ${color}30;border-radius:10px;
-    padding:10px 14px;min-width:160px;max-width:220px;
-    pointer-events:none;opacity:0;transition:opacity 0.2s;
-    box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:50;
+    display:flex;align-items:center;gap:4px;
+    cursor:pointer;transition:transform 0.15s, opacity 0.15s;
+    background:rgba(10,11,15,0.85);backdrop-filter:blur(6px);
+    border:1px solid ${color}35;border-radius:8px;
+    padding:3px 8px 3px 4px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.4), 0 0 12px ${color}20;
     font-family:Inter,system-ui,sans-serif;
+    white-space:nowrap;
   `;
-  popup.innerHTML = `
-    <p style="font-size:12px;font-weight:700;color:white;margin:0 0 4px 0;">${lm.name}</p>
-    <p style="font-size:10px;color:#a3adc3;margin:0 0 2px 0;">${lm.city}, ${lm.country}</p>
-    <p style="font-size:9px;color:#4a5068;margin:0;">
-      ${lm.type.charAt(0).toUpperCase() + lm.type.slice(1)}${lm.height ? ` · ${lm.height}m` : ''}
-    </p>
+
+  el.innerHTML = `
+    <span style="font-size:14px;line-height:1;">${lm.icon}</span>
+    <span style="font-size:9px;font-weight:600;color:${color};max-width:70px;overflow:hidden;text-overflow:ellipsis;">${lm.name}</span>
   `;
-  el.style.position = 'relative';
-  el.appendChild(popup);
 
-  el.onmouseenter = () => { el.style.transform = 'scale(1.15)'; popup.style.opacity = '1'; };
-  el.onmouseleave = () => { el.style.transform = 'scale(1)'; popup.style.opacity = '0'; };
-
-  // Touch: toggle popup on tap
-  let popupVisible = false;
-  el.ontouchstart = (e) => {
-    e.stopPropagation();
-    popupVisible = !popupVisible;
-    popup.style.opacity = popupVisible ? '1' : '0';
-  };
+  el.onmouseenter = () => { el.style.transform = 'scale(1.1)'; };
+  el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
 
   return el;
 }
@@ -680,10 +633,28 @@ export function useMapMarkers(
         if (markersRef.current.has(lm.id)) continue;
 
         const el = createLandmarkMarkerElement(lm);
+        const color = LANDMARK_COLORS[lm.type] || '#00d4ff';
 
-        // Click just focuses — popup shown on hover/tap via element handlers
+        // Native MapLibre popup on hover
+        const popup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 12,
+          className: 'gao-landmark-popup',
+        }).setHTML(`
+          <div style="font-family:Inter,system-ui,sans-serif;padding:2px 0;">
+            <p style="font-size:12px;font-weight:700;color:white;margin:0 0 3px 0;">${lm.name}</p>
+            <p style="font-size:10px;color:#a3adc3;margin:0 0 2px 0;">${lm.city}, ${lm.country}</p>
+            <p style="font-size:9px;color:${color};margin:0;">${lm.type.charAt(0).toUpperCase() + lm.type.slice(1)}${lm.height ? ` · ${lm.height}m` : ''}</p>
+          </div>
+        `);
 
-        const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        el.addEventListener('mouseenter', () => {
+          popup.setLngLat([lm.lng, lm.lat]).addTo(map);
+        });
+        el.addEventListener('mouseleave', () => { popup.remove(); });
+
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([lm.lng, lm.lat])
           .addTo(map);
 
