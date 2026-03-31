@@ -60,6 +60,6 @@ interface LandmarkStore {
 
 export const useLandmarkStore = create<LandmarkStore>((set) => ({
   landmarks: WORLD_LANDMARKS,
-  showOnMap: true,
+  showOnMap: false,
   toggleShowOnMap: () => set((s) => ({ showOnMap: !s.showOnMap })),
 }));
