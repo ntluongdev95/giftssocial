@@ -18,7 +18,7 @@ const ENTITY_LAYERS: { key: EntityType; icon: string }[] = [
 ];
 
 const SPECIAL_LAYERS = [
-  { key: 'landmarks', icon: '🏛', label: 'Landmarks', color: '#fbbf24' },
+  // { key: 'landmarks', icon: '🏛', label: 'Landmarks', color: '#fbbf24' }, // TODO: re-enable later
   { key: 'friends', icon: '👥', label: 'Friends', color: '#00d4ff' },
   { key: 'developers', icon: '💻', label: 'Developers', color: '#34d399' },
 ];
