@@ -142,14 +142,15 @@ export default function CreateSignalPage() {
       <div className="aurora-gradient absolute inset-x-0 top-0 h-48 pointer-events-none" />
 
       {/* Header */}
-      <div className="relative flex items-center gap-3 px-4 lg:px-8 pt-[env(safe-area-inset-top,12px)] lg:pt-6">
-        {step !== 'type_select' && step !== 'success' && (
+      <div className="relative flex items-center gap-3 px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,12px)+24px)] lg:pt-6">
+        {step !== 'success' && (
           <button
             onClick={() => {
-              if (step === 'form') setStep('type_select');
+              if (step === 'type_select') router.back();
+              else if (step === 'form') setStep('type_select');
               else if (step === 'preview') setStep('form');
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4a5068] transition-colors hover:bg-[#111318]"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4a5068] transition-colors hover:bg-[#111318] cursor-pointer"
           >
             <ArrowLeft size={18} />
           </button>

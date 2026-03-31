@@ -2,22 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle, Bot, ChevronRight, Sparkles } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useLocationStore } from '@/stores/locationStore';
 import BusinessCard from '@/components/cards/BusinessCard';
 import EventCard from '@/components/cards/EventCard';
 import type { AskGaoResponse, Business, Event } from '@/types';
 
-// ─── Placeholder examples ─────────────────────────────────────────────────
-
 const EXAMPLES = [
-  'Find trusted dentist near me tomorrow after 3 PM',
-  'Any AI builder events tonight?',
-  'Best nail studio open now within 2 miles',
+  'Recommend something to eat nearby',
+  'Best nail salon open now',
+  'Any tech events tonight?',
+  'Find trusted spa near me',
   'Active startup circles nearby',
 ];
-
-// ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function AskGaoPage() {
   const router = useRouter();
@@ -27,39 +25,22 @@ export default function AskGaoPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AskGaoResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<string[]>([]);
 
   const handleAsk = async (q?: string) => {
     const finalQuery = q || query;
     if (!finalQuery.trim()) return;
-
     setLoading(true);
     setError(null);
     setResult(null);
-
     try {
       const res = await fetch('/api/v1/ai/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: finalQuery,
-          context: {
-            lat: lat ?? 32.7767,
-            lng: lng ?? -96.797,
-          },
-        }),
+        body: JSON.stringify({ query: finalQuery, context: { lat: lat ?? 32.7767, lng: lng ?? -96.797 } }),
       });
-
-      if (!res.ok) throw new Error('Failed to get response');
-
+      if (!res.ok) throw new Error('Failed');
       const data: AskGaoResponse = await res.json();
       setResult(data);
-
-      // Add to history (dedup, max 3)
-      setHistory((prev) => {
-        const next = [finalQuery, ...prev.filter((h) => h !== finalQuery)];
-        return next.slice(0, 3);
-      });
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
@@ -67,202 +48,162 @@ export default function AskGaoPage() {
     }
   };
 
-  const handleExample = (example: string) => {
-    setQuery(example);
-    handleAsk(example);
-  };
+  const handleExample = (ex: string) => { setQuery(ex); handleAsk(ex); };
 
   return (
     <div className="flex h-full flex-col overflow-y-auto pb-20">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-[env(safe-area-inset-top,12px)]">
-        <button
-          onClick={() => router.back()}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4a5068] hover:bg-[#111318]"
-        >
+      <div className="flex items-center gap-3 px-4 pt-[calc(env(safe-area-inset-top,12px)+24px)] lg:pt-6 pb-4">
+        <button onClick={() => router.back()} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4a5068] hover:bg-[#111318] cursor-pointer">
           <ArrowLeft size={18} />
         </button>
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#A855F7]/20 text-sm text-[#A855F7]">
-            ⬡
-          </span>
-          <div>
-            <h1 className="text-lg font-bold text-[#f0f4ff]">Ask Gao</h1>
-            <p className="text-[10px] text-[#4a5068]">
-              Find trusted services, events, and more nearby
-            </p>
-          </div>
-        </div>
+        <h1 className="text-lg font-bold text-[#f0f4ff]">Ask Gao</h1>
       </div>
 
-      <div className="flex-1 space-y-4 px-4 pt-4">
-        {/* Input area */}
-        <div>
-          <textarea
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="What do you want to do?"
-            rows={3}
-            className="w-full resize-none rounded-xl border border-[#181c24]/30 bg-[#0a0b0f] px-4 py-3 text-sm text-[#f0f4ff] placeholder-[#4a5068] outline-none focus:border-[#00d4ff]"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleAsk();
-              }
-            }}
-          />
-          <button
-            onClick={() => handleAsk()}
-            disabled={!query.trim() || loading}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#00d4ff] py-3 text-sm font-semibold text-[#0a0b0f] transition-colors hover:bg-[#00d4ff]/80 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Send size={14} />
-            Ask Gao
-          </button>
+      {/* ── Hero (before results) ─────────────────────── */}
+      {!result && !loading && (
+        <div className="flex-1 flex flex-col px-4 lg:px-8 max-w-lg lg:max-w-xl lg:mx-auto">
+          {/* Bot illustration */}
+          <div className="flex flex-col items-center py-8">
+            <div className="relative mb-6">
+              {/* Glow */}
+              <div className="absolute inset-0 scale-150 rounded-full opacity-30 blur-3xl" style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.3), rgba(167,139,250,0.2), transparent)' }} />
+              {/* Bot avatar */}
+              <div className="relative h-24 w-24 rounded-3xl flex items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.15), rgba(167,139,250,0.15))', border: '1px solid rgba(0,212,255,0.15)' }}>
+                <Bot size={40} className="text-[#00d4ff]" />
+                {/* Verified badge */}
+                <div className="absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: '#00d4ff' }}>
+                  <CheckCircle size={14} className="text-[#0a0b0f]" />
+                </div>
+              </div>
+            </div>
+
+            <h2 className="text-xl font-bold text-white mb-2">Ask Gao</h2>
+            <p className="text-sm text-[#a3adc3] text-center leading-relaxed max-w-xs">
+              Ask our AI assistant Gao to help with anything nearby.
+            </p>
+          </div>
+
+          {/* Suggestion chips */}
+          <div className="space-y-2 mb-6">
+            {EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                onClick={() => handleExample(ex)}
+                className="flex items-center gap-3 w-full rounded-xl px-4 py-3 text-left transition-colors cursor-pointer"
+                style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
+              >
+                <CheckCircle size={14} className="text-[#00d4ff] shrink-0" />
+                <span className="text-sm text-[#a3adc3] flex-1">{ex}</span>
+                <ChevronRight size={14} className="text-[#4a5068]" />
+              </button>
+            ))}
+          </div>
         </div>
+      )}
 
-        {/* Examples (show when no result) */}
-        {!result && !loading && (
-          <div>
-            <p className="mb-2 text-xs font-medium text-[#4a5068]">
-              Try asking
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {EXAMPLES.map((ex) => (
-                <button
-                  key={ex}
-                  onClick={() => handleExample(ex)}
-                  className="rounded-full border border-[#181c24]/30 bg-[#111318]/40 px-3 py-1.5 text-[11px] text-[#f0f4ff]/70 transition-colors hover:bg-[#111318]/60"
-                >
-                  {ex}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Recent history */}
-        {!result && !loading && history.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs font-medium text-[#4a5068]">Recent</p>
-            <div className="flex flex-wrap gap-2">
-              {history.map((h) => (
-                <button
-                  key={h}
-                  onClick={() => handleExample(h)}
-                  className="rounded-full border border-[#A855F7]/20 bg-[#A855F7]/5 px-3 py-1.5 text-[11px] text-[#A855F7]/80"
-                >
-                  {h}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Loading */}
-        {loading && (
-          <div className="flex flex-col items-center gap-3 py-12">
-            <span className="inline-block animate-spin text-3xl text-[#A855F7]">
-              ⬡
-            </span>
-            <p className="text-sm text-[#4a5068]">
-              Gao is looking for trusted options…
-            </p>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="rounded-xl border border-[#EF4444]/20 bg-[#EF4444]/5 px-4 py-3">
-            <p className="text-sm text-[#EF4444]">{error}</p>
+      {/* ── Input (always visible at bottom when no result) ── */}
+      {!result && !loading && (
+        <div className="px-4 lg:px-8 max-w-lg lg:max-w-xl lg:mx-auto w-full">
+          <div className="flex gap-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ask anything..."
+              className="flex-1 rounded-xl px-4 py-3 text-sm text-white outline-none placeholder:text-[#4a5068]"
+              style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAsk(); } }}
+            />
             <button
               onClick={() => handleAsk()}
-              className="mt-2 text-xs text-[#00d4ff]"
+              disabled={!query.trim()}
+              className="rounded-xl px-4 cursor-pointer disabled:opacity-30"
+              style={{ background: '#00d4ff', color: '#0a0b0f' }}
             >
-              Try again
+              <Send size={16} />
             </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Results */}
-        {result && (
-          <div className="space-y-4">
-            {/* Answer */}
-            {result.answer && (
-              <p className="text-sm leading-relaxed text-[#4a5068]">
-                {result.answer}
-              </p>
-            )}
+      {/* ── Loading ───────────────────────────────────── */}
+      {loading && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+          >
+            <Sparkles size={32} className="text-[#00d4ff]" />
+          </motion.div>
+          <p className="text-sm text-[#a3adc3]">Gao is looking for trusted options…</p>
+        </div>
+      )}
 
-            {/* Result cards */}
-            {result.results.length > 0 ? (
-              <div className="space-y-3">
-                {result.results.slice(0, 3).map((entity) => {
-                  // Determine entity type
-                  if ('booking_enabled' in entity) {
-                    return (
-                      <div key={entity.id} className="relative">
-                        <BusinessCard business={entity as Business} />
-                        <button
-                          onClick={() =>
-                            router.push(`/businesses/${entity.id}`)
-                          }
-                          className="absolute right-4 top-4 rounded-lg bg-[#00d4ff] px-3 py-1 text-[10px] font-semibold text-[#0a0b0f]"
-                        >
-                          Select
-                        </button>
-                      </div>
-                    );
-                  }
-                  if ('start_time' in entity) {
-                    return (
-                      <div key={entity.id} className="relative">
-                        <EventCard event={entity as Event} />
-                      </div>
-                    );
-                  }
-                  return null;
-                })}
+      {/* ── Error ─────────────────────────────────────── */}
+      {error && (
+        <div className="px-4 py-8">
+          <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+            <p className="text-sm text-[#f87171]">{error}</p>
+            <button onClick={() => handleAsk()} className="mt-2 text-xs text-[#00d4ff] cursor-pointer">Try again</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Results ───────────────────────────────────── */}
+      {result && (
+        <div className="flex-1 px-4 lg:px-8 max-w-lg lg:max-w-xl lg:mx-auto space-y-4">
+          {/* Answer */}
+          {result.answer && (
+            <div className="flex gap-3">
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(0,212,255,0.15)' }}>
+                <Bot size={16} className="text-[#00d4ff]" />
               </div>
-            ) : (
-              <div className="py-8 text-center">
-                <p className="text-sm text-[#4a5068]">
-                  No trusted results found for your query.
-                </p>
-                <p className="mt-1 text-xs text-[#4a5068]">
-                  Try a different question or expand your area.
-                </p>
-              </div>
-            )}
+              <p className="text-sm text-[#a3adc3] leading-relaxed pt-1">{result.answer}</p>
+            </div>
+          )}
 
-            {/* Suggested actions */}
-            {result.suggested_actions.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {result.suggested_actions.map((action) => (
-                  <button
-                    key={action}
-                    onClick={() => handleExample(action)}
-                    className="rounded-full border border-[#00d4ff]/30 bg-[#00d4ff]/5 px-3 py-1.5 text-[11px] text-[#00d4ff]"
-                  >
-                    {action}
-                  </button>
-                ))}
-              </div>
-            )}
+          {/* Result cards */}
+          {result.results.length > 0 && (
+            <div className="space-y-3">
+              {result.results.slice(0, 5).map((entity) => {
+                if ('booking_enabled' in entity) return <BusinessCard key={entity.id} business={entity as Business} />;
+                if ('start_time' in entity) return <EventCard key={entity.id} event={entity as Event} />;
+                return null;
+              })}
+            </div>
+          )}
 
-            {/* Ask again */}
-            <button
-              onClick={() => {
-                setResult(null);
-                setQuery('');
-              }}
-              className="text-xs text-[#4a5068]"
-            >
-              ← Ask something else
+          {/* Suggested follow-ups */}
+          {result.suggested_actions.length > 0 && (
+            <div className="space-y-1.5">
+              {result.suggested_actions.map((action) => (
+                <button key={action} onClick={() => handleExample(action)} className="flex items-center gap-2 w-full rounded-lg px-3 py-2 text-left text-xs text-[#00d4ff] cursor-pointer" style={{ background: 'rgba(0,212,255,0.05)' }}>
+                  <ChevronRight size={12} /> {action}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Ask again */}
+          <div className="flex gap-2 pt-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ask follow-up..."
+              className="flex-1 rounded-xl px-4 py-3 text-sm text-white outline-none placeholder:text-[#4a5068]"
+              style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAsk(); } }}
+            />
+            <button onClick={() => handleAsk()} disabled={!query.trim()} className="rounded-xl px-4 cursor-pointer disabled:opacity-30" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
+              <Send size={16} />
             </button>
           </div>
-        )}
-      </div>
+
+          <button onClick={() => { setResult(null); setQuery(''); }} className="text-xs text-[#4a5068] cursor-pointer">
+            ← New conversation
+          </button>
+        </div>
+      )}
     </div>
   );
 }
