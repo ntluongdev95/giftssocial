@@ -25,12 +25,13 @@ export default function MePage() {
   const avatarUrl = user?.avatarUrl;
   const username = user?.username;
 
-  // Fetch counts
-  const { data: signalsData } = useSWR(isAuthed ? '/api/v1/signals/me' : null, fetcher);
-  const { data: savedData } = useSWR(isAuthed ? '/api/v1/saved' : null, fetcher);
-  const { data: bookingsData } = useSWR(isAuthed ? '/api/v1/bookings/me' : null, fetcher);
-  const { data: followsData } = useSWR(isAuthed ? '/api/v1/follows?type=following' : null, fetcher);
-  const { data: circlesData } = useSWR(isAuthed ? '/api/v1/circles/me' : null, fetcher);
+  // Fetch counts — always revalidate when page mounts
+  const swrOpts = { revalidateOnMount: true, revalidateOnFocus: true };
+  const { data: signalsData } = useSWR(isAuthed ? '/api/v1/signals/me' : null, fetcher, swrOpts);
+  const { data: savedData } = useSWR(isAuthed ? '/api/v1/saved' : null, fetcher, swrOpts);
+  const { data: bookingsData } = useSWR(isAuthed ? '/api/v1/bookings/me' : null, fetcher, swrOpts);
+  const { data: followsData } = useSWR(isAuthed ? '/api/v1/follows?type=following' : null, fetcher, swrOpts);
+  const { data: circlesData } = useSWR(isAuthed ? '/api/v1/circles/me' : null, fetcher, swrOpts);
   const signalsCount = signalsData?.data?.length || 0;
   const savedCount = savedData?.data?.length || 0;
   const bookingsCount = bookingsData?.data?.length || 0;
