@@ -44,9 +44,15 @@ export default function NailBookingModal({ business: biz, initialService, onClos
   const services = (biz.services || []) as BusinessService[];
   const hours = biz.hours || {};
 
-  const [step, setStep] = useState<Step>(initialService ? 'datetime' : 'service');
+  // Skip service step if no services or pre-selected
+  const hasServices = services.length > 0;
+  const defaultService: BusinessService = { name: 'General Booking', price: 0, duration: 30 };
+
+  const [step, setStep] = useState<Step>(initialService || !hasServices ? 'datetime' : 'service');
   const [selectedService, setSelectedService] = useState<BusinessService | null>(
-    initialService ? services.find(s => s.name === initialService) || null : null
+    initialService ? services.find(s => s.name === initialService) || null
+    : !hasServices ? defaultService
+    : null
   );
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
