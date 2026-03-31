@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { z } from 'zod';
+import { toast } from 'sonner';
 import { useLocationStore } from '@/stores/locationStore';
 
 const schema = z.object({
@@ -25,7 +26,7 @@ const DURATION_OPTIONS = [
 const VISIBILITY_OPTIONS = ['public', 'circle', 'private'] as const;
 
 export default function PresenceForm({ onSubmit }: PresenceFormProps) {
-  const { lat, lng } = useLocationStore();
+  const { lat, lng, requestLocation } = useLocationStore();
   const [note, setNote] = useState('');
   const [duration, setDuration] = useState(2);
   const [customDuration, setCustomDuration] = useState('');
@@ -156,9 +157,17 @@ export default function PresenceForm({ onSubmit }: PresenceFormProps) {
 
       {/* Submit */}
       <button
-        onClick={handleSubmit}
-        disabled={!locationReady || submitting}
-        className="w-full rounded-xl bg-[#00d4ff] py-3 text-sm font-semibold text-[#0a0b0f] transition-colors hover:bg-[#00d4ff]/80 disabled:cursor-not-allowed disabled:opacity-40"
+        onClick={() => {
+          if (!locationReady) {
+            toast.info('Please allow location access');
+            requestLocation();
+            return;
+          }
+          handleSubmit();
+        }}
+        disabled={submitting}
+        className="w-full rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-40"
+        style={{ background: 'linear-gradient(135deg, #00d4ff, #22C55E)', color: '#0a0b0f', boxShadow: '0 4px 20px rgba(0,212,255,0.3)' }}
       >
         {submitting ? 'Publishing…' : 'Publish'}
       </button>

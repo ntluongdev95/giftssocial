@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { z } from 'zod';
+import { toast } from 'sonner';
 import { useLocationStore } from '@/stores/locationStore';
 import { Image, Camera } from 'lucide-react';
 
@@ -21,7 +22,7 @@ interface UpdateFormProps {
 const DURATIONS = [{ label: '6h', value: 6 }, { label: '12h', value: 12 }, { label: '24h', value: 24 }];
 
 export default function UpdateForm({ onSubmit }: UpdateFormProps) {
-  const { lat, lng } = useLocationStore();
+  const { lat, lng, requestLocation } = useLocationStore();
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [duration, setDuration] = useState(24);
@@ -138,9 +139,13 @@ export default function UpdateForm({ onSubmit }: UpdateFormProps) {
 
       {/* Submit */}
       <button
-        onClick={handleSubmit}
-        disabled={submitting || lat === null}
-        className="btn-primary w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-40"
+        onClick={() => {
+          if (lat === null) { toast.info('Please allow location access'); requestLocation(); return; }
+          handleSubmit();
+        }}
+        disabled={submitting}
+        className="w-full rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-40"
+        style={{ background: 'linear-gradient(135deg, #00d4ff, #22C55E)', color: '#0a0b0f', boxShadow: '0 4px 20px rgba(0,212,255,0.3)' }}
       >
         {submitting ? 'Publishing…' : 'Share Update'}
       </button>
