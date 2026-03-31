@@ -107,7 +107,7 @@ export default function MePage() {
           <ShortcutBtn icon={<Settings size={18} />} label="Settings" />
           <ShortcutBtn icon={<HelpCircle size={18} />} label="Help Center" />
           <ShortcutBtn icon={<Globe size={18} />} label="Gao Domain" />
-          <ShortcutBtn icon={<Bell size={18} />} label="Notifications" />
+          <ShortcutBtn icon={<Bell size={18} />} label="Notifications" onClick={() => router.push('/notifications')} />
         </div>
 
         {/* Logout — mobile only */}
@@ -157,7 +157,7 @@ export default function MePage() {
                 <ShortcutBtn icon={<Settings size={16} />} label="Settings" />
                 <ShortcutBtn icon={<HelpCircle size={16} />} label="Help" />
                 <ShortcutBtn icon={<Globe size={16} />} label="Domain" />
-                <ShortcutBtn icon={<Bell size={16} />} label="Alerts" />
+                <ShortcutBtn icon={<Bell size={16} />} label="Alerts" onClick={() => router.push('/notifications')} />
               </div>
             </div>
 
@@ -250,9 +250,9 @@ function ManageCard({ icon, label, sub, onClick }: { icon: React.ReactNode; labe
   );
 }
 
-function ShortcutBtn({ icon, label }: { icon: React.ReactNode; label: string }) {
+function ShortcutBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-xl py-3 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+    <div onClick={onClick} className="flex flex-col items-center gap-1.5 rounded-xl py-3 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
       <span className="text-[#4a5068]">{icon}</span>
       <span className="text-[9px] font-medium text-[#a3adc3]">{label}</span>
     </div>

@@ -62,8 +62,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Update user bookings count
       await pgPool.query('UPDATE users SET bookings_count = bookings_count + 1, updated_at = NOW() WHERE id = $1', [userId]).catch(() => {});
 
+      // Earn Gao points
+      await pgPool.query('UPDATE users SET gao_points = gao_points + 10, updated_at = NOW() WHERE id = $1', [userId]).catch(() => {});
+      await pgPool.query(
+        `INSERT INTO wallet_transactions (user_id, type, amount, balance_after, source, ref_type, ref_id, description)
+         VALUES ($1, 'earn', 10, (SELECT gao_points FROM users WHERE id = $1), 'booking_complete', 'booking', $2, 'Booking completed reward')`,
+        [userId, id]
+      ).catch(() => {});
+
       // Notification
-      notify(userId, 'proof_earned', 'Booking completed! +3 trust', `Earned proof for ${booking.service_name || 'booking'}`, 'booking', id);
+      notify(userId, 'proof_earned', 'Booking completed! +3 trust +10 points', `Earned proof for ${booking.service_name || 'booking'}`, 'booking', id);
     }
 
     // If checkin → auto-create checkin proof

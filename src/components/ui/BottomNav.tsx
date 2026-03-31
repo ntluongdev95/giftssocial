@@ -4,8 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Globe, MapPin, Users, Zap, User, ScanFace } from 'lucide-react';
+import { Globe, MapPin, Users, Zap, User, ScanFace, Bell } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
+import { useNotifications } from '@/hooks/useNotifications';
 import AuthPopup from '@/components/ui/AuthPopup';
 
 const TABS = [
@@ -18,6 +19,7 @@ const TABS = [
 export default function BottomNav() {
   const pathname = usePathname();
   const isLoggedIn = useAuthStore((s) => s.isAuthed);
+  const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
 
   return (
