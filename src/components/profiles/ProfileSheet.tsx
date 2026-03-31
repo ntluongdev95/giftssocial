@@ -2,7 +2,9 @@
 
 import { X, MapPin, Clock, Briefcase, GraduationCap, Languages, ExternalLink, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import type { Profile } from '@/types';
+import { useFollow } from '@/hooks/useFollow';
 
 interface Props {
   profile: Profile;
@@ -10,6 +12,13 @@ interface Props {
 }
 
 export default function ProfileSheet({ profile: p, onClose }: Props) {
+  const { followingUserIds, follow, unfollow } = useFollow();
+  const isFollowing = followingUserIds.has(p.user_id);
+
+  const toggleFollow = async () => {
+    if (isFollowing) { await unfollow({ user_id: p.user_id }); toast.info('Unfollowed'); }
+    else { await follow({ user_id: p.user_id }); toast.success('Following!'); }
+  };
   const yearsExp = p.experience.length > 0
     ? new Date().getFullYear() - Math.min(...p.experience.map((e) => e.start_year))
     : 0;
@@ -162,6 +171,9 @@ export default function ProfileSheet({ profile: p, onClose }: Props) {
 
           {/* Footer CTA */}
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <button onClick={toggleFollow} className="rounded-xl py-3 px-5 text-sm font-semibold cursor-pointer" style={isFollowing ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' } : { background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+              {isFollowing ? '✓ Following' : '+ Follow'}
+            </button>
             <button className="btn-primary flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer">
               <Briefcase size={15} /> Contact
             </button>

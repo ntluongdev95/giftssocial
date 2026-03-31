@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import type { Business } from '@/types';
 import NailBookingModal from '@/components/booking/NailBookingModal';
+import { useFollow } from '@/hooks/useFollow';
 
 interface Props {
   business: Business;
@@ -18,6 +19,13 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export default function BusinessSheet({ business: biz, onClose, onViewDetail }: Props) {
   const [showBooking, setShowBooking] = useState(false);
   const [bookingService, setBookingService] = useState<string | undefined>();
+  const { followingBizIds, follow, unfollow } = useFollow();
+  const isFollowing = followingBizIds.has(biz.id);
+
+  const toggleFollow = async () => {
+    if (isFollowing) { await unfollow({ business_id: biz.id }); toast.info('Unfollowed'); }
+    else { await follow({ business_id: biz.id }); toast.success('Following!'); }
+  };
 
   const openBooking = (serviceName?: string) => {
     setBookingService(serviceName);
@@ -89,6 +97,11 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
                     </span>
                   )}
                 </div>
+
+                {/* Follow */}
+                <button onClick={toggleFollow} className="mt-2 flex items-center gap-1.5 text-[10px] font-semibold px-3 py-1 rounded-full cursor-pointer" style={isFollowing ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' } : { background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                  {isFollowing ? '✓ Following' : '+ Follow'}
+                </button>
 
                 {/* Subcategories */}
                 {biz.subcategories && biz.subcategories.length > 0 && (
