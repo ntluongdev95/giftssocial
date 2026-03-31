@@ -182,6 +182,13 @@ export default function NearbyPage() {
     return p.toString();
   }, [lat, lng]);
 
+  // Matched people nearby
+  const { data: matchedPeople } = useSWR(
+    `/api/v1/match?type=people_nearby&${queryParams}`,
+    (url: string) => fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` } }).then(r => r.json()),
+    { revalidateOnFocus: false }
+  );
+
   const { data, isLoading } = useSWR<{ data: NearbyResponse }>(
     `/api/v1/nearby?${queryParams}`,
     fetcher,
@@ -274,7 +281,9 @@ export default function NearbyPage() {
       }
 
       case 'Profiles': {
-        const profs = nearby.profiles || [];
+        // Use matched people (scored) if available, fallback to nearby profiles
+        const matched = (matchedPeople?.data || []) as Profile[];
+        const profs = matched.length > 0 ? matched : (nearby.profiles || []);
         return profs.length === 0 ? (
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (

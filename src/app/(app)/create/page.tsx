@@ -76,6 +76,7 @@ function CreateSignalPageInner() {
   const [signalType, setSignalType] = useState<SignalType | null>(hasPreType ? preType : null);
   const [formData, setFormData] = useState<Record<string, unknown> | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [matchedBusinesses, setMatchedBusinesses] = useState<Record<string, unknown>[]>([]);
 
   // Auth gate
   if (!user && !isGuest) {
@@ -153,6 +154,21 @@ function CreateSignalPageInner() {
         setStep('preview');
         return;
       }
+
+      // If intent signal → fetch matched businesses
+      const signalResult = await res.json().catch(() => null);
+      if (signalType === 'intent' && signalResult?.data?.id) {
+        try {
+          const matchRes = await fetch(`/api/v1/match?type=intent_to_business&signal_id=${signalResult.data.id}`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+          });
+          const matchData = await matchRes.json();
+          if (matchData.data?.length > 0) {
+            setMatchedBusinesses(matchData.data);
+          }
+        } catch {}
+      }
+
       setStep('success');
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'Network error — check your connection');
@@ -359,7 +375,7 @@ function CreateSignalPageInner() {
               <div className="flex gap-3 pt-4">
                 <button
                   onClick={() => router.push('/world')}
-                  className="rounded-xl bg-[#00d4ff] px-6 py-3 text-sm font-semibold text-[#0a0b0f]"
+                  className="rounded-xl bg-[#00d4ff] px-6 py-3 text-sm font-semibold text-[#0a0b0f] cursor-pointer"
                 >
                   View on Map
                 </button>
@@ -368,12 +384,47 @@ function CreateSignalPageInner() {
                     setStep('type_select');
                     setSignalType(null);
                     setFormData(null);
+                    setMatchedBusinesses([]);
                   }}
-                  className="rounded-xl border border-[#181c24] px-6 py-3 text-sm font-medium text-[#f0f4ff]"
+                  className="rounded-xl border border-[#181c24] px-6 py-3 text-sm font-medium text-[#f0f4ff] cursor-pointer"
                 >
                   Create Another
                 </button>
               </div>
+
+              {/* Matched businesses for intent signals */}
+              {matchedBusinesses.length > 0 && (
+                <div className="w-full mt-6 text-left">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">
+                    Matched for you — {matchedBusinesses.length} nearby
+                  </h3>
+                  <div className="space-y-2">
+                    {matchedBusinesses.slice(0, 5).map((b) => (
+                      <div
+                        key={b.id as string}
+                        onClick={() => router.push('/nearby')}
+                        className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer"
+                        style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
+                      >
+                        <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                          {(b.name as string).charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{b.name as string}</p>
+                          <p className="text-[10px] text-[#4a5068]">
+                            {b.distance_km !== undefined ? `${(b.distance_km as number).toFixed(1)}km · ` : ''}
+                            {b.rating_avg ? `⭐ ${b.rating_avg} · ` : ''}
+                            Score: {b.match_score as number}
+                          </p>
+                        </div>
+                        {b.booking_enabled && (
+                          <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>Book</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
