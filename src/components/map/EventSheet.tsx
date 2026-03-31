@@ -8,9 +8,10 @@ import type { Event } from '@/types';
 interface Props {
   event: Event;
   onClose: () => void;
+  onViewDetail?: () => void;
 }
 
-export default function EventSheet({ event: e, onClose }: Props) {
+export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
   const spotsLeft = e.capacity ? e.capacity - e.joined_count : null;
   const capacityPct = e.capacity ? Math.min((e.joined_count / e.capacity) * 100, 100) : 0;
   const isLive = e.status === 'live';

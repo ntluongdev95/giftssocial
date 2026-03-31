@@ -112,7 +112,7 @@ export default function EventCard({ event: e, onClick }: EventCardProps) {
             className="rounded-lg px-4 py-1.5 text-[11px] font-semibold cursor-pointer"
             style={{ background: '#00d4ff', color: '#0a0b0f' }}
           >
-            Book
+            Details
           </button>
         </div>
       </div>

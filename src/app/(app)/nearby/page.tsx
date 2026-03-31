@@ -12,6 +12,7 @@ import AgentCard from '@/components/cards/AgentCard';
 import CircleCard from '@/components/cards/CircleCard';
 import ProfileCard from '@/components/cards/ProfileCard';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
+import EventDetailPage from '@/components/events/EventDetailPage';
 import type { NearbyResponse, Business, Event, Signal, Agent, Circle, Profile } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ export default function NearbyPage() {
   const [sort, setSort] = useState<Sort>('Closest');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -246,7 +248,7 @@ export default function NearbyPage() {
         return evts.length === 0 ? (
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (
-          evts.map((e) => <EventCard key={e.id} event={e} />)
+          evts.map((e) => <EventCard key={e.id} event={e} onClick={() => setSelectedEvent(e)} />)
         );
       }
 
@@ -346,6 +348,14 @@ export default function NearbyPage() {
         <BusinessDetailPage
           business={selectedBusiness}
           onClose={() => setSelectedBusiness(null)}
+        />
+      )}
+
+      {/* Event detail — full page slide from right */}
+      {selectedEvent && (
+        <EventDetailPage
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
         />
       )}
     </div>
