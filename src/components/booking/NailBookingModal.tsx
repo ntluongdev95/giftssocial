@@ -48,17 +48,27 @@ export default function NailBookingModal({ business: biz, initialService, onClos
   const hasServices = services.length > 0;
   const defaultService: BusinessService = { name: 'General Booking', price: 0, duration: 30 };
 
+  // Multi-select services
+  const initSelected = initialService ? services.filter(s => s.name === initialService) : !hasServices ? [defaultService] : [];
   const [step, setStep] = useState<Step>(initialService || !hasServices ? 'datetime' : 'service');
-  const [selectedService, setSelectedService] = useState<BusinessService | null>(
-    initialService ? services.find(s => s.name === initialService) || null
-    : !hasServices ? defaultService
-    : null
-  );
+  const [selectedServices, setSelectedServices] = useState<BusinessService[]>(initSelected);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [selectedStaff, setSelectedStaff] = useState(MOCK_STAFF[0]);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const toggleService = (svc: BusinessService) => {
+    setSelectedServices(prev =>
+      prev.find(s => s.name === svc.name)
+        ? prev.filter(s => s.name !== svc.name)
+        : [...prev, svc]
+    );
+  };
+
+  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration, 0);
+  const serviceNames = selectedServices.map(s => s.name).join(' + ');
 
   // Generate dates (next 14 days)
   const dates = useMemo(() => Array.from({ length: 14 }, (_, i) => addDays(new Date(), i)), []);
@@ -69,11 +79,11 @@ export default function NailBookingModal({ business: biz, initialService, onClos
   const isClosed = dayHours?.closed;
   const timeSlots = useMemo(() => {
     if (isClosed || !dayHours?.open || !dayHours?.close) return [];
-    return generateSlots(dayHours.open, dayHours.close, selectedService?.duration || 30);
-  }, [dayHours, isClosed, selectedService]);
+    return generateSlots(dayHours.open, dayHours.close, totalDuration || 30);
+  }, [dayHours, isClosed, totalDuration]);
 
   const handleSubmit = async () => {
-    if (!selectedService || !selectedTime) return;
+    if (selectedServices.length === 0 || !selectedTime) return;
     setSubmitting(true);
 
     const slotTime = new Date(selectedDate);
@@ -86,10 +96,10 @@ export default function NailBookingModal({ business: biz, initialService, onClos
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({
           business_id: biz.id,
-          service_name: selectedService.name,
+          service_name: serviceNames,
           slot_time: slotTime.toISOString(),
-          amount: selectedService.price,
-          notes: `Staff: ${selectedStaff.name}${notes ? ` | ${notes}` : ''}`,
+          amount: totalPrice,
+          notes: `Staff: ${selectedStaff.name} | Duration: ${totalDuration}min${notes ? ` | ${notes}` : ''}`,
         }),
       });
 
@@ -120,7 +130,7 @@ export default function NailBookingModal({ business: biz, initialService, onClos
           <div>
             <h2 className="text-base font-bold text-white">{biz.name}</h2>
             <p className="text-[10px] text-[#4a5068]">
-              {step === 'service' && 'Choose a service'}
+              {step === 'service' && `Choose services (${selectedServices.length} selected)`}
               {step === 'datetime' && 'Pick date & time'}
               {step === 'staff' && 'Choose technician'}
               {step === 'confirm' && 'Confirm booking'}
@@ -145,23 +155,39 @@ export default function NailBookingModal({ business: biz, initialService, onClos
             {/* Step 1: Service */}
             {step === 'service' && (
               <motion.div key="service" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-1.5">
-                {services.map(svc => (
-                  <button
-                    key={svc.name}
-                    onClick={() => { setSelectedService(svc); setStep('datetime'); }}
-                    className="w-full flex items-center justify-between rounded-xl px-4 py-3 text-left cursor-pointer transition-colors hover:bg-white/[0.02]"
-                    style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
-                  >
-                    <div>
-                      <p className="text-sm text-white">{svc.name}</p>
-                      <p className="text-[10px] text-[#4a5068]">{svc.duration} min</p>
-                    </div>
-                    <div className="flex items-center gap-2">
+                {services.map(svc => {
+                  const isSelected = selectedServices.some(s => s.name === svc.name);
+                  return (
+                    <button
+                      key={svc.name}
+                      onClick={() => toggleService(svc)}
+                      className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-left cursor-pointer transition-colors"
+                      style={{ background: isSelected ? 'rgba(0,212,255,0.06)' : 'rgba(17,19,24,0.5)', border: `1px solid ${isSelected ? 'rgba(0,212,255,0.2)' : 'rgba(255,255,255,0.04)'}` }}
+                    >
+                      {/* Checkbox */}
+                      <div className="h-5 w-5 rounded-md flex items-center justify-center shrink-0" style={{ background: isSelected ? '#00d4ff' : 'rgba(255,255,255,0.06)', border: isSelected ? 'none' : '1px solid rgba(255,255,255,0.1)' }}>
+                        {isSelected && <Check size={12} className="text-[#0a0b0f]" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white">{svc.name}</p>
+                        <p className="text-[10px] text-[#4a5068]">{svc.duration} min</p>
+                      </div>
                       <span className="text-sm font-semibold text-[#00d4ff]">${svc.price}</span>
-                      <ChevronRight size={14} className="text-[#4a5068]" />
+                    </button>
+                  );
+                })}
+
+                {/* Total summary */}
+                {selectedServices.length > 0 && (
+                  <div className="rounded-xl px-4 py-3 mt-2" style={{ background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.12)' }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-[#a3adc3]">{selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} · {totalDuration} min</p>
+                      </div>
+                      <p className="text-base font-bold text-[#00d4ff]">${totalPrice}</p>
                     </div>
-                  </button>
-                ))}
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -259,13 +285,20 @@ export default function NailBookingModal({ business: biz, initialService, onClos
             )}
 
             {/* Step 4: Confirm */}
-            {step === 'confirm' && selectedService && (
+            {step === 'confirm' && selectedServices.length > 0 && (
               <motion.div key="confirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
                 <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(0,212,255,0.08)' }}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-[#4a5068]">Service</p>
-                    <p className="text-sm font-semibold text-white">{selectedService.name}</p>
+                  {/* Services list */}
+                  <div>
+                    <p className="text-xs text-[#4a5068] mb-2">Services</p>
+                    {selectedServices.map(svc => (
+                      <div key={svc.name} className="flex items-center justify-between py-1">
+                        <p className="text-sm text-white">{svc.name} <span className="text-[10px] text-[#4a5068]">({svc.duration}min)</span></p>
+                        <p className="text-sm text-[#00d4ff]">${svc.price}</p>
+                      </div>
+                    ))}
                   </div>
+                  <div className="h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-[#4a5068]">Date</p>
                     <p className="text-sm text-white">{format(selectedDate, 'EEE, MMM d')}</p>
@@ -279,8 +312,8 @@ export default function NailBookingModal({ business: biz, initialService, onClos
                     <p className="text-sm text-white">{selectedStaff.name}</p>
                   </div>
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-[#4a5068]">Duration</p>
-                    <p className="text-sm text-white">{selectedService.duration} min</p>
+                    <p className="text-xs text-[#4a5068]">Total duration</p>
+                    <p className="text-sm text-white">{totalDuration} min</p>
                   </div>
                   {notes && (
                     <div className="flex items-center justify-between">
@@ -291,7 +324,7 @@ export default function NailBookingModal({ business: biz, initialService, onClos
                   <div className="h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-white">Total</p>
-                    <p className="text-lg font-bold text-[#00d4ff]">${selectedService.price}</p>
+                    <p className="text-lg font-bold text-[#00d4ff]">${totalPrice}</p>
                   </div>
                 </div>
               </motion.div>
@@ -304,7 +337,7 @@ export default function NailBookingModal({ business: biz, initialService, onClos
           {step !== 'service' && (
             <button
               onClick={() => {
-                if (step === 'datetime') setStep('service');
+                if (step === 'datetime') setStep(hasServices ? 'service' : 'service');
                 else if (step === 'staff') setStep('datetime');
                 else if (step === 'confirm') setStep('staff');
               }}
@@ -312,6 +345,17 @@ export default function NailBookingModal({ business: biz, initialService, onClos
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}
             >
               Back
+            </button>
+          )}
+
+          {step === 'service' && (
+            <button
+              onClick={() => selectedServices.length > 0 && setStep('datetime')}
+              disabled={selectedServices.length === 0}
+              className="flex-1 rounded-xl py-3 text-sm font-semibold cursor-pointer disabled:opacity-30"
+              style={{ background: '#00d4ff', color: '#0a0b0f' }}
+            >
+              {selectedServices.length === 0 ? 'Select at least 1 service' : `Next — ${selectedServices.length} service${selectedServices.length > 1 ? 's' : ''} · $${totalPrice}`}
             </button>
           )}
 
@@ -343,7 +387,7 @@ export default function NailBookingModal({ business: biz, initialService, onClos
               className="flex-1 rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg, #00d4ff, #22C55E)', color: '#0a0b0f', boxShadow: '0 4px 20px rgba(0,212,255,0.3)' }}
             >
-              {submitting ? <Loader2 size={16} className="animate-spin mx-auto" /> : `Confirm — $${selectedService?.price}`}
+              {submitting ? <Loader2 size={16} className="animate-spin mx-auto" /> : `Confirm — $${totalPrice}`}
             </button>
           )}
         </div>
