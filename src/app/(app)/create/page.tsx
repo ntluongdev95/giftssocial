@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Check, MapPin, Shield, Clock, User } from 'lucide-react';
 import SignalTypeSelector from '@/components/signals/SignalTypeSelector';
@@ -57,14 +57,18 @@ function SignInGateSheet() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────
 
-export default function CreateSignalPage() {
+export default function CreateSignalPageWrapper() {
+  return <Suspense><CreateSignalPageInner /></Suspense>;
+}
+
+function CreateSignalPageInner() {
   const router = useRouter();
   const { user, isGuest } = useAuthStore();
   const { lat, lng } = useLocationStore();
 
   // Check URL param for pre-selected type (from Quick Create)
-  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const preType = searchParams?.get('type') as SignalType | null;
+  const searchParams = useSearchParams();
+  const preType = searchParams.get('type') as SignalType | null;
   const validTypes: SignalType[] = ['presence', 'intent', 'offer', 'event', 'update', 'proof'];
   const hasPreType = preType && validTypes.includes(preType);
 
