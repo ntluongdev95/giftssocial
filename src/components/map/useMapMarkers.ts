@@ -335,8 +335,37 @@ function createLandmarkMarkerElement(lm: Landmark): HTMLDivElement {
     `;
   }
 
-  el.onmouseenter = () => { el.style.transform = 'scale(1.2)'; };
-  el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
+  // Popup on hover
+  const popup = document.createElement('div');
+  popup.style.cssText = `
+    position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+    background:rgba(10,11,15,0.95);backdrop-filter:blur(12px);
+    border:1px solid ${color}30;border-radius:10px;
+    padding:10px 14px;min-width:160px;max-width:220px;
+    pointer-events:none;opacity:0;transition:opacity 0.2s;
+    box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:50;
+    font-family:Inter,system-ui,sans-serif;
+  `;
+  popup.innerHTML = `
+    <p style="font-size:12px;font-weight:700;color:white;margin:0 0 4px 0;">${lm.name}</p>
+    <p style="font-size:10px;color:#a3adc3;margin:0 0 2px 0;">${lm.city}, ${lm.country}</p>
+    <p style="font-size:9px;color:#4a5068;margin:0;">
+      ${lm.type.charAt(0).toUpperCase() + lm.type.slice(1)}${lm.height ? ` · ${lm.height}m` : ''}
+    </p>
+  `;
+  el.style.position = 'relative';
+  el.appendChild(popup);
+
+  el.onmouseenter = () => { el.style.transform = 'scale(1.15)'; popup.style.opacity = '1'; };
+  el.onmouseleave = () => { el.style.transform = 'scale(1)'; popup.style.opacity = '0'; };
+
+  // Touch: toggle popup on tap
+  let popupVisible = false;
+  el.ontouchstart = (e) => {
+    e.stopPropagation();
+    popupVisible = !popupVisible;
+    popup.style.opacity = popupVisible ? '1' : '0';
+  };
 
   return el;
 }
@@ -652,13 +681,7 @@ export function useMapMarkers(
 
         const el = createLandmarkMarkerElement(lm);
 
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          // Show info popup at landmark, then fly
-          window.dispatchEvent(new CustomEvent('gao-landmark-click', {
-            detail: lm
-          }));
-        });
+        // Click just focuses — popup shown on hover/tap via element handlers
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
           .setLngLat([lm.lng, lm.lat])
