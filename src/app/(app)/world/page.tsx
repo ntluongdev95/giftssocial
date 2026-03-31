@@ -461,7 +461,7 @@ export default function WorldPage() {
         </div>
 
         {/* ── Bottom Summary Grid ─────────────────────── */}
-        <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+8px)] lg:bottom-4 left-0 right-0 z-30 max-w-sm lg:max-w-md mx-auto">
+        <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+40px)] lg:bottom-4 left-0 right-0 z-30 max-w-sm lg:max-w-md mx-auto">
           <div
             className="mx-3 rounded-2xl px-3 py-3 lg:px-4 lg:py-4"
             style={{
