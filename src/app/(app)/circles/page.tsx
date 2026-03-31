@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Check } from 'lucide-react';
 import { toast } from 'sonner';
@@ -85,6 +86,7 @@ function EventMiniCard({ title, time }: { title: string; time: string }) {
 // ─── Page ────────────────────────────────────────────────────────────────
 
 export default function CirclesPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<string>('For You');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
@@ -141,7 +143,7 @@ export default function CirclesPage() {
 
         <div className="flex gap-1 mb-5 overflow-x-auto">
           {TABS.map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium cursor-pointer ${activeTab === tab ? 'bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20' : 'text-[#4a5068]'}`}>{tab}</button>
+            <button key={tab} onClick={() => tab === 'My Circles' ? router.push('/me/circles') : setActiveTab(tab)} className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium cursor-pointer ${activeTab === tab ? 'bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20' : 'text-[#4a5068]'}`}>{tab}</button>
           ))}
         </div>
 
