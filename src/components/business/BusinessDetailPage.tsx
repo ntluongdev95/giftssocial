@@ -7,6 +7,7 @@ import {
   Sparkles, ChevronRight, X,
 } from 'lucide-react';
 import type { Business } from '@/types';
+import NailBookingModal from '@/components/booking/NailBookingModal';
 
 interface Props {
   business: Business;
@@ -23,6 +24,8 @@ const PLACEHOLDER_IMAGES = [
 ];
 
 export default function BusinessDetailPage({ business: b, onClose }: Props) {
+  const [showBooking, setShowBooking] = useState(false);
+  const [bookingService, setBookingService] = useState<string | undefined>();
   const [imgIdx, setImgIdx] = useState(0);
   const images = b.images && b.images.length > 0 ? b.images : PLACEHOLDER_IMAGES;
   const services = (b.services || []) as { name: string; price: number; duration: number }[];
@@ -131,7 +134,14 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
                   <p className="text-sm text-white">{svc.name}</p>
                   {svc.duration > 0 && <p className="text-[10px] text-[#4a5068]">{svc.duration} min</p>}
                 </div>
-                <span className="text-sm font-semibold text-[#00d4ff]">${svc.price}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-[#00d4ff]">${svc.price}</span>
+                  {b.booking_enabled && (
+                    <button onClick={() => { setBookingService(svc.name); setShowBooking(true); }} className="rounded-lg px-2.5 py-1 text-[9px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                      Book
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -202,7 +212,7 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
         {todayHours && !todayHours.closed && <p className="text-[10px] text-[#4a5068] mt-0.5">{todayHours.open} — {todayHours.close}</p>}
       </div>
       {b.booking_enabled && (
-        <button className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>Book</button>
+        <button onClick={() => setShowBooking(true)} className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>Book</button>
       )}
       {b.phone && !b.booking_enabled && (
         <a href={`tel:${b.phone}`} className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>Call</a>
@@ -288,6 +298,16 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
           </div>
         </motion.div>
       </div>
+
+      {/* Booking Modal */}
+      {showBooking && (
+        <NailBookingModal
+          business={b}
+          initialService={bookingService}
+          onClose={() => setShowBooking(false)}
+          onBooked={() => setShowBooking(false)}
+        />
+      )}
     </>
   );
 }
