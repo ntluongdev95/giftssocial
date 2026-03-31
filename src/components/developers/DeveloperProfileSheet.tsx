@@ -19,7 +19,7 @@ export default function DeveloperProfileSheet({ developer: dev, onClose }: Props
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+        className="fixed inset-0 z-[100] flex items-end justify-center lg:items-center"
         style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >

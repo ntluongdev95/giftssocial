@@ -152,7 +152,7 @@ export default function CircleDetailSheet({ circle, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+        className="fixed inset-0 z-[100] flex items-end justify-center lg:items-center"
         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
@@ -161,7 +161,7 @@ export default function CircleDetailSheet({ circle, onClose }: Props) {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 40, opacity: 0 }}
           transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-          className="w-full max-w-[560px] max-h-[85dvh] rounded-t-3xl lg:rounded-3xl flex flex-col overflow-hidden"
+          className="w-full max-w-[560px] max-h-[85dvh] rounded-t-3xl lg:rounded-3xl flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom,0px)]"
           style={{
             background: 'rgba(17,19,24,0.95)',
             backdropFilter: 'blur(20px)',
