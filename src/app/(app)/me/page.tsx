@@ -4,128 +4,246 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import {
-  MapPin,
-  CalendarCheck,
-  Bot,
-  Bookmark,
-  Shield,
-  Settings,
-  LogOut,
-  UserCheck,
-  Store,
-  Calendar,
+  MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
+  UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
+  HelpCircle, Globe, Bell, Wallet, Award, Signal,
 } from 'lucide-react';
-
-const MENU_ITEMS = [
-  { icon: UserCheck, label: 'Professional Profile', href: '/me/profile' },
-  { icon: Store, label: 'My Business', href: '/me/business' },
-  { icon: Calendar, label: 'Create Event', href: '/me/events' },
-  { icon: MapPin, label: 'My Signals', href: '#' },
-  { icon: CalendarCheck, label: 'My Bookings', href: '#' },
-  { icon: Bot, label: 'My Agents', href: '#' },
-  { icon: Bookmark, label: 'Saved', href: '#' },
-  { icon: Shield, label: 'Privacy', href: '#' },
-  { icon: Settings, label: 'Settings', href: '#' },
-];
 
 export default function MePage() {
   const router = useRouter();
-  const { user, isGuest, logout } = useAuthStore();
+  const { user, isAuthed, logout } = useAuthStore();
 
-  const handleLogout = () => {
-    logout();
-    router.push('/world');
-  };
+  const handleLogout = () => { logout(); router.push('/world'); };
+
+  const displayName = user?.fullName || user?.username || 'Welcome';
+  const avatarUrl = user?.avatarUrl;
+  const username = user?.username;
 
   return (
-    <div className="h-full overflow-y-auto px-4 lg:px-8 pt-[env(safe-area-inset-top,12px)] lg:pt-6 max-w-2xl lg:mx-auto">
-      {/* Aurora */}
+    <div className="h-full overflow-y-auto relative">
       <div className="aurora-gradient absolute inset-x-0 top-0 h-48 pointer-events-none" />
 
-      {/* Profile header */}
-      <div className="relative flex flex-col items-center gap-3 py-6 text-center">
-        {/* Avatar */}
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#111318] text-3xl text-[#4a5068]">
-          {user?.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt=""
-              className="h-full w-full rounded-full object-cover"
-            />
-          ) : (
-            '👤'
-          )}
-        </div>
+      {/* ══ MOBILE ════════════════════════════════════════ */}
+      <div className="lg:hidden relative max-w-lg mx-auto px-4 pt-[calc(env(safe-area-inset-top,12px)+16px)] pb-24">
 
-        <h1 className="text-xl font-bold text-[#f0f4ff]">
-          {user?.display_name || (isGuest ? 'Guest' : 'Welcome')}
-        </h1>
-
-        {user?.gao_domain ? (
-          <p className="text-sm text-[#00d4ff]">{user.gao_domain}</p>
-        ) : (
-          <button className="text-sm text-[#00d4ff]">
-            Claim your Gao Domain →
-          </button>
-        )}
-
-        <TrustLevelPill
-          level={user?.trust_level || 'new'}
-          score={user?.trust_score || 0}
-        />
-
-        {/* Stats */}
-        <div className="flex gap-6 pt-2 text-center">
-          <div>
-            <p className="text-lg font-bold text-[#f0f4ff]">0</p>
-            <p className="text-[10px] text-[#4a5068]">Proofs</p>
+        {/* Profile header */}
+        <div className="flex items-start gap-4 mb-5">
+          <div className="h-16 w-16 rounded-full flex items-center justify-center shrink-0 overflow-hidden" style={{ background: '#111318', border: '2px solid rgba(0,212,255,0.2)' }}>
+            {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : <span className="text-2xl text-[#4a5068]">👤</span>}
           </div>
-          <div>
-            <p className="text-lg font-bold text-[#f0f4ff]">0</p>
-            <p className="text-[10px] text-[#4a5068]">Circles</p>
+          <div className="flex-1 min-w-0 pt-1">
+            <h1 className="text-lg font-bold text-white truncate">{displayName}</h1>
+            {isAuthed && <TrustLevelPill level={user?.role === 'normal' ? 'verified' : 'new'} score={0} size="sm" />}
+            {username && <p className="text-[10px] text-[#4a5068] mt-0.5">Gao ID: @{username}</p>}
           </div>
-          <div>
-            <p className="text-lg font-bold text-[#f0f4ff]">0</p>
-            <p className="text-[10px] text-[#4a5068]">Events</p>
+          <div className="flex gap-2">
+            <button onClick={() => router.push('/me/profile')} className="h-8 w-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <Settings size={14} className="text-[#4a5068]" />
+            </button>
+            <button className="h-8 w-8 rounded-lg flex items-center justify-center cursor-pointer" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <QrCode size={14} className="text-[#4a5068]" />
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Menu */}
-      <div
-        className="relative space-y-0.5 rounded-2xl overflow-hidden"
-        style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
-      >
-        {MENU_ITEMS.map(({ icon: Icon, label, href }) => (
-          <button
-            key={label}
-            onClick={() => href !== '#' && router.push(href)}
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-sm text-[#f0f4ff] transition-colors hover:bg-[rgba(0,212,255,0.04)] cursor-pointer"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
-          >
-            <Icon size={18} className="text-[#4a5068]" />
-            {label}
-          </button>
-        ))}
+        {/* Trust + Stats */}
+        <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] text-[#4a5068]">Trust Level</span>
+            <TrustLevelPill level="verified" score={0} size="sm" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <StatMini value="0" label="Proofs" />
+            <StatMini value="0" label="Bookings" />
+            <StatMini value="0" label="Events" />
+          </div>
+        </div>
 
-        {/* Sign in / out */}
-        {user || isGuest ? (
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-[#EF4444] transition-colors hover:bg-[#EF4444]/10"
-          >
-            <LogOut size={18} />
-            {isGuest ? 'Exit Guest Mode' : 'Sign Out'}
-          </button>
-        ) : (
-          <button
-            onClick={() => router.push('/auth')}
-            className="mt-4 w-full rounded-xl bg-[#00d4ff] py-3 text-sm font-semibold text-[#0a0b0f]"
-          >
-            Sign In
+        {/* My Network */}
+        <SectionTitle>My Network</SectionTitle>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <NetworkMini icon={<Users size={16} />} value="0" label="Circles" color="#00d4ff" />
+          <NetworkMini icon={<UserCheck size={16} />} value="0" label="Following" color="#34d399" />
+          <NetworkMini icon={<Bookmark size={16} />} value="0" label="Saved" color="#fbbf24" />
+        </div>
+
+        {/* My Activities */}
+        <SectionTitle>My Activities</SectionTitle>
+        <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+          <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<Signal size={16} />} label="My Signals" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<Wallet size={16} />} label="Wallet & Rewards" value="0 Gao Points" href="#" onClick={() => {}} last />
+        </div>
+
+        {/* Manage */}
+        <SectionTitle>Manage</SectionTitle>
+        <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+          <ActivityRow icon={<UserCheck size={16} />} label="Professional Profile" href="/me/profile" onClick={() => router.push('/me/profile')} />
+          <ActivityRow icon={<Store size={16} />} label="My Business" href="/me/business" onClick={() => router.push('/me/business')} />
+          <ActivityRow icon={<Calendar size={16} />} label="Create Event" href="/me/events" onClick={() => router.push('/me/events')} />
+          <ActivityRow icon={<Bot size={16} />} label="My Agents" href="#" onClick={() => {}} last />
+        </div>
+
+        {/* Shortcuts */}
+        <SectionTitle>Shortcuts</SectionTitle>
+        <div className="grid grid-cols-4 gap-2 mb-6">
+          <ShortcutBtn icon={<Settings size={18} />} label="Settings" />
+          <ShortcutBtn icon={<HelpCircle size={18} />} label="Help Center" />
+          <ShortcutBtn icon={<Globe size={18} />} label="Gao Domain" />
+          <ShortcutBtn icon={<Bell size={18} />} label="Notifications" />
+        </div>
+
+        {/* Sign out */}
+        {isAuthed && (
+          <button onClick={handleLogout} className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm text-[#f87171] cursor-pointer" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.1)' }}>
+            <LogOut size={16} /> Sign Out
           </button>
         )}
       </div>
+
+      {/* ══ DESKTOP ═══════════════════════════════════════ */}
+      <div className="hidden lg:block relative max-w-5xl mx-auto px-8 pt-6 pb-24">
+        <div className="flex gap-8">
+
+          {/* Left: Profile card */}
+          <div className="w-[320px] shrink-0 space-y-4">
+            <div className="rounded-2xl p-6" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div className="flex flex-col items-center text-center mb-5">
+                <div className="h-20 w-20 rounded-full flex items-center justify-center overflow-hidden mb-3" style={{ background: '#111318', border: '2.5px solid rgba(0,212,255,0.25)' }}>
+                  {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : <span className="text-3xl text-[#4a5068]">👤</span>}
+                </div>
+                <h1 className="text-lg font-bold text-white">{displayName}</h1>
+                {isAuthed && <TrustLevelPill level="verified" score={0} size="sm" />}
+                {username && <p className="text-[10px] text-[#4a5068] mt-1">Gao ID: @{username}</p>}
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <StatMini value="0" label="Proofs" />
+                <StatMini value="0" label="Bookings" />
+                <StatMini value="0" label="Events" />
+              </div>
+
+              {/* Network */}
+              <div className="grid grid-cols-3 gap-2">
+                <NetworkMini icon={<Users size={14} />} value="0" label="Circles" color="#00d4ff" />
+                <NetworkMini icon={<UserCheck size={14} />} value="0" label="Following" color="#34d399" />
+                <NetworkMini icon={<Bookmark size={14} />} value="0" label="Saved" color="#fbbf24" />
+              </div>
+            </div>
+
+            {/* Shortcuts */}
+            <div className="rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Shortcuts</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <ShortcutBtn icon={<Settings size={16} />} label="Settings" />
+                <ShortcutBtn icon={<HelpCircle size={16} />} label="Help" />
+                <ShortcutBtn icon={<Globe size={16} />} label="Domain" />
+                <ShortcutBtn icon={<Bell size={16} />} label="Alerts" />
+              </div>
+            </div>
+
+            {isAuthed && (
+              <button onClick={handleLogout} className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm text-[#f87171] cursor-pointer" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.1)' }}>
+                <LogOut size={15} /> Sign Out
+              </button>
+            )}
+          </div>
+
+          {/* Right: Activities + Manage */}
+          <div className="flex-1 min-w-0 space-y-5">
+            <div>
+              <SectionTitle>My Activities</SectionTitle>
+              <div className="grid grid-cols-2 gap-3">
+                <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value="0" color="#f87171" />
+                <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value="0 pending" color="#00d4ff" />
+                <ActivityCard icon={<Signal size={18} />} label="My Signals" value="0 active" color="#3B82F6" />
+                <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" />
+                <ActivityCard icon={<Wallet size={18} />} label="Wallet & Rewards" value="0 Gao Points" color="#a78bfa" />
+                <ActivityCard icon={<Award size={18} />} label="Trust & Badges" value="Build reputation" color="#34d399" />
+              </div>
+            </div>
+
+            <div>
+              <SectionTitle>Manage</SectionTitle>
+              <div className="grid grid-cols-3 gap-3">
+                <ManageCard icon={<UserCheck size={20} />} label="Professional Profile" sub="Edit your CV" href="/me/profile" onClick={() => router.push('/me/profile')} />
+                <ManageCard icon={<Store size={20} />} label="My Business" sub="Manage your store" href="/me/business" onClick={() => router.push('/me/business')} />
+                <ManageCard icon={<Calendar size={20} />} label="Create Event" sub="Host an event" href="/me/events" onClick={() => router.push('/me/events')} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-2">{children}</h2>;
+}
+
+function StatMini({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="text-center rounded-xl py-2" style={{ background: 'rgba(10,11,15,0.4)' }}>
+      <p className="text-base font-bold text-white">{value}</p>
+      <p className="text-[9px] text-[#4a5068]">{label}</p>
+    </div>
+  );
+}
+
+function NetworkMini({ icon, value, label, color }: { icon: React.ReactNode; value: string; label: string; color: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1 rounded-xl py-2.5" style={{ background: `${color}08` }}>
+      <span style={{ color }}>{icon}</span>
+      <p className="text-sm font-bold text-white">{value}</p>
+      <p className="text-[9px] text-[#4a5068]">{label}</p>
+    </div>
+  );
+}
+
+function ActivityRow({ icon, label, value, last, onClick }: { icon: React.ReactNode; label: string; value?: string; href: string; last?: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ borderBottom: last ? undefined : '1px solid rgba(255,255,255,0.03)' }}>
+      <span className="text-[#4a5068]">{icon}</span>
+      <span className="flex-1 text-sm text-white">{label}</span>
+      {value && <span className="text-[11px] text-[#4a5068]">{value}</span>}
+      <ChevronRight size={14} className="text-[#4a5068]" />
+    </button>
+  );
+}
+
+function ActivityCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
+  return (
+    <div className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+      <div className="flex items-center gap-3 mb-2">
+        <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: `${color}12`, color }}>{icon}</div>
+        <p className="text-sm font-semibold text-white">{label}</p>
+      </div>
+      <p className="text-xs text-[#4a5068]">{value}</p>
+    </div>
+  );
+}
+
+function ManageCard({ icon, label, sub, onClick }: { icon: React.ReactNode; label: string; sub: string; href: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center gap-2 rounded-xl p-5 text-center cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+      <div className="h-11 w-11 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>{icon}</div>
+      <p className="text-xs font-semibold text-white">{label}</p>
+      <p className="text-[10px] text-[#4a5068]">{sub}</p>
+    </button>
+  );
+}
+
+function ShortcutBtn({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 rounded-xl py-3 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+      <span className="text-[#4a5068]">{icon}</span>
+      <span className="text-[9px] font-medium text-[#a3adc3]">{label}</span>
     </div>
   );
 }
