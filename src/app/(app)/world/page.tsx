@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { Search, Layers, ChevronDown, X, MapPin, Loader2, Store } from 'lucide-react';
+import { Search, Layers, X, MapPin, Loader2, Store } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
 import { useDeveloperStore } from '@/stores/developerStore';
@@ -231,16 +231,14 @@ export default function WorldPage() {
   const businesses = businessesData?.data ?? [];
   const events = eventsData?.data ?? [];
 
-  // Count signals by type for summary
-  const counts = useMemo(() => {
-    const c = { signals: signals.length, events: 0, offers: 0, businesses: 0 };
-    for (const s of signals) {
-      if (s.type === 'event') c.events++;
-      else if (s.type === 'offer') c.offers++;
-      else if (s.type === 'business') c.businesses++;
-    }
-    return c;
-  }, [signals]);
+  // Count for summary
+  const counts = useMemo(() => ({
+    signals: signals.length,
+    events: events.length,
+    offers: signals.filter(s => s.type === 'offer').length,
+    businesses: businesses.length,
+    profiles: profiles.length,
+  }), [signals, events, businesses, profiles]);
 
   // Selected marker detail
   const selectedMarker = selectedMarkerId
@@ -462,35 +460,29 @@ export default function WorldPage() {
           {showLayers && <LayerFilterPanel />}
         </div>
 
-        {/* ── Bottom Summary Sheet ────────────────────── */}
-        <div className="absolute bottom-16 lg:bottom-4 left-0 right-0 z-30 max-w-2xl lg:mx-auto">
+        {/* ── Bottom Summary Grid ─────────────────────── */}
+        <div className="absolute bottom-16 lg:bottom-4 left-0 right-0 z-30 max-w-md lg:mx-auto">
           <div
-            className="mx-4 rounded-2xl px-4 py-3"
+            className="mx-4 rounded-2xl px-4 py-4"
             style={{
               background: 'rgba(10,11,15,0.92)',
               border: '1px solid rgba(0,212,255,0.08)',
               backdropFilter: 'blur(20px)',
             }}
           >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 w-1.5 rounded-full bg-[#22C55E] animate-pulse" />
-                <span className="text-xs font-semibold text-[#f0f4ff]">Live nearby</span>
-              </div>
-              <ChevronDown size={14} className="text-[#4a5068]" />
-            </div>
-            <div className="flex items-center gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {[
-                { label: 'Signals', count: counts.signals, color: '#3B82F6' },
-                { label: 'Events', count: counts.events, color: '#EF4444' },
-                { label: 'Offers', count: counts.offers, color: '#EAB308' },
-                { label: 'Businesses', count: counts.businesses, color: '#22C55E' },
-                { label: 'Agents', count: agents.length, color: '#A855F7' },
-              ].map(({ label, count, color }) => (
-                <div key={label} className="flex items-center gap-1.5">
-                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}40` }} />
-                  <span className="text-[11px] font-medium" style={{ color }}>{count}</span>
-                  <span className="text-[10px] text-[#4a5068]">{label}</span>
+                { label: 'Live Signals', sub: `${counts.signals} nearby`, count: counts.signals, color: '#3B82F6' },
+                { label: 'Events Tonight', sub: `${counts.events} upcoming`, count: counts.events, color: '#EF4444' },
+                { label: 'Active Deals', sub: `${counts.offers} offers`, count: counts.offers, color: '#EAB308' },
+                { label: 'Businesses', sub: `${counts.businesses} open`, count: counts.businesses, color: '#22C55E' },
+              ].map(({ label, sub, count, color }) => (
+                <div key={label} className="flex items-center gap-3">
+                  <span className="text-2xl font-black" style={{ color }}>{count}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[#f0f4ff] truncate">{label}</p>
+                    <p className="text-[10px] text-[#4a5068] truncate">{sub}</p>
+                  </div>
                 </div>
               ))}
             </div>
