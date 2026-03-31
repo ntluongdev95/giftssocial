@@ -29,10 +29,14 @@ export default function MePage() {
   const { data: signalsData } = useSWR(isAuthed ? '/api/v1/signals/me' : null, fetcher);
   const { data: savedData } = useSWR(isAuthed ? '/api/v1/saved' : null, fetcher);
   const { data: bookingsData } = useSWR(isAuthed ? '/api/v1/bookings/me' : null, fetcher);
+  const { data: followsData } = useSWR(isAuthed ? '/api/v1/follows?type=following' : null, fetcher);
+  const { data: circlesData } = useSWR(isAuthed ? '/api/v1/circles/me' : null, fetcher);
   const signalsCount = signalsData?.data?.length || 0;
   const savedCount = savedData?.data?.length || 0;
   const bookingsCount = bookingsData?.data?.length || 0;
   const pendingBookings = (bookingsData?.data || []).filter((b: Record<string, unknown>) => b.status === 'pending' || b.status === 'confirmed').length;
+  const followingCount = followsData?.data?.length || 0;
+  const circlesCount = circlesData?.data?.length || 0;
 
   return (
     <div className="h-full overflow-y-auto relative">
@@ -77,8 +81,8 @@ export default function MePage() {
         {/* My Network */}
         <SectionTitle>My Network</SectionTitle>
         <div className="grid grid-cols-3 gap-3 mb-5">
-          <NetworkMini icon={<Users size={16} />} value="0" label="Circles" color="#00d4ff" />
-          <NetworkMini icon={<UserCheck size={16} />} value="0" label="Following" color="#34d399" />
+          <NetworkMini icon={<Users size={16} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" />
+          <NetworkMini icon={<UserCheck size={16} />} value={`${followingCount}`} label="Following" color="#34d399" />
           <NetworkMini icon={<Bookmark size={16} />} value={`${savedCount}`} label="Saved" color="#fbbf24" />
         </div>
 
@@ -144,8 +148,8 @@ export default function MePage() {
 
               {/* Network */}
               <div className="grid grid-cols-3 gap-2">
-                <NetworkMini icon={<Users size={14} />} value="0" label="Circles" color="#00d4ff" />
-                <NetworkMini icon={<UserCheck size={14} />} value="0" label="Following" color="#34d399" />
+                <NetworkMini icon={<Users size={14} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" />
+                <NetworkMini icon={<UserCheck size={14} />} value={`${followingCount}`} label="Following" color="#34d399" />
                 <NetworkMini icon={<Bookmark size={14} />} value={`${savedCount}`} label="Saved" color="#fbbf24" />
               </div>
             </div>
