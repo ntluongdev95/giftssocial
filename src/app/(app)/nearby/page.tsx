@@ -11,13 +11,15 @@ import OfferCard from '@/components/cards/OfferCard';
 import AgentCard from '@/components/cards/AgentCard';
 import CircleCard from '@/components/cards/CircleCard';
 import ProfileCard from '@/components/cards/ProfileCard';
+import SignalCard from '@/components/cards/SignalCard';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import EventDetailPage from '@/components/events/EventDetailPage';
+import SignalSheet from '@/components/map/SignalSheet';
 import type { NearbyResponse, Business, Event, Signal, Agent, Circle, Profile } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
-const TABS = ['Businesses', 'Events', 'Profiles', 'People', 'Offers', 'Agents'] as const;
+const TABS = ['Businesses', 'Events', 'Signals', 'Profiles', 'Offers'] as const;
 type Tab = (typeof TABS)[number];
 
 const SORTS = ['Closest', 'Trusted', 'Live Now', 'Relevant'] as const;
@@ -170,6 +172,7 @@ export default function NearbyPage() {
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [selectedSignal, setSelectedSignal] = useState<Record<string, unknown> | null>(null);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -252,6 +255,15 @@ export default function NearbyPage() {
         );
       }
 
+      case 'Signals': {
+        const sigs = (nearby as Record<string, unknown>).signals as Record<string, unknown>[] || [];
+        return sigs.length === 0 ? (
+          <EmptyState onSelectCircle={setSelectedCircle} />
+        ) : (
+          sigs.map((s) => <SignalCard key={s.id as string} signal={s} onClick={() => setSelectedSignal(s)} />)
+        );
+      }
+
       case 'Offers': {
         const offers = nearby.offers;
         return offers.length === 0 ? (
@@ -267,15 +279,6 @@ export default function NearbyPage() {
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (
           profs.map((p) => <ProfileCard key={p._id} profile={p} />)
-        );
-      }
-
-      case 'Agents': {
-        const sorted = sortItems(nearby.agents) as Agent[];
-        return sorted.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
-        ) : (
-          sorted.map((a) => <AgentCard key={a.id} agent={a} />)
         );
       }
     }
@@ -356,6 +359,26 @@ export default function NearbyPage() {
         <EventDetailPage
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
+        />
+      )}
+
+      {/* Signal detail popup */}
+      {selectedSignal && (
+        <SignalSheet
+          signal={{
+            id: selectedSignal.id as string,
+            title: selectedSignal.title as string,
+            type: selectedSignal.type as string,
+            description: selectedSignal.description as string,
+            category: selectedSignal.category as string,
+            author_name: selectedSignal.author_name as string,
+            author_username: selectedSignal.author_username as string,
+            author_avatar: selectedSignal.author_avatar as string,
+            author_trust_level: selectedSignal.author_trust_level as string,
+            created_at: selectedSignal.created_at as string,
+            expires_at: selectedSignal.expires_at as string,
+          }}
+          onClose={() => setSelectedSignal(null)}
         />
       )}
     </div>

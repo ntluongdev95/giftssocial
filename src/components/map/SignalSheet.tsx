@@ -1,8 +1,10 @@
 'use client';
 
-import { X, MapPin, Clock, MessageCircle, Share2, Bookmark, User } from 'lucide-react';
+import { X, MapPin, Clock, MessageCircle, Share2, Bookmark, User, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface SignalData {
   id: string;
@@ -37,6 +39,44 @@ export default function SignalSheet({ signal, onClose }: Props) {
   const cfg = TYPE_CONFIG[signal.type] || TYPE_CONFIG.presence;
   const timeAgo = signal.created_at ? formatDistanceToNow(new Date(signal.created_at), { addSuffix: true }) : '';
   const expiresIn = signal.expires_at ? formatDistanceToNow(new Date(signal.expires_at), { addSuffix: true }) : '';
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleChat = () => {
+    toast.info(`Chat with ${signal.author_name || 'author'} coming soon!`);
+  };
+
+  const handleShare = async () => {
+    const shareData = { title: signal.title, text: `${cfg.label}: ${signal.title}`, url: window.location.href };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${signal.title} — ${window.location.href}`);
+        toast.success('Link copied!');
+      }
+    } catch { /* user canceled */ }
+  };
+
+  const handleSave = async () => {
+    if (saving || saved) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/v1/saved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        body: JSON.stringify({ item_type: 'signal', item_id: signal.id }),
+      });
+      if (res.ok) {
+        setSaved(true);
+        toast.success('Signal saved!');
+      } else {
+        toast.error('Failed to save');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally { setSaving(false); }
+  };
 
   return (
     <AnimatePresence>
@@ -44,7 +84,7 @@ export default function SignalSheet({ signal, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+        className="fixed inset-0 z-[100] flex items-end justify-center lg:items-center"
         style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
@@ -118,16 +158,16 @@ export default function SignalSheet({ signal, onClose }: Props) {
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="px-5 py-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
+          {/* Actions — fixed at bottom, never scrolls away */}
+          <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <button onClick={handleChat} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
               <MessageCircle size={15} /> Chat
             </button>
-            <button className="rounded-xl py-3 px-4 cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
+            <button onClick={handleShare} className="rounded-xl py-3 px-4 cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
               <Share2 size={15} />
             </button>
-            <button className="rounded-xl py-3 px-4 cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
-              <Bookmark size={15} />
+            <button onClick={handleSave} className="rounded-xl py-3 px-4 cursor-pointer" style={{ background: saved ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${saved ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'}`, color: saved ? '#00d4ff' : '#a3adc3' }}>
+              {saved ? <Check size={15} /> : <Bookmark size={15} />}
             </button>
           </div>
         </motion.div>
