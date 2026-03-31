@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { z } from 'zod';
 import { MapPin, Clock, DollarSign, Search, X } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
+import { toast } from 'sonner';
 
 const schema = z.object({
   title: z.string().min(1, 'What do you need?').max(120),
@@ -107,6 +108,7 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
       const fe: Record<string, string> = {};
       result.error.issues.forEach((i) => { fe[String(i.path[0])] = i.message; });
       setErrors(fe);
+      toast.error(result.error.issues[0].message);
       return;
     }
     setErrors({});
@@ -321,11 +323,11 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        disabled={submitting || lat === null}
+        disabled={submitting || activeLat === null}
         className="w-full rounded-xl py-3.5 text-sm font-bold cursor-pointer disabled:opacity-40"
-        style={{ background: '#00d4ff', color: '#0a0b0f' }}
+        style={{ background: 'linear-gradient(135deg, #00d4ff, #22C55E)', color: '#0a0b0f', boxShadow: '0 4px 20px rgba(0,212,255,0.3)' }}
       >
-        {submitting ? 'Publishing…' : '🔍 Publish — Looking for help nearby'}
+        {submitting ? 'Next…' : 'Preview & Publish'}
       </button>
     </div>
   );
