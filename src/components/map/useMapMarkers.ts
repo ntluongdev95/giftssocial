@@ -302,8 +302,9 @@ function createLandmarkMarkerElement(lm: Landmark): HTMLDivElement {
 
   const el = document.createElement('div');
   el.style.cssText = `
+    position:relative;
     display:flex;align-items:center;gap:4px;
-    cursor:pointer;transition:transform 0.15s, opacity 0.15s;
+    cursor:pointer;transition:transform 0.15s;
     background:rgba(10,11,15,0.85);backdrop-filter:blur(6px);
     border:1px solid ${color}35;border-radius:8px;
     padding:3px 8px 3px 4px;
@@ -312,13 +313,33 @@ function createLandmarkMarkerElement(lm: Landmark): HTMLDivElement {
     white-space:nowrap;
   `;
 
+  // Tooltip (CSS only, no MapLibre Popup)
   el.innerHTML = `
     <span style="font-size:14px;line-height:1;">${lm.icon}</span>
     <span style="font-size:9px;font-weight:600;color:${color};max-width:70px;overflow:hidden;text-overflow:ellipsis;">${lm.name}</span>
+    <div class="gao-lm-tip" style="
+      position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+      background:rgba(10,11,15,0.95);border:1px solid ${color}25;border-radius:8px;
+      padding:6px 10px;white-space:nowrap;pointer-events:none;
+      opacity:0;transition:opacity 0.15s;
+      box-shadow:0 4px 12px rgba(0,0,0,0.5);
+      font-family:Inter,system-ui,sans-serif;
+    ">
+      <div style="font-size:11px;font-weight:700;color:white;">${lm.name}</div>
+      <div style="font-size:9px;color:#a3adc3;">${lm.city}, ${lm.country}${lm.height ? ` · ${lm.height}m` : ''}</div>
+    </div>
   `;
 
-  el.onmouseenter = () => { el.style.transform = 'scale(1.1)'; };
-  el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
+  el.onmouseenter = () => {
+    el.style.transform = 'scale(1.1)';
+    const tip = el.querySelector('.gao-lm-tip') as HTMLElement;
+    if (tip) tip.style.opacity = '1';
+  };
+  el.onmouseleave = () => {
+    el.style.transform = 'scale(1)';
+    const tip = el.querySelector('.gao-lm-tip') as HTMLElement;
+    if (tip) tip.style.opacity = '0';
+  };
 
   return el;
 }
@@ -633,26 +654,8 @@ export function useMapMarkers(
         if (markersRef.current.has(lm.id)) continue;
 
         const el = createLandmarkMarkerElement(lm);
-        const color = LANDMARK_COLORS[lm.type] || '#00d4ff';
 
-        // Native MapLibre popup on hover
-        const popup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 12,
-          className: 'gao-landmark-popup',
-        }).setHTML(`
-          <div style="font-family:Inter,system-ui,sans-serif;padding:2px 0;">
-            <p style="font-size:12px;font-weight:700;color:white;margin:0 0 3px 0;">${lm.name}</p>
-            <p style="font-size:10px;color:#a3adc3;margin:0 0 2px 0;">${lm.city}, ${lm.country}</p>
-            <p style="font-size:9px;color:${color};margin:0;">${lm.type.charAt(0).toUpperCase() + lm.type.slice(1)}${lm.height ? ` · ${lm.height}m` : ''}</p>
-          </div>
-        `);
-
-        el.addEventListener('mouseenter', () => {
-          popup.setLngLat([lm.lng, lm.lat]).addTo(map);
-        });
-        el.addEventListener('mouseleave', () => { popup.remove(); });
+        // Tooltip handled by CSS inside the element — no MapLibre Popup
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([lm.lng, lm.lat])
