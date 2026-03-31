@@ -2,15 +2,18 @@
 
 import { useState } from 'react';
 import { z } from 'zod';
+import { MapPin, Clock, DollarSign, Search } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
 
 const schema = z.object({
   title: z.string().min(1, 'What do you need?').max(120),
   category: z.string().min(1, 'Pick a category'),
   budget: z.string().optional(),
-  note: z.string().max(300).optional(),
-  duration: z.number().min(1).max(24),
-  visibility: z.enum(['public', 'circle', 'private']),
+  note: z.string().max(500).optional(),
+  duration: z.number().min(1).max(48),
+  visibility: z.enum(['public', 'circle', 'private', 'trusted_only']),
+  urgency: z.enum(['now', 'today', 'this_week']),
+  radius: z.number().min(500).max(50000),
 });
 
 export type IntentData = z.infer<typeof schema>;
@@ -19,22 +22,54 @@ interface IntentFormProps {
   onSubmit: (data: IntentData) => Promise<void>;
 }
 
-const CATEGORIES = ['Food', 'Beauty', 'Fitness', 'Tech', 'Ride', 'Help', 'Shopping', 'Other'];
-const DURATIONS = [{ label: '2h', value: 2 }, { label: '4h', value: 4 }, { label: '8h', value: 8 }];
+const CATEGORIES = [
+  { emoji: '💅', label: 'Beauty' },
+  { emoji: '🍜', label: 'Food' },
+  { emoji: '💪', label: 'Fitness' },
+  { emoji: '💻', label: 'Tech' },
+  { emoji: '🚗', label: 'Ride' },
+  { emoji: '🏥', label: 'Health' },
+  { emoji: '🛒', label: 'Shopping' },
+  { emoji: '🔧', label: 'Repair' },
+  { emoji: '📦', label: 'Other' },
+];
+
+const URGENCY = [
+  { value: 'now', label: '🔴 Right now', color: '#f87171' },
+  { value: 'today', label: '🟡 Today', color: '#fbbf24' },
+  { value: 'this_week', label: '🟢 This week', color: '#34d399' },
+];
+
+const RADIUS = [
+  { value: 1000, label: '1 km' },
+  { value: 3000, label: '3 km' },
+  { value: 5000, label: '5 km' },
+  { value: 10000, label: '10 km' },
+  { value: 25000, label: '25 km' },
+];
+
+const DURATIONS = [
+  { label: '2h', value: 2 },
+  { label: '4h', value: 4 },
+  { label: '8h', value: 8 },
+  { label: '24h', value: 24 },
+];
 
 export default function IntentForm({ onSubmit }: IntentFormProps) {
-  const { lat, lng } = useLocationStore();
+  const { lat, lng, city } = useLocationStore();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [budget, setBudget] = useState('');
   const [note, setNote] = useState('');
   const [duration, setDuration] = useState(4);
-  const [visibility, setVisibility] = useState<'public' | 'circle' | 'private'>('public');
+  const [visibility, setVisibility] = useState<'public' | 'circle' | 'private' | 'trusted_only'>('public');
+  const [urgency, setUrgency] = useState<'now' | 'today' | 'this_week'>('today');
+  const [radius, setRadius] = useState(5000);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    const result = schema.safeParse({ title, category, budget, note, duration, visibility });
+    const result = schema.safeParse({ title, category, budget, note, duration, visibility, urgency, radius });
     if (!result.success) {
       const fe: Record<string, string> = {};
       result.error.issues.forEach((i) => { fe[String(i.path[0])] = i.message; });
@@ -47,84 +82,129 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
     setSubmitting(false);
   };
 
-  const inputCls = 'w-full rounded-xl px-3 py-2.5 text-sm text-[#f0f4ff] placeholder-[#2d3548] outline-none transition-all focus:ring-1 focus:ring-[#00d4ff]/30';
-  const inputStyle = { background: 'rgba(10,11,15,0.7)', border: '1px solid rgba(255,255,255,0.06)' };
-
   return (
     <div className="space-y-5">
-      {/* Location */}
-      <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm" style={{ ...inputStyle }}>
-        <span>📍</span>
-        <span className="text-[#a3adc3]">
-          {lat !== null ? `${lat.toFixed(4)}, ${lng!.toFixed(4)}` : 'Detecting…'}
-        </span>
+      {/* Location display */}
+      <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(0,212,255,0.1)' }}>
+        <div className="flex items-center gap-2">
+          <MapPin size={16} className="text-[#00d4ff]" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">{city || 'Your Location'}</p>
+            {lat !== null && <p className="text-[10px] text-[#4a5068]">{lat.toFixed(4)}, {lng!.toFixed(4)}</p>}
+          </div>
+          <Search size={14} className="text-[#4a5068]" />
+        </div>
       </div>
 
       {/* What do you need? */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">What do you need?</label>
+        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">What do you need? *</label>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder='e.g. "Looking for a nail salon nearby"'
+          placeholder='e.g. "Need a good nail salon nearby"'
           maxLength={120}
-          className={inputCls}
-          style={inputStyle}
+          className="w-full rounded-xl px-4 py-2.5 text-sm text-white outline-none placeholder:text-[#2d3548]"
+          style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
         />
         {errors.title && <p className="mt-1 text-[10px] text-[#f87171]">{errors.title}</p>}
       </div>
 
       {/* Category */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Category</label>
+        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Category *</label>
         <div className="flex flex-wrap gap-1.5">
-          {CATEGORIES.map((cat) => (
+          {CATEGORIES.map(({ emoji, label }) => (
             <button
-              key={cat}
-              onClick={() => setCategory(cat.toLowerCase())}
-              className="rounded-full px-3 py-1 text-[11px] font-medium transition-all"
-              style={category === cat.toLowerCase() ? {
-                background: 'rgba(255,255,255,0.9)', color: '#0a0b0f', border: '1px solid #00d4ff',
-                boxShadow: '0 0 8px rgba(0,212,255,0.3)',
+              key={label}
+              onClick={() => setCategory(label.toLowerCase())}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all cursor-pointer"
+              style={category === label.toLowerCase() ? {
+                background: 'rgba(0,212,255,0.15)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.3)',
               } : {
-                background: 'rgba(10,11,15,0.7)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.06)',
+                background: 'rgba(17,19,24,0.8)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.06)',
               }}
             >
-              {cat}
+              {emoji} {label}
             </button>
           ))}
         </div>
         {errors.category && <p className="mt-1 text-[10px] text-[#f87171]">{errors.category}</p>}
       </div>
 
-      {/* Budget */}
+      {/* Urgency */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Budget <span className="font-normal">(optional)</span></label>
-        <input
-          value={budget}
-          onChange={(e) => setBudget(e.target.value)}
-          placeholder='e.g. "$50" or "free"'
-          className={inputCls}
-          style={inputStyle}
-        />
+        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">When do you need it?</label>
+        <div className="flex gap-2">
+          {URGENCY.map(({ value, label, color }) => (
+            <button
+              key={value}
+              onClick={() => setUrgency(value as typeof urgency)}
+              className="flex-1 rounded-xl py-2.5 text-[11px] font-semibold transition-all cursor-pointer"
+              style={urgency === value ? {
+                background: `${color}15`, color, border: `1px solid ${color}40`,
+              } : {
+                background: 'rgba(17,19,24,0.8)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Note */}
+      {/* Search radius */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Details</label>
+        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Search radius</label>
+        <div className="flex gap-1.5 overflow-x-auto">
+          {RADIUS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => setRadius(value)}
+              className="shrink-0 rounded-xl px-3 py-2 text-[11px] font-medium transition-all cursor-pointer"
+              style={radius === value ? {
+                background: 'rgba(0,212,255,0.15)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.3)',
+              } : {
+                background: 'rgba(17,19,24,0.8)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Budget */}
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Budget <span className="font-normal text-[#2d3548]">(optional)</span></label>
+        <div className="relative">
+          <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4a5068]" />
+          <input
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            placeholder='e.g. "50" or "flexible"'
+            className="w-full rounded-xl pl-9 pr-4 py-2.5 text-sm text-white outline-none placeholder:text-[#2d3548]"
+            style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
+          />
+        </div>
+      </div>
+
+      {/* Details */}
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">More details</label>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Any extra details…"
-          maxLength={300}
+          placeholder="Describe what you're looking for..."
+          maxLength={500}
           rows={3}
-          className={`${inputCls} resize-none`}
-          style={inputStyle}
+          className="w-full rounded-xl px-4 py-2.5 text-sm text-white outline-none resize-none placeholder:text-[#2d3548]"
+          style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
         />
-        <p className="mt-0.5 text-right text-[10px] text-[#2d3548]">{note.length}/300</p>
+        <p className="mt-0.5 text-right text-[10px] text-[#2d3548]">{note.length}/500</p>
       </div>
 
-      {/* Duration */}
+      {/* Active for */}
       <div>
         <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Active for</label>
         <div className="flex gap-2">
@@ -132,12 +212,11 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
             <button
               key={d.value}
               onClick={() => setDuration(d.value)}
-              className="rounded-xl px-4 py-2 text-sm font-medium transition-all"
+              className="flex-1 rounded-xl py-2.5 text-xs font-medium transition-all cursor-pointer"
               style={duration === d.value ? {
-                background: 'rgba(255,255,255,0.9)', color: '#0a0b0f',
-                boxShadow: '0 0 8px rgba(0,212,255,0.3)',
+                background: 'rgba(0,212,255,0.15)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.3)',
               } : {
-                background: 'rgba(10,11,15,0.7)', border: '1px solid rgba(255,255,255,0.06)', color: '#4a5068',
+                background: 'rgba(17,19,24,0.8)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.06)',
               }}
             >
               {d.label}
@@ -149,15 +228,19 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
       {/* Visibility */}
       <div>
         <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">Who can see</label>
-        <div className="flex overflow-hidden rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-          {(['public', 'circle', 'private'] as const).map((v) => (
+        <div className="flex gap-1.5">
+          {(['public', 'circle', 'trusted_only'] as const).map((v) => (
             <button
               key={v}
               onClick={() => setVisibility(v)}
-              className="flex-1 py-2 text-[11px] font-medium capitalize transition-all"
-              style={visibility === v ? { background: 'rgba(0,212,255,0.12)', color: '#00d4ff' } : { background: 'rgba(10,11,15,0.5)', color: '#4a5068' }}
+              className="flex-1 rounded-xl py-2.5 text-[11px] font-medium capitalize transition-all cursor-pointer"
+              style={visibility === v ? {
+                background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.2)',
+              } : {
+                background: 'rgba(17,19,24,0.8)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.06)',
+              }}
             >
-              {v}
+              {v.replace('_', ' ')}
             </button>
           ))}
         </div>
@@ -167,9 +250,10 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
       <button
         onClick={handleSubmit}
         disabled={submitting || lat === null}
-        className="btn-primary w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-40"
+        className="w-full rounded-xl py-3.5 text-sm font-bold cursor-pointer disabled:opacity-40"
+        style={{ background: '#00d4ff', color: '#0a0b0f' }}
       >
-        {submitting ? 'Publishing…' : 'Publish Intent'}
+        {submitting ? 'Publishing…' : '🔍 Publish — Looking for help nearby'}
       </button>
     </div>
   );
