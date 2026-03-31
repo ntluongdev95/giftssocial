@@ -125,9 +125,9 @@ export default function ActionsPage() {
               {HOT_ACTIONS.map(a => (
                 <Link key={a.title} href={a.href}>
                   <motion.div
-                    whileHover={{ scale: 1.01, backgroundColor: 'rgba(255,255,255,0.02)' }}
+                    whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
-                    className="flex items-center gap-4 rounded-2xl px-4 py-4 cursor-pointer"
+                    className="flex items-center gap-4 rounded-2xl px-4 py-4 cursor-pointer transition-colors hover:bg-white/[0.02]"
                     style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
                   >
                     <div className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0 relative overflow-hidden">
