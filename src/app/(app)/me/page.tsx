@@ -95,12 +95,6 @@ export default function MePage() {
           <ShortcutBtn icon={<Bell size={18} />} label="Notifications" />
         </div>
 
-        {/* Sign out */}
-        {isAuthed && (
-          <button onClick={handleLogout} className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm text-[#f87171] cursor-pointer" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.1)' }}>
-            <LogOut size={16} /> Sign Out
-          </button>
-        )}
       </div>
 
       {/* ══ DESKTOP ═══════════════════════════════════════ */}
@@ -145,11 +139,6 @@ export default function MePage() {
               </div>
             </div>
 
-            {isAuthed && (
-              <button onClick={handleLogout} className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm text-[#f87171] cursor-pointer" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.1)' }}>
-                <LogOut size={15} /> Sign Out
-              </button>
-            )}
           </div>
 
           {/* Right: Activities + Manage */}
