@@ -94,6 +94,8 @@ function CreateSignalPageInner() {
 
   const handleTypeSelect = (type: SignalType) => {
     setSignalType(type);
+    // Update URL so refresh keeps the type
+    window.history.replaceState(null, '', `/create?type=${type}`);
     if (needsAuth) {
       // Show gate on next step
     }
