@@ -28,8 +28,11 @@ export default function MePage() {
   // Fetch counts
   const { data: signalsData } = useSWR(isAuthed ? '/api/v1/signals/me' : null, fetcher);
   const { data: savedData } = useSWR(isAuthed ? '/api/v1/saved' : null, fetcher);
+  const { data: bookingsData } = useSWR(isAuthed ? '/api/v1/bookings/me' : null, fetcher);
   const signalsCount = signalsData?.data?.length || 0;
   const savedCount = savedData?.data?.length || 0;
+  const bookingsCount = bookingsData?.data?.length || 0;
+  const pendingBookings = (bookingsData?.data || []).filter((b: Record<string, unknown>) => b.status === 'pending' || b.status === 'confirmed').length;
 
   return (
     <div className="h-full overflow-y-auto relative">
@@ -66,7 +69,7 @@ export default function MePage() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <StatMini value="0" label="Proofs" />
-            <StatMini value="0" label="Bookings" />
+            <StatMini value={`${bookingsCount}`} label="Bookings" />
             <StatMini value="0" label="Events" />
           </div>
         </div>
@@ -83,7 +86,7 @@ export default function MePage() {
         <SectionTitle>My Activities</SectionTitle>
         <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
           <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value="0" href="#" onClick={() => {}} />
-          <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value="0" href="/me/bookings" onClick={() => router.push('/me/bookings')} />
+          <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value={`${pendingBookings} pending`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
           <ActivityRow icon={<Wallet size={16} />} label="Wallet & Rewards" value="0 Gao Points" href="#" onClick={() => {}} last />
@@ -135,7 +138,7 @@ export default function MePage() {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-2 mb-4">
                 <StatMini value="0" label="Proofs" />
-                <StatMini value="0" label="Bookings" />
+                <StatMini value={`${bookingsCount}`} label="Bookings" />
                 <StatMini value="0" label="Events" />
               </div>
 
@@ -165,12 +168,12 @@ export default function MePage() {
             <div>
               <SectionTitle>My Activities</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
-                <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value="0" color="#f87171" />
-                <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value="0 pending" color="#00d4ff" />
-                <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" />
-                <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" />
-                <ActivityCard icon={<Wallet size={18} />} label="Wallet & Rewards" value="0 Gao Points" color="#a78bfa" />
-                <ActivityCard icon={<Award size={18} />} label="Trust & Badges" value="Build reputation" color="#34d399" />
+                <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value="0" color="#f87171" onClick={() => {}} />
+                <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value={`${pendingBookings} pending`} color="#00d4ff" onClick={() => router.push('/me/bookings')} />
+                <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" onClick={() => router.push('/me/signals')} />
+                <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" onClick={() => {}} />
+                <ActivityCard icon={<Wallet size={18} />} label="Wallet & Rewards" value="0 Gao Points" color="#a78bfa" onClick={() => {}} />
+                <ActivityCard icon={<Award size={18} />} label="Trust & Badges" value="Build reputation" color="#34d399" onClick={() => {}} />
               </div>
             </div>
 
@@ -225,9 +228,9 @@ function ActivityRow({ icon, label, value, last, onClick }: { icon: React.ReactN
   );
 }
 
-function ActivityCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
+function ActivityCard({ icon, label, value, color, onClick }: { icon: React.ReactNode; label: string; value: string; color: string; onClick?: () => void }) {
   return (
-    <div className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+    <div onClick={onClick} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
       <div className="flex items-center gap-3 mb-2">
         <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: `${color}12`, color }}>{icon}</div>
         <p className="text-sm font-semibold text-white">{label}</p>
