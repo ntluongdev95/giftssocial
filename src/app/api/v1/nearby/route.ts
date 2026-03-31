@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db';
 
 const haversine = (latP: number, lngP: number) =>
-  `(6371 * acos(cos(radians($${latP})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(location_lat))))`;
+  `(6371 * acos(LEAST(1.0, cos(radians($${latP})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(location_lat)))))`;
 
 const profileHaversine = (latP: number, lngP: number) =>
-  `(6371 * acos(cos(radians($${latP})) * cos(radians(lat)) * cos(radians(lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(lat))))`;
+  `(6371 * acos(LEAST(1.0, cos(radians($${latP})) * cos(radians(lat)) * cos(radians(lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(lat)))))`;
 
 export async function GET(req: NextRequest) {
   try {

@@ -20,17 +20,17 @@ export async function GET(req: NextRequest) {
     const types = searchParams.get('types')?.split(',').filter(Boolean);
     const limit = Math.min(parseInt(searchParams.get('limit') || '30'), 100);
 
-    const conditions: string[] = ["status = 'active'", 'expires_at > NOW()'];
+    const conditions: string[] = ["s.status = 'active'", 's.expires_at > NOW()'];
     const values: unknown[] = [];
     let idx = 1;
 
     if (types && types.length > 0) {
-      conditions.push(`type = ANY($${idx++})`);
+      conditions.push(`s.type = ANY($${idx++})`);
       values.push(types);
     }
 
     if (lat !== 0 || lng !== 0) {
-      conditions.push(`(6371 * acos(cos(radians($${idx})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(location_lat)))) < $${idx + 2}`);
+      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians($${idx})) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(s.location_lat))))) < $${idx + 2}`);
       values.push(lat, lng, radiusKm);
       idx += 3;
     }

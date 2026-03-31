@@ -101,7 +101,7 @@ export default function CreateSignalPage() {
     try {
       await fetch('/api/v1/signals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({
           type: signalType,
           ...formData,
