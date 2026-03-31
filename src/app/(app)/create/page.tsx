@@ -62,8 +62,14 @@ export default function CreateSignalPage() {
   const { user, isGuest } = useAuthStore();
   const { lat, lng } = useLocationStore();
 
-  const [step, setStep] = useState<Step>('type_select');
-  const [signalType, setSignalType] = useState<SignalType | null>(null);
+  // Check URL param for pre-selected type (from Quick Create)
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const preType = searchParams?.get('type') as SignalType | null;
+  const validTypes: SignalType[] = ['presence', 'intent', 'offer', 'event', 'update', 'proof'];
+  const hasPreType = preType && validTypes.includes(preType);
+
+  const [step, setStep] = useState<Step>(hasPreType ? 'form' : 'type_select');
+  const [signalType, setSignalType] = useState<SignalType | null>(hasPreType ? preType : null);
   const [formData, setFormData] = useState<Record<string, unknown> | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
