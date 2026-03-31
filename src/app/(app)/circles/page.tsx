@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe } from 'lucide-react';
+import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
+import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 import type { Circle } from '@/types';
 
 // ─── Data ────────────────────────────────────────────────────────────────
@@ -34,7 +36,7 @@ const EVENTS_THIS_WEEK = [
 
 // ─── Components ──────────────────────────────────────────────────────────
 
-function CircleRow({ circle, onClick }: { circle: typeof SEED_CIRCLES[0]; onClick: () => void }) {
+function CircleRow({ circle, onClick, isJoined, onJoin, joining }: { circle: typeof SEED_CIRCLES[0]; onClick: () => void; isJoined: boolean; onJoin: () => void; joining: boolean }) {
   return (
     <div
       onClick={onClick}
@@ -52,12 +54,12 @@ function CircleRow({ circle, onClick }: { circle: typeof SEED_CIRCLES[0]; onClic
           {circle.posts_per_day ? <span> · {circle.posts_per_day} posts/day</span> : ''}
         </p>
       </div>
-      {circle.joined ? (
-        <span className="text-[10px] font-semibold text-[#4a5068]">Joined</span>
+      {isJoined ? (
+        <span className="flex items-center gap-1 text-[10px] font-semibold text-[#34d399]"><Check size={10} /> Joined</span>
       ) : circle.has_event ? (
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>Event</span>
       ) : (
-        <button className="rounded-lg px-3 py-1 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}>Join</button>
+        <button onClick={(ev) => { ev.stopPropagation(); onJoin(); }} disabled={joining} className="rounded-lg px-3 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}>Join</button>
       )}
     </div>
   );
@@ -83,6 +85,21 @@ export default function CirclesPage() {
   const [activeTab, setActiveTab] = useState<string>('For You');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
+  const { joinedCircleIds, refresh: refreshCircles } = useJoinedCircles();
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+
+  const handleJoinCircle = async (circleId: string) => {
+    setJoiningId(circleId);
+    try {
+      const res = await fetch(`/api/v1/circles/${circleId}/join`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      });
+      if (res.ok) { refreshCircles(); toast.success('Joined circle! +2 trust 🛡'); }
+      else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
+    } catch { toast.error('Network error'); }
+    finally { setJoiningId(null); }
+  };
 
   const filtered = SEED_CIRCLES.filter((c) => {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -140,7 +157,7 @@ export default function CirclesPage() {
           <button className="flex items-center gap-1 text-[11px] font-semibold text-[#00d4ff] cursor-pointer"><Plus size={12} /> Create Circle</button>
         </div>
         <div className="space-y-2 mb-6">
-          {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} />)}
+          {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} joining={joiningId === c.id} />)}
         </div>
 
         <div className="flex items-center justify-between mb-3">
@@ -256,12 +273,12 @@ export default function CirclesPage() {
                       {circle.member_count.toLocaleString()} members
                       {circle.online ? <span className="text-[#00d4ff]"> · {circle.online} online</span> : ''}
                     </p>
-                    {circle.joined ? (
-                      <span className="text-[10px] font-semibold text-[#4a5068]">Joined</span>
+                    {joinedCircleIds.has(circle.id) ? (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold text-[#34d399]"><Check size={10} /> Joined</span>
                     ) : circle.has_event ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>Event</span>
                     ) : (
-                      <button className="rounded-lg px-3 py-1 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}>Join</button>
+                      <button onClick={(ev) => { ev.stopPropagation(); handleJoinCircle(circle.id); }} disabled={joiningId === circle.id} className="rounded-lg px-3 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}>Join</button>
                     )}
                   </div>
                 </div>

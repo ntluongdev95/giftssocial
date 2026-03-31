@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import { notify } from '@/lib/notify';
 
 // ─── PATCH /api/v1/bookings/:id — Update status ─────────────────────────
 // Status flow: pending → confirmed → completed / canceled / no_show
@@ -60,6 +61,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // Update user bookings count
       await pgPool.query('UPDATE users SET bookings_count = bookings_count + 1, updated_at = NOW() WHERE id = $1', [userId]).catch(() => {});
+
+      // Notification
+      notify(userId, 'proof_earned', 'Booking completed! +3 trust', `Earned proof for ${booking.service_name || 'booking'}`, 'booking', id);
     }
 
     // If checkin → auto-create checkin proof
