@@ -15,6 +15,7 @@ import DeveloperProfileSheet from '@/components/developers/DeveloperProfileSheet
 import ProfileSheet from '@/components/profiles/ProfileSheet';
 import BusinessSheet from '@/components/map/BusinessSheet';
 import EventSheet from '@/components/map/EventSheet';
+import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import type { Signal, Agent, Profile, Business, Event, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
@@ -66,6 +67,7 @@ export default function WorldPage() {
     useMapStore();
   const { developers } = useDeveloperStore();
   const [showLayers, setShowLayers] = useState(true);
+  const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
 
   // ── Search ──────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -518,6 +520,7 @@ export default function WorldPage() {
           <BusinessSheet
             business={selectedBusiness}
             onClose={() => setSelectedMarker(null)}
+            onViewDetail={() => { setDetailBusiness(selectedBusiness); setSelectedMarker(null); }}
           />
         )}
 
@@ -529,6 +532,14 @@ export default function WorldPage() {
           />
         )}
       </WorldMap>
+
+      {/* Business detail — full page slide from right */}
+      {detailBusiness && (
+        <BusinessDetailPage
+          business={detailBusiness}
+          onClose={() => setDetailBusiness(null)}
+        />
+      )}
     </div>
   );
 }

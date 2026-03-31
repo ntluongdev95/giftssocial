@@ -7,11 +7,12 @@ import type { Business } from '@/types';
 interface Props {
   business: Business;
   onClose: () => void;
+  onViewDetail?: () => void;
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function BusinessSheet({ business: biz, onClose }: Props) {
+export default function BusinessSheet({ business: biz, onClose, onViewDetail }: Props) {
 
   const todayIdx = new Date().getDay();
   const todayKey = DAYS[todayIdx];

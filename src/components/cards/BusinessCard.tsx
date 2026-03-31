@@ -6,6 +6,7 @@ import type { Business } from '@/types';
 interface BusinessCardProps {
   business: Business;
   distance?: number;
+  onClick?: () => void;
 }
 
 function formatDistance(km?: number): string {
@@ -14,7 +15,7 @@ function formatDistance(km?: number): string {
   return `${km.toFixed(1)} km`;
 }
 
-export default function BusinessCard({ business: b, distance }: BusinessCardProps) {
+export default function BusinessCard({ business: b, distance, onClick }: BusinessCardProps) {
   const distKm = distance ?? (b as Record<string, unknown>).distance_km as number | undefined;
   const services = (b.services || []) as { name: string; price: number; duration: number }[];
   const todayKey = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()];
@@ -30,6 +31,7 @@ export default function BusinessCard({ business: b, distance }: BusinessCardProp
 
   return (
     <div
+      onClick={onClick}
       className="rounded-2xl p-4 transition-colors hover:bg-white/[0.02] cursor-pointer"
       style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
     >
@@ -38,7 +40,7 @@ export default function BusinessCard({ business: b, distance }: BusinessCardProp
         {/* Avatar */}
         <div
           className="h-12 w-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0"
-          style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.25), rgba(0,212,255,0.15))', color: '#22C55E' }}
+          style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.25), rgba(0,212,255,0.15))', color: '#00d4ff' }}
         >
           {b.name.charAt(0)}
         </div>
@@ -48,7 +50,7 @@ export default function BusinessCard({ business: b, distance }: BusinessCardProp
           <div className="flex items-center gap-1.5">
             <h3 className="text-sm font-semibold text-[#f0f4ff] truncate">{b.name}</h3>
             {b.license_verified && (
-              <CheckCircle size={14} className="shrink-0 text-[#22C55E]" fill="rgba(34,197,94,0.2)" />
+              <CheckCircle size={14} className="shrink-0 text-[#00d4ff]" fill="rgba(34,197,94,0.2)" />
             )}
           </div>
 
@@ -70,7 +72,7 @@ export default function BusinessCard({ business: b, distance }: BusinessCardProp
               </>
             )}
             {b.rating_count > 0 && (
-              <span className="text-[10px] text-[#22C55E] font-medium">⬆ {b.rating_count} Reviews</span>
+              <span className="text-[10px] text-[#00d4ff] font-medium">⬆ {b.rating_count} Reviews</span>
             )}
           </div>
 
@@ -89,7 +91,7 @@ export default function BusinessCard({ business: b, distance }: BusinessCardProp
       {/* Highlight row */}
       {highlightText && (
         <div className="flex items-center gap-1.5 mt-2.5 text-[10px] text-[#a3adc3]">
-          <Users size={10} className="text-[#22C55E]" />
+          <Users size={10} className="text-[#00d4ff]" />
           <span>{highlightText}</span>
         </div>
       )}
@@ -101,7 +103,7 @@ export default function BusinessCard({ business: b, distance }: BusinessCardProp
             className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
             style={{
               background: isOpen ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-              color: isOpen ? '#22C55E' : '#f87171',
+              color: isOpen ? '#00d4ff' : '#f87171',
             }}
           >
             {isOpen ? 'Open' : 'Closed'}
@@ -111,7 +113,7 @@ export default function BusinessCard({ business: b, distance }: BusinessCardProp
           )}
         </div>
         {b.booking_enabled && (
-          <button className="rounded-lg px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-colors" style={{ background: '#22C55E', color: '#0a0b0f' }}>
+          <button className="rounded-lg px-4 py-1.5 text-[11px] font-semibold cursor-pointer transition-colors" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
             Book
           </button>
         )}

@@ -11,6 +11,7 @@ import OfferCard from '@/components/cards/OfferCard';
 import AgentCard from '@/components/cards/AgentCard';
 import CircleCard from '@/components/cards/CircleCard';
 import ProfileCard from '@/components/cards/ProfileCard';
+import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import type { NearbyResponse, Business, Event, Signal, Agent, Circle, Profile } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ export default function NearbyPage() {
   const [activeTab, setActiveTab] = useState<Tab>('Businesses');
   const [sort, setSort] = useState<Sort>('Closest');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
+  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -235,7 +237,7 @@ export default function NearbyPage() {
         return sorted.length === 0 ? (
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (
-          sorted.map((b) => <BusinessCard key={b.id} business={b} />)
+          sorted.map((b) => <BusinessCard key={b.id} business={b} onClick={() => setSelectedBusiness(b)} />)
         );
       }
 
@@ -284,13 +286,8 @@ export default function NearbyPage() {
       {/* Aurora */}
       <div className="aurora-gradient absolute inset-x-0 top-0 h-48 pointer-events-none" />
 
-      {/* Header */}
-      <div className="relative px-4 lg:px-8 pb-2 pt-[env(safe-area-inset-top,12px)] lg:pt-6">
-        <h1 className="text-2xl font-bold text-[#f0f4ff]">Nearby</h1>
-      </div>
-
       {/* Tab bar */}
-      <div className="relative flex gap-1 overflow-x-auto px-4 lg:px-8 pb-2 scrollbar-hide">
+      <div className="relative flex gap-1 overflow-x-auto px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,12px)+24px)] lg:pt-8 pb-2 scrollbar-hide">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -306,20 +303,21 @@ export default function NearbyPage() {
         ))}
       </div>
 
-      {/* Sort */}
-      <div className="relative flex items-center gap-2 px-4 lg:px-8 pb-3">
-        <span className="text-[10px] text-[#4a5068]">Sort:</span>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as Sort)}
-          className="rounded-lg border border-[#181c24]/40 bg-[#0a0b0f] px-2 py-1 text-[10px] text-[#f0f4ff] outline-none"
-        >
-          {SORTS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+      {/* Sort — inline chips */}
+      <div className="relative flex items-center gap-1.5 px-4 lg:px-8 pb-3 overflow-x-auto scrollbar-hide">
+        {SORTS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setSort(s)}
+            className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+              sort === s
+                ? 'bg-[#00d4ff]/10 text-[#00d4ff]'
+                : 'text-[#4a5068] hover:text-[#a3adc3]'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
       </div>
 
       {/* Card list — grid on desktop */}
@@ -342,6 +340,14 @@ export default function NearbyPage() {
         <CircleDetailSheet
           circle={selectedCircle}
           onClose={() => setSelectedCircle(null)}
+        />
+      )}
+
+      {/* Business detail — full page slide from right */}
+      {selectedBusiness && (
+        <BusinessDetailPage
+          business={selectedBusiness}
+          onClose={() => setSelectedBusiness(null)}
         />
       )}
     </div>
