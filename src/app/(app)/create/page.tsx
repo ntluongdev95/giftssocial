@@ -206,7 +206,12 @@ function CreateSignalPageInner() {
           <button
             onClick={() => {
               if (step === 'type_select') router.back();
-              else if (step === 'form') setStep('type_select');
+              else if (step === 'form') {
+                setStep('type_select');
+                setSignalType(null);
+                // Clear URL param so type_select shows properly
+                window.history.replaceState(null, '', '/create');
+              }
               else if (step === 'preview') setStep('form');
             }}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-[#4a5068] transition-colors hover:bg-[#111318] cursor-pointer"
