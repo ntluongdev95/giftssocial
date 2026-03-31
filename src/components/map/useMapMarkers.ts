@@ -346,23 +346,50 @@ function createLandmarkMarkerElement(lm: Landmark): HTMLDivElement {
 
 // ─── Signal → EntityType mapping ──────────────────────────────────────────
 
+const SIGNAL_TYPE_CONFIG: Record<string, { entity: EntityType; emoji: string; color: string; label: string }> = {
+  presence: { entity: 'people', emoji: '📍', color: '#3B82F6', label: "I'm Here" },
+  intent:   { entity: 'people', emoji: '🔍', color: '#a78bfa', label: 'Need' },
+  offer:    { entity: 'offer',  emoji: '🏷', color: '#fbbf24', label: 'Offer' },
+  event:    { entity: 'event',  emoji: '🎉', color: '#f87171', label: 'Event' },
+  update:   { entity: 'people', emoji: '📣', color: '#00d4ff', label: 'Update' },
+  proof:    { entity: 'proof',  emoji: '🛡', color: '#f0f4ff', label: 'Proof' },
+};
+
 function signalToEntityType(type: string): EntityType {
-  switch (type) {
-    case 'presence':
-      return 'people';
-    case 'offer':
-      return 'offer';
-    case 'event':
-      return 'event';
-    case 'proof':
-      return 'proof';
-    case 'intent':
-      return 'people';
-    case 'update':
-      return 'people';
-    default:
-      return 'people';
-  }
+  return SIGNAL_TYPE_CONFIG[type]?.entity || 'people';
+}
+
+// Create a labeled signal marker pill
+function createSignalMarkerElement(signal: Signal): HTMLDivElement {
+  const cfg = SIGNAL_TYPE_CONFIG[signal.type] || SIGNAL_TYPE_CONFIG.presence;
+  const isLive = new Date(signal.created_at).getTime() > Date.now() - 30 * 60 * 1000;
+
+  const el = document.createElement('div');
+  el.className = 'gao-marker' + (isLive ? ' state-live' : '');
+  el.style.cssText = `
+    display:flex;align-items:center;gap:4px;
+    background:rgba(10,11,15,0.88);backdrop-filter:blur(6px);
+    border:1px solid ${cfg.color}40;border-radius:10px;
+    padding:4px 10px 4px 6px;cursor:pointer;
+    box-shadow:0 2px 10px rgba(0,0,0,0.4), 0 0 8px ${cfg.color}20;
+    font-family:Inter,system-ui,sans-serif;white-space:nowrap;
+    color:${cfg.color};transition:transform 0.15s;
+  `;
+
+  const titleShort = signal.title.length > 18 ? signal.title.slice(0, 18) + '…' : signal.title;
+
+  el.innerHTML = `
+    <span style="font-size:13px;line-height:1;">${cfg.emoji}</span>
+    <div style="min-width:0;">
+      <div style="font-size:10px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;max-width:100px;">${titleShort}</div>
+      <div style="font-size:8px;color:${cfg.color};font-weight:600;">${cfg.label}${isLive ? ' · Live' : ''}</div>
+    </div>
+  `;
+
+  el.onmouseenter = () => { el.style.transform = 'scale(1.08)'; };
+  el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
+
+  return el;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────
@@ -411,19 +438,13 @@ export function useMapMarkers(
 
       if (markersRef.current.has(signal.id)) continue;
 
-      const state: MarkerState =
-        signal.status === 'suppressed'
-          ? 'suppressed'
-          : signal.status === 'active' &&
-              new Date(signal.created_at).getTime() > Date.now() - 30 * 60 * 1000
-            ? 'live'
-            : 'default';
+      const isLive = signal.status === 'active' && new Date(signal.created_at).getTime() > Date.now() - 30 * 60 * 1000;
+      const state: MarkerState = signal.status === 'suppressed' ? 'suppressed' : isLive ? 'live' : 'default';
 
-      const el = createMarkerElement(entityType, state, signal.verified);
-
+      const el = createSignalMarkerElement(signal);
       el.addEventListener('click', () => setSelectedMarker(signal.id));
 
-      const marker = new maplibregl.Marker({ element: el })
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat(signal.location.coordinates as [number, number])
         .addTo(map);
 
@@ -435,7 +456,7 @@ export function useMapMarkers(
         lng: signal.location.coordinates[0],
         title: signal.title,
         state,
-        trust_level: undefined,
+        metadata: { type: signal.type, category: signal.category, author_id: signal.owner_id },
       });
     }
 
