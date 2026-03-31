@@ -17,6 +17,7 @@ import BusinessSheet from '@/components/map/BusinessSheet';
 import EventSheet from '@/components/map/EventSheet';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import EventDetailPage from '@/components/events/EventDetailPage';
+import SignalSheet from '@/components/map/SignalSheet';
 import type { Signal, Agent, Profile, Business, Event, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
@@ -269,6 +270,11 @@ export default function WorldPage() {
     ? events.find((e) => e.id === selectedMarkerId)
     : null;
 
+  // Check if selected marker is a signal
+  const selectedSignal = selectedMarkerId
+    ? signals.find((s) => s.id === selectedMarkerId)
+    : null;
+
   const handleMapReady = useCallback(() => {
     // Map ready — could subscribe to WebSocket here
   }, []);
@@ -494,7 +500,7 @@ export default function WorldPage() {
         </div>
 
         {/* ── Marker Detail Sheet ─────────────────────── */}
-        {selectedMarker && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && (
+        {selectedMarker && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && (
           <MarkerDetailSheet
             entityType={selectedMarker.entity_type as EntityType}
             data={selectedMarker.metadata ?? { name: selectedMarker.title }}
@@ -532,6 +538,27 @@ export default function WorldPage() {
             event={selectedEvent}
             onClose={() => setSelectedMarker(null)}
             onViewDetail={() => { setDetailEvent(selectedEvent); setSelectedMarker(null); }}
+          />
+        )}
+
+        {/* ── Signal Sheet ────────────────────────────── */}
+        {selectedSignal && (
+          <SignalSheet
+            signal={{
+              id: selectedSignal.id,
+              title: selectedSignal.title,
+              type: selectedSignal.type,
+              description: selectedSignal.description,
+              category: selectedSignal.category,
+              author_name: (selectedSignal as Record<string, unknown>).author_name as string,
+              author_username: (selectedSignal as Record<string, unknown>).author_username as string,
+              author_avatar: (selectedSignal as Record<string, unknown>).author_avatar as string,
+              author_trust_level: (selectedSignal as Record<string, unknown>).author_trust_level as string,
+              created_at: selectedSignal.created_at,
+              expires_at: selectedSignal.expires_at,
+              metadata: selectedSignal.metadata as Record<string, unknown>,
+            }}
+            onClose={() => setSelectedMarker(null)}
           />
         )}
       </WorldMap>

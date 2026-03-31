@@ -359,7 +359,7 @@ function signalToEntityType(type: string): EntityType {
   return SIGNAL_TYPE_CONFIG[type]?.entity || 'people';
 }
 
-// Create a labeled signal marker pill
+// Create a compact signal icon marker
 function createSignalMarkerElement(signal: Signal): HTMLDivElement {
   const cfg = SIGNAL_TYPE_CONFIG[signal.type] || SIGNAL_TYPE_CONFIG.presence;
   const isLive = new Date(signal.created_at).getTime() > Date.now() - 30 * 60 * 1000;
@@ -367,26 +367,17 @@ function createSignalMarkerElement(signal: Signal): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'gao-marker' + (isLive ? ' state-live' : '');
   el.style.cssText = `
-    display:flex;align-items:center;gap:4px;
-    background:rgba(10,11,15,0.88);backdrop-filter:blur(6px);
-    border:1px solid ${cfg.color}40;border-radius:10px;
-    padding:4px 10px 4px 6px;cursor:pointer;
-    box-shadow:0 2px 10px rgba(0,0,0,0.4), 0 0 8px ${cfg.color}20;
-    font-family:Inter,system-ui,sans-serif;white-space:nowrap;
-    color:${cfg.color};transition:transform 0.15s;
+    width:32px;height:32px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(10,11,15,0.9);
+    border:2px solid ${cfg.color};
+    box-shadow:0 0 10px ${cfg.color}40, 0 2px 6px rgba(0,0,0,0.4);
+    cursor:pointer;transition:transform 0.15s;
+    font-size:15px;line-height:1;
   `;
+  el.textContent = cfg.emoji;
 
-  const titleShort = signal.title.length > 18 ? signal.title.slice(0, 18) + '…' : signal.title;
-
-  el.innerHTML = `
-    <span style="font-size:13px;line-height:1;">${cfg.emoji}</span>
-    <div style="min-width:0;">
-      <div style="font-size:10px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;max-width:100px;">${titleShort}</div>
-      <div style="font-size:8px;color:${cfg.color};font-weight:600;">${cfg.label}${isLive ? ' · Live' : ''}</div>
-    </div>
-  `;
-
-  el.onmouseenter = () => { el.style.transform = 'scale(1.08)'; };
+  el.onmouseenter = () => { el.style.transform = 'scale(1.15)'; };
   el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
 
   return el;
