@@ -5,6 +5,7 @@ import { X, MapPin, Calendar, Clock, Users, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useJoinedEvents } from '@/hooks/useJoinedEvents';
 import type { Event } from '@/types';
 
 interface Props {
@@ -14,10 +15,14 @@ interface Props {
 }
 
 export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
+  const { joinedEventIds, refresh } = useJoinedEvents();
+  const alreadyJoined = joinedEventIds.has(e.id);
   const [joining, setJoining] = useState(false);
-  const [joined, setJoined] = useState(false);
+  const [justJoined, setJustJoined] = useState(false);
+  const joined = alreadyJoined || justJoined;
 
   const handleJoin = async () => {
+    if (joined) return;
     setJoining(true);
     try {
       const res = await fetch('/api/v1/bookings', {
@@ -25,7 +30,7 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({ event_id: e.id, service_name: e.title, slot_time: e.start_time }),
       });
-      if (res.ok) { setJoined(true); toast.success('Joined! Check My Bookings for details.'); }
+      if (res.ok) { setJustJoined(true); refresh(); toast.success('Joined! Check My Bookings for details.'); }
       else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
     } catch { toast.error('Network error'); }
     finally { setJoining(false); }
