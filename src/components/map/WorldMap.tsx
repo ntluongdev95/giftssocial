@@ -11,6 +11,7 @@ import {
 import maplibregl from 'maplibre-gl';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
+import StarfieldBackground from './StarfieldBackground';
 
 // ─── Map Context ──────────────────────────────────────────────────────────
 
@@ -116,6 +117,17 @@ export default function WorldMap({
       // Set globe projection after style is fully loaded
       if (is3D) {
         try { map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe projection not supported:', e); }
+        // Make background transparent so starfield shows through
+        try {
+          const style = map.getStyle();
+          if (style) {
+            style.layers = style.layers?.filter(l => l.id !== 'background') || [];
+            map.setStyle(style);
+          }
+        } catch {}
+        // Set canvas background transparent
+        const canvas = map.getCanvas();
+        if (canvas) canvas.style.background = 'transparent';
       }
 
       // Make map labels smaller + faded
@@ -208,6 +220,16 @@ export default function WorldMap({
 
       if (is3D) {
         try { map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe:', e); }
+        // Transparent background for starfield
+        try {
+          const style = map.getStyle();
+          if (style) {
+            style.layers = style.layers?.filter(l => l.id !== 'background') || [];
+            map.setStyle(style);
+          }
+        } catch {}
+        const canvas = map.getCanvas();
+        if (canvas) canvas.style.background = 'transparent';
         map.easeTo({
           center: [0, 20],
           zoom: 1.8,
@@ -506,6 +528,8 @@ export default function WorldMap({
   return (
     <MapContext.Provider value={{ map: mapInstance }}>
       <div className={`relative h-full w-full ${className}`}>
+        {/* Starfield behind globe in 3D mode */}
+        {viewMode === '3d' && <StarfieldBackground />}
         <div ref={containerRef} className="map-container absolute inset-0" />
 
         {loading && (
