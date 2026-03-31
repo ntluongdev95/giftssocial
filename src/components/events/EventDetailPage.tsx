@@ -7,6 +7,7 @@ import {
   ChevronRight, X, Heart, MessageCircle, Bookmark,
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
+import { toast } from 'sonner';
 import type { Event } from '@/types';
 
 interface Props {
@@ -21,6 +22,23 @@ const EVENT_PLACEHOLDERS = [
 ];
 
 export default function EventDetailPage({ event: e, onClose }: Props) {
+  const [joining, setJoining] = useState(false);
+  const [joined, setJoined] = useState(false);
+
+  const handleJoin = async () => {
+    setJoining(true);
+    try {
+      const res = await fetch('/api/v1/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        body: JSON.stringify({ event_id: e.id, service_name: e.title, slot_time: e.start_time }),
+      });
+      if (res.ok) { setJoined(true); toast.success('Joined! Check My Bookings for details.'); }
+      else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
+    } catch { toast.error('Network error'); }
+    finally { setJoining(false); }
+  };
+
   const [imgIdx, setImgIdx] = useState(0);
   const images = e.images && e.images.length > 0 ? e.images : EVENT_PLACEHOLDERS;
   const startDate = new Date(e.start_time);
@@ -131,7 +149,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
       {/* Quick actions */}
       <div className="flex gap-2">
         <ActionBtn icon={<MessageCircle size={15} />} label="Chat" />
-        <ActionBtn icon={<Bookmark size={15} />} label="Join Event" primary />
+        <ActionBtn icon={joined ? <CheckCircle size={15} /> : <Bookmark size={15} />} label={joined ? 'Joined' : joining ? 'Joining...' : 'Join Event'} primary onClick={handleJoin} disabled={joining || joined} />
         <ActionBtn icon={<Heart size={15} />} label="Save" />
       </div>
 
@@ -200,8 +218,8 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
         </div>
         <p className="text-[10px] text-[#4a5068] mt-0.5">{timeLabel}</p>
       </div>
-      <button className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
-        Join
+      <button onClick={handleJoin} disabled={joining || joined} className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer disabled:opacity-50" style={{ background: joined ? '#34d399' : '#00d4ff', color: '#0a0b0f' }}>
+        {joined ? '✓ Joined' : joining ? '...' : 'Join'}
       </button>
     </div>
   );
@@ -285,10 +303,12 @@ function Sect({ title, children }: { title: string; children: React.ReactNode })
   return <div><h3 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">{title}</h3>{children}</div>;
 }
 
-function ActionBtn({ icon, label, primary }: { icon: React.ReactNode; label: string; primary?: boolean }) {
+function ActionBtn({ icon, label, primary, onClick, disabled }: { icon: React.ReactNode; label: string; primary?: boolean; onClick?: () => void; disabled?: boolean }) {
   return (
     <button
-      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold cursor-pointer transition-colors"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50"
       style={primary
         ? { background: '#00d4ff', color: '#0a0b0f' }
         : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }

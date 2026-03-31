@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { X, MapPin, Calendar, Clock, Users, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 import type { Event } from '@/types';
 
 interface Props {
@@ -12,6 +14,22 @@ interface Props {
 }
 
 export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
+  const [joining, setJoining] = useState(false);
+  const [joined, setJoined] = useState(false);
+
+  const handleJoin = async () => {
+    setJoining(true);
+    try {
+      const res = await fetch('/api/v1/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        body: JSON.stringify({ event_id: e.id, service_name: e.title, slot_time: e.start_time }),
+      });
+      if (res.ok) { setJoined(true); toast.success('Joined! Check My Bookings for details.'); }
+      else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
+    } catch { toast.error('Network error'); }
+    finally { setJoining(false); }
+  };
   const spotsLeft = e.capacity ? e.capacity - e.joined_count : null;
   const capacityPct = e.capacity ? Math.min((e.joined_count / e.capacity) * 100, 100) : 0;
   const isLive = e.status === 'live';
@@ -130,8 +148,8 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
 
           {/* Footer */}
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
-              <Users size={15} /> Join
+            <button onClick={handleJoin} disabled={joining || joined} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50" style={{ background: joined ? '#34d399' : '#00d4ff', color: '#0a0b0f' }}>
+              {joined ? <><CheckCircle size={15} /> Joined</> : joining ? 'Joining...' : <><Users size={15} /> Join</>}
             </button>
             <button className="rounded-xl py-3 px-5 text-sm font-semibold transition-colors cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
               Save
