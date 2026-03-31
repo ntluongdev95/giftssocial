@@ -53,7 +53,7 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+        className="fixed inset-0 z-[100] flex items-end justify-center lg:items-center"
         style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
@@ -215,7 +215,7 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
           </div>
 
           {/* ── Footer CTA ────────────────────────────────── */}
-          <div className="px-5 py-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             {biz.phone && (
               <a href={`tel:${biz.phone}`} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors hover:bg-white/5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
                 <Phone size={15} /> Call
