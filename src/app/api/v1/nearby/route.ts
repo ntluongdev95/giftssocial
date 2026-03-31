@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db';
 
-// Haversine distance SQL
 const haversine = (latP: number, lngP: number) =>
   `(6371 * acos(cos(radians($${latP})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(location_lat))))`;
 
@@ -16,7 +15,7 @@ export async function GET(req: NextRequest) {
     const radiusKm = Math.min(parseInt(searchParams.get('radius') || '5000'), 50000) / 1000;
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
-    const [businesses, events, profiles] = await Promise.all([
+    const [businesses, events, profiles, signals] = await Promise.all([
       pgPool.query(
         `SELECT *, ${haversine(1, 2)} AS distance_km
          FROM businesses
@@ -40,7 +39,22 @@ export async function GET(req: NextRequest) {
          ORDER BY trust_score_snapshot DESC LIMIT $4`,
         [lat, lng, radiusKm, limit]
       ).then(r => r.rows).catch(() => []),
+
+      pgPool.query(
+        `SELECT s.*, u.username AS author_username, u.display_name AS author_name, u.avatar_url AS author_avatar,
+                ${haversine(1, 2)} AS distance_km
+         FROM signals s
+         LEFT JOIN users u ON u.id = s.author_id
+         WHERE s.status = 'active' AND s.expires_at > NOW() AND s.visibility = 'public'
+           AND ${haversine(1, 2)} < $3
+         ORDER BY s.created_at DESC LIMIT $4`,
+        [lat, lng, radiusKm, limit]
+      ).then(r => r.rows).catch(() => []),
     ]);
+
+    // Separate signals by type
+    const offers = signals.filter((s: Record<string, unknown>) => s.type === 'offer');
+    const people = signals.filter((s: Record<string, unknown>) => s.type === 'presence' || s.type === 'intent');
 
     const profilesFormatted = profiles.map((p: Record<string, unknown>) => ({
       _id: p.id, user_id: p.user_id, headline: p.headline, bio: p.bio,
@@ -51,8 +65,21 @@ export async function GET(req: NextRequest) {
       trust_score_snapshot: p.trust_score_snapshot, status: p.status, distance_km: p.distance_km,
     }));
 
+    const signalsFormatted = signals.map((s: Record<string, unknown>) => ({
+      ...s,
+      location: { type: 'Point', coordinates: [s.location_lng, s.location_lat] },
+    }));
+
     return NextResponse.json({
-      data: { businesses, events, profiles: profilesFormatted, people: [], offers: [], agents: [] },
+      data: {
+        businesses,
+        events,
+        profiles: profilesFormatted,
+        people,
+        offers,
+        signals: signalsFormatted,
+        agents: [],
+      },
     });
   } catch (err) {
     console.error('[Nearby GET]', err);

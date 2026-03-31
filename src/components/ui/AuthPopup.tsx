@@ -324,6 +324,12 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
       setAccountLoaded(true);
     }
 
+    // Sync user to local DB
+    fetch('/api/v1/users/sync', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).catch(() => {});
+
     toast.success('Login successful!');
     onClose();
     router.push('/');

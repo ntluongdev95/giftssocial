@@ -24,6 +24,12 @@ export default function AuthHydrator() {
     getMe().then((user) => {
       if (user) {
         hydrateFromMe(user);
+
+        // Sync user to local PostgreSQL DB (fire and forget)
+        fetch('/api/v1/users/sync', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }).catch(() => {});
       }
     });
   }, [setTokens, hydrateFromMe, isAuthed]);
