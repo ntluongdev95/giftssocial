@@ -171,7 +171,7 @@ export default function CirclesPage() {
 
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">Active Circles</h2>
-          <button className="flex items-center gap-1 text-[11px] font-semibold text-[#00d4ff] cursor-pointer"><Plus size={12} /> Create Circle</button>
+          <button onClick={() => router.push('/circles/create')} className="flex items-center gap-1 text-[11px] font-semibold text-[#00d4ff] cursor-pointer"><Plus size={12} /> Create Circle</button>
         </div>
         <div className="space-y-2 mb-6">
           {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} joining={joiningId === c.id} />)}
@@ -196,7 +196,7 @@ export default function CirclesPage() {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4a5068]" />
               <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search circles..." className="w-72 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-[#2d3548] outline-none" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.05)' }} />
             </div>
-            <button className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.15)', color: '#00d4ff' }}>
+            <button onClick={() => router.push('/circles/create')} className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.15)', color: '#00d4ff' }}>
               <Plus size={16} /> Create Circle
             </button>
           </div>
