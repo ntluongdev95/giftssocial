@@ -96,14 +96,21 @@ export default function CirclesPage() {
   const apiCircles = (circlesData?.data || []) as (Circle & { online?: number; posts_per_day?: number; has_event?: boolean })[];
 
   const handleJoinCircle = async (circleId: string) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) { toast.error('Please login first'); return; }
     setJoiningId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/join`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) { refreshCircles(); toast.success('Joined circle! +2 trust 🛡'); }
-      else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
+      const data = await res.json();
+      if (res.ok) {
+        refreshCircles();
+        toast.success(data.data?.joined ? 'Joined circle! +2 trust 🛡' : 'Request sent! Waiting for approval.');
+      } else {
+        toast.error(data.error?.message || 'Failed to join');
+      }
     } catch { toast.error('Network error'); }
     finally { setJoiningId(null); }
   };
