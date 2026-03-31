@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const industry = searchParams.get('industry');
     const skills = searchParams.get('skills')?.split(',').map((s) => s.trim()).filter(Boolean);
     const workType = searchParams.get('work_type');
+    const q = searchParams.get('q')?.trim();
     const availableOnly = searchParams.get('available') !== 'false';
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
     const cursor = searchParams.get('cursor');
@@ -22,7 +23,13 @@ export async function GET(req: NextRequest) {
     const values: unknown[] = [];
     let paramIdx = 1;
 
-    if (availableOnly) {
+    if (q) {
+      conditions.push(`(headline ILIKE $${paramIdx} OR bio ILIKE $${paramIdx} OR city ILIKE $${paramIdx} OR industry ILIKE $${paramIdx})`);
+      values.push(`%${q}%`);
+      paramIdx++;
+    }
+
+    if (availableOnly && !q) {
       conditions.push('available = true');
     }
 

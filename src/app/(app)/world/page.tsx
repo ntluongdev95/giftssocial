@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { Search, Layers, X, MapPin, Loader2, Store } from 'lucide-react';
+import { Search, Layers, X, MapPin, Loader2, Store, User } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
 import { useDeveloperStore } from '@/stores/developerStore';
@@ -98,18 +98,26 @@ export default function WorldPage() {
         center: [parseFloat(r.lon), parseFloat(r.lat)] as [number, number],
       }));
 
-      // Also search businesses in parallel
+      // Also search businesses + people in parallel
       try {
-        const bizRes = await fetch(`/api/v1/businesses?q=${encodeURIComponent(q)}&limit=5`);
-        const bizData = await bizRes.json();
-        const bizResults = (bizData.data || []).map((b: any) => ({
+        const [bizRes, profileRes] = await Promise.all([
+          fetch(`/api/v1/businesses?q=${encodeURIComponent(q)}&limit=5`).then(r => r.json()).catch(() => ({ data: [] })),
+          fetch(`/api/v1/profiles?q=${encodeURIComponent(q)}&limit=5`).then(r => r.json()).catch(() => ({ data: [] })),
+        ]);
+        const bizResults = (bizRes.data || []).map((b: any) => ({
           id: `biz_search_${b.id}`,
           place_name: `${b.name} · ${b.category} · ${b.city || b.address || ''}`,
           center: [b.location_lng, b.location_lat] as [number, number],
           type: 'business' as const,
         }));
-        if (bizResults.length > 0) {
-          results = [...bizResults, ...results].slice(0, 8);
+        const peopleResults = (profileRes.data || []).map((p: any) => ({
+          id: `profile_search_${p._id || p.id}`,
+          place_name: `${p.headline} · ${p.industry || ''} · ${p.city || ''}`,
+          center: [p.location?.coordinates?.[0] || p.lng, p.location?.coordinates?.[1] || p.lat] as [number, number],
+          type: 'profile' as const,
+        }));
+        if (bizResults.length > 0 || peopleResults.length > 0) {
+          results = [...peopleResults, ...bizResults, ...results].slice(0, 8);
         }
       } catch { /* ignore */ }
 
@@ -326,6 +334,8 @@ export default function WorldPage() {
                       >
                         {r.type === 'business'
                           ? <Store size={13} className="shrink-0" style={{ color: '#34d399' }} />
+                          : r.type === 'profile'
+                          ? <User size={13} className="shrink-0" style={{ color: '#3B82F6' }} />
                           : <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
                         }
                         <span className="text-xs text-[#a3adc3] truncate">{r.place_name}</span>
