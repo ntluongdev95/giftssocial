@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { useAuthStore } from '@/stores/auth-store';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import {
@@ -8,6 +10,10 @@ import {
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
   HelpCircle, Globe, Bell, Wallet, Award, Signal,
 } from 'lucide-react';
+
+const fetcher = (url: string) => fetch(url, {
+  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+}).then(r => r.json());
 
 export default function MePage() {
   const router = useRouter();
@@ -18,6 +24,12 @@ export default function MePage() {
   const displayName = user?.fullName || user?.username || 'Welcome';
   const avatarUrl = user?.avatarUrl;
   const username = user?.username;
+
+  // Fetch counts
+  const { data: signalsData } = useSWR(isAuthed ? '/api/v1/signals/me' : null, fetcher);
+  const { data: savedData } = useSWR(isAuthed ? '/api/v1/saved' : null, fetcher);
+  const signalsCount = signalsData?.data?.length || 0;
+  const savedCount = savedData?.data?.length || 0;
 
   return (
     <div className="h-full overflow-y-auto relative">
@@ -64,7 +76,7 @@ export default function MePage() {
         <div className="grid grid-cols-3 gap-3 mb-5">
           <NetworkMini icon={<Users size={16} />} value="0" label="Circles" color="#00d4ff" />
           <NetworkMini icon={<UserCheck size={16} />} value="0" label="Following" color="#34d399" />
-          <NetworkMini icon={<Bookmark size={16} />} value="0" label="Saved" color="#fbbf24" />
+          <NetworkMini icon={<Bookmark size={16} />} value={`${savedCount}`} label="Saved" color="#fbbf24" />
         </div>
 
         {/* My Activities */}
@@ -72,7 +84,7 @@ export default function MePage() {
         <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
           <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value="0" href="#" onClick={() => {}} />
           <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value="0" href="#" onClick={() => {}} />
-          <ActivityRow icon={<Signal size={16} />} label="My Signals" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
           <ActivityRow icon={<Wallet size={16} />} label="Wallet & Rewards" value="0 Gao Points" href="#" onClick={() => {}} last />
         </div>
@@ -131,7 +143,7 @@ export default function MePage() {
               <div className="grid grid-cols-3 gap-2">
                 <NetworkMini icon={<Users size={14} />} value="0" label="Circles" color="#00d4ff" />
                 <NetworkMini icon={<UserCheck size={14} />} value="0" label="Following" color="#34d399" />
-                <NetworkMini icon={<Bookmark size={14} />} value="0" label="Saved" color="#fbbf24" />
+                <NetworkMini icon={<Bookmark size={14} />} value={`${savedCount}`} label="Saved" color="#fbbf24" />
               </div>
             </div>
 
@@ -155,7 +167,7 @@ export default function MePage() {
               <div className="grid grid-cols-2 gap-3">
                 <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value="0" color="#f87171" />
                 <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value="0 pending" color="#00d4ff" />
-                <ActivityCard icon={<Signal size={18} />} label="My Signals" value="0 active" color="#3B82F6" />
+                <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" />
                 <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" />
                 <ActivityCard icon={<Wallet size={18} />} label="Wallet & Rewards" value="0 Gao Points" color="#a78bfa" />
                 <ActivityCard icon={<Award size={18} />} label="Trust & Badges" value="Build reputation" color="#34d399" />
