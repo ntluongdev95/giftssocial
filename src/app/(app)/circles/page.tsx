@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import useSWR from 'swr';
 import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 import type { Circle } from '@/types';
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 // ─── Data ────────────────────────────────────────────────────────────────
 
@@ -88,6 +91,10 @@ export default function CirclesPage() {
   const { joinedCircleIds, refresh: refreshCircles } = useJoinedCircles();
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
+  // Fetch circles from API
+  const { data: circlesData } = useSWR('/api/v1/circles?limit=30', fetcher);
+  const apiCircles = (circlesData?.data || []) as (Circle & { online?: number; posts_per_day?: number; has_event?: boolean })[];
+
   const handleJoinCircle = async (circleId: string) => {
     setJoiningId(circleId);
     try {
@@ -101,7 +108,8 @@ export default function CirclesPage() {
     finally { setJoiningId(null); }
   };
 
-  const filtered = SEED_CIRCLES.filter((c) => {
+  const allCircles = apiCircles.length > 0 ? apiCircles : SEED_CIRCLES;
+  const filtered = allCircles.filter((c) => {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
