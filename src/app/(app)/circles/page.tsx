@@ -205,7 +205,7 @@ export default function CirclesPage() {
         {/* Tabs */}
         <div className="flex gap-1 mb-6">
           {TABS.map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`rounded-lg px-4 py-2 text-xs font-medium cursor-pointer transition-colors ${activeTab === tab ? 'bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20' : 'text-[#4a5068] hover:text-[#a3adc3]'}`}>{tab}</button>
+            <button key={tab} onClick={() => tab === 'My Circles' ? router.push('/me/circles') : setActiveTab(tab)} className={`rounded-lg px-4 py-2 text-xs font-medium cursor-pointer transition-colors ${activeTab === tab ? 'bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20' : 'text-[#4a5068] hover:text-[#a3adc3]'}`}>{tab}</button>
           ))}
         </div>
 
