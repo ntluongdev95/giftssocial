@@ -83,7 +83,7 @@ export default function MePage() {
         <SectionTitle>My Activities</SectionTitle>
         <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
           <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value="0" href="#" onClick={() => {}} />
-          <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value="0" href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
           <ActivityRow icon={<Wallet size={16} />} label="Wallet & Rewards" value="0 Gao Points" href="#" onClick={() => {}} last />
