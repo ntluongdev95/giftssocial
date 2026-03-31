@@ -86,41 +86,17 @@ export default function WorldPage() {
     if (!q.trim() || q.length < 2) { setSearchResults([]); return; }
     setSearchLoading(true);
     try {
-      // Try MapTiler first
-      const res = await fetch(
-        `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${MAPTILER_KEY}&limit=5`
+      // Nominatim (OpenStreetMap) — free, no API key needed
+      const osmRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`,
+        { headers: { 'User-Agent': 'GaoSocial/1.0' } }
       );
-      const data = await res.json();
-      let results = (data.features || []).map((f: any) => ({
-        id: f.id,
-        place_name: f.place_name,
-        center: f.center as [number, number],
+      const osmData = await osmRes.json();
+      let results = osmData.map((r: any) => ({
+        id: `osm_${r.place_id}`,
+        place_name: r.display_name,
+        center: [parseFloat(r.lon), parseFloat(r.lat)] as [number, number],
       }));
-
-      // If no good address match (query has numbers but results don't), use Nominatim (OpenStreetMap) as fallback
-      const hasNumber = /\d/.test(q);
-      const hasExactMatch = results.some((r: any) => /\d/.test(r.place_name.split(',')[0]));
-
-      if (hasNumber && !hasExactMatch) {
-        try {
-          const osmRes = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`,
-            { headers: { 'User-Agent': 'GaoSocial/1.0' } }
-          );
-          const osmData = await osmRes.json();
-          const osmResults = osmData.map((r: any) => ({
-            id: `osm_${r.place_id}`,
-            place_name: r.display_name,
-            center: [parseFloat(r.lon), parseFloat(r.lat)] as [number, number],
-          }));
-          // Prepend OSM results (more precise for addresses)
-          if (osmResults.length > 0) {
-            results = [...osmResults, ...results].slice(0, 6);
-          }
-        } catch {
-          // OSM fallback failed — keep MapTiler results
-        }
-      }
 
       // Also search businesses in parallel
       try {
