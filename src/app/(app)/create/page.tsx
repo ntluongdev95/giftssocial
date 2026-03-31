@@ -65,6 +65,7 @@ export default function CreateSignalPage() {
   const [step, setStep] = useState<Step>('type_select');
   const [signalType, setSignalType] = useState<SignalType | null>(null);
   const [formData, setFormData] = useState<Record<string, unknown> | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Auth gate
   if (!user && !isGuest) {
@@ -97,6 +98,7 @@ export default function CreateSignalPage() {
     if (!signalType || !formData) return;
 
     setStep('publishing');
+    setApiError(null);
 
     try {
       // Map form data to API payload — each form type has different fields
@@ -135,14 +137,15 @@ export default function CreateSignalPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const err = await res.json();
-        console.error('[Signal Create Error]', err);
+        const errData = await res.json().catch(() => null);
+        const msg = errData?.error?.message || `Server error (${res.status})`;
+        setApiError(msg);
         setStep('preview');
         return;
       }
       setStep('success');
     } catch (err) {
-      console.error('[Signal Create Error]', err);
+      setApiError(err instanceof Error ? err.message : 'Network error — check your connection');
       setStep('preview');
     }
   };
@@ -282,10 +285,18 @@ export default function CreateSignalPage() {
                 </div>
               </div>
 
+              {/* Error message */}
+              {apiError && (
+                <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                  <p className="text-sm font-medium text-[#f87171]">{apiError}</p>
+                  <p className="text-[10px] text-[#4a5068] mt-1">Check your connection and try again</p>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep('form')}
+                  onClick={() => { setStep('form'); setApiError(null); }}
                   className="flex-1 rounded-xl py-3 text-sm font-medium transition-colors"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}
                 >
@@ -295,7 +306,7 @@ export default function CreateSignalPage() {
                   onClick={handlePublish}
                   className="btn-primary flex-1 rounded-xl py-3 text-sm font-semibold"
                 >
-                  Publish Signal
+                  {apiError ? 'Retry' : 'Publish Signal'}
                 </button>
               </div>
             </motion.div>
