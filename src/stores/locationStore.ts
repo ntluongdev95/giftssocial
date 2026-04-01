@@ -11,10 +11,22 @@ interface LocationStore {
   setCity: (city: string) => void;
 }
 
+function loadSaved() {
+  if (typeof window === 'undefined') return { lat: null, lng: null, granted: false };
+  try {
+    const raw = localStorage.getItem('gao_location');
+    if (!raw) return { lat: null, lng: null, granted: false };
+    const p = JSON.parse(raw);
+    return { lat: p.lat ?? null, lng: p.lng ?? null, granted: !!p.granted };
+  } catch { return { lat: null, lng: null, granted: false }; }
+}
+
+const saved = loadSaved();
+
 export const useLocationStore = create<LocationStore>((set) => ({
-  lat: null,
-  lng: null,
-  granted: false,
+  lat: saved.lat,
+  lng: saved.lng,
+  granted: saved.granted,
   city: null,
   loading: false,
   error: null,
@@ -38,13 +50,10 @@ export const useLocationStore = create<LocationStore>((set) => ({
         }
       );
 
-      set({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        granted: true,
-        loading: false,
-        error: null,
-      });
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      try { localStorage.setItem('gao_location', JSON.stringify({ lat, lng, granted: true })); } catch {}
+      set({ lat, lng, granted: true, loading: false, error: null });
     } catch (err) {
       const message =
         err instanceof GeolocationPositionError

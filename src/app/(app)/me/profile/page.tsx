@@ -242,10 +242,10 @@ export default function ProfileEditPage() {
       </div>
 
       {/* ── Desktop: 2-column / Mobile: single column ──── */}
-      <div className="mx-auto max-w-6xl lg:flex lg:gap-8 px-4 lg:px-8 py-6 pb-32">
+      <div className="mx-auto max-w-7xl lg:flex lg:gap-10 px-4 lg:px-8 py-6 pb-32">
 
         {/* ── LEFT: Form ─────────────────────────────────── */}
-        <div className="flex-1 min-w-0 space-y-6 lg:max-w-2xl">
+        <div className="flex-1 min-w-0 space-y-6 lg:max-w-3xl">
 
           {/* Basic Info + Industry — 2 col on desktop */}
           <Section title="Basic Info">

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const radiusKm = Math.min(parseInt(searchParams.get('radius') || '5000'), 50000) / 1000;
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
-    const [businesses, events, profiles, signals] = await Promise.all([
+    const [businesses, events, profiles, signals, circles] = await Promise.all([
       pgPool.query(
         `SELECT *, ${haversine(1, 2)} AS distance_km
          FROM businesses
@@ -50,6 +50,14 @@ export async function GET(req: NextRequest) {
          ORDER BY s.created_at DESC LIMIT $4`,
         [lat, lng, radiusKm, limit]
       ).then(r => r.rows).catch(() => []),
+
+      pgPool.query(
+        `SELECT *, ${haversine(1, 2)} AS distance_km
+         FROM circles
+         WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(1, 2)} < $3
+         ORDER BY member_count DESC LIMIT $4`,
+        [lat, lng, radiusKm, limit]
+      ).then(r => r.rows).catch(() => []),
     ]);
 
     // Separate signals by type
@@ -78,6 +86,7 @@ export async function GET(req: NextRequest) {
         people,
         offers,
         signals: signalsFormatted,
+        circles,
         agents: [],
       },
     });

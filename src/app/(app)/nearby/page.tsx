@@ -2,24 +2,23 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { MapPin } from 'lucide-react';
+import { MapPin, Navigation } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import BusinessCard from '@/components/cards/BusinessCard';
 import EventCard from '@/components/cards/EventCard';
 import OfferCard from '@/components/cards/OfferCard';
-import AgentCard from '@/components/cards/AgentCard';
 import CircleCard from '@/components/cards/CircleCard';
 import ProfileCard from '@/components/cards/ProfileCard';
 import SignalCard from '@/components/cards/SignalCard';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import EventDetailPage from '@/components/events/EventDetailPage';
 import SignalSheet from '@/components/map/SignalSheet';
-import type { NearbyResponse, Business, Event, Signal, Agent, Circle, Profile } from '@/types';
+import type { NearbyResponse, Business, Event, Circle, Profile } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
-const TABS = ['Businesses', 'Events', 'Signals', 'Profiles', 'Offers'] as const;
+const TABS = ['Businesses', 'Events', 'Circles', 'Signals', 'Profiles', 'Offers'] as const;
 type Tab = (typeof TABS)[number];
 
 const SORTS = ['Closest', 'Trusted', 'Live Now', 'Relevant'] as const;
@@ -169,9 +168,12 @@ export default function NearbyPage() {
   const { lat, lng, granted, requestLocation } = useLocationStore();
   const [activeTab, setActiveTab] = useState<Tab>('Businesses');
 
+  // Always refresh location on mount — localStorage is just fallback while GPS loads
   useEffect(() => {
-    if (!granted) requestLocation();
-  }, [granted, requestLocation]);
+    if (granted) requestLocation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [sort, setSort] = useState<Sort>('Closest');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
@@ -186,21 +188,21 @@ export default function NearbyPage() {
     return p.toString();
   }, [lat, lng]);
 
-  // Matched people nearby
+  // Matched people nearby — only fetch when location granted
   const { data: matchedPeople } = useSWR(
-    `/api/v1/match?type=people_nearby&${queryParams}`,
+    granted ? `/api/v1/match?type=people_nearby&${queryParams}` : null,
     (url: string) => fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` } }).then(r => r.json()),
     { revalidateOnFocus: false }
   );
 
   const { data, isLoading } = useSWR<{ data: NearbyResponse }>(
-    `/api/v1/nearby?${queryParams}`,
+    granted ? `/api/v1/nearby?${queryParams}` : null,
     fetcher,
     {
       refreshInterval: 30000,
       revalidateOnFocus: true,
       fallbackData: {
-        data: { people: [], businesses: [], events: [], offers: [], agents: [], profiles: [] },
+        data: { people: [], businesses: [], events: [], offers: [], agents: [], profiles: [], circles: [] },
       },
     }
   );
@@ -212,6 +214,7 @@ export default function NearbyPage() {
     offers: [],
     agents: [],
     profiles: [],
+    circles: [],
   };
 
   // Sort helper
@@ -229,25 +232,6 @@ export default function NearbyPage() {
   // Render cards for active tab
   const renderCards = () => {
     switch (activeTab) {
-      case 'People':
-        return nearby.people.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
-        ) : (
-          nearby.people.map((u) => (
-            <div
-              key={u.id}
-              className="rounded-xl border border-[#181c24]/30 bg-[#111318]/60 p-4"
-            >
-              <p className="text-sm font-medium text-[#f0f4ff]">
-                {u.display_name}
-              </p>
-              <p className="text-xs text-[#4a5068]">
-                Trust: {u.trust_score}
-              </p>
-            </div>
-          ))
-        );
-
       case 'Businesses': {
         const sorted = sortItems(nearby.businesses) as Business[];
         return sorted.length === 0 ? (
@@ -266,8 +250,17 @@ export default function NearbyPage() {
         );
       }
 
+      case 'Circles': {
+        const cirs = nearby.circles || [];
+        return cirs.length === 0 ? (
+          <EmptyState onSelectCircle={setSelectedCircle} />
+        ) : (
+          cirs.map((c) => <CircleCard key={c.id} circle={c} onClick={() => setSelectedCircle(c)} />)
+        );
+      }
+
       case 'Signals': {
-        const sigs = (nearby as Record<string, unknown>).signals as Record<string, unknown>[] || [];
+        const sigs = ((nearby as unknown as Record<string, unknown>).signals as Record<string, unknown>[]) || [];
         return sigs.length === 0 ? (
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (
@@ -285,7 +278,6 @@ export default function NearbyPage() {
       }
 
       case 'Profiles': {
-        // Use matched people (scored) if available, fallback to nearby profiles
         const matched = (matchedPeople?.data || []) as Profile[];
         const profs = matched.length > 0 ? matched : (nearby.profiles || []);
         return profs.length === 0 ? (
@@ -338,17 +330,38 @@ export default function NearbyPage() {
 
       {/* Card list — grid on desktop */}
       <div className="flex-1 overflow-y-auto px-4 lg:px-8 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {isLoading ? (
-            <>
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </>
-          ) : (
-            renderCards()
-          )}
-        </div>
+        {!granted ? (
+          <div className="flex flex-col items-center gap-4 py-16 text-center">
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-full"
+              style={{ background: 'rgba(0,212,255,0.1)' }}
+            >
+              <Navigation size={28} style={{ color: '#00d4ff' }} />
+            </div>
+            <h2 className="text-lg font-bold text-[#f0f4ff]">Enable Location</h2>
+            <p className="max-w-xs text-sm text-[#4a5068]">
+              Allow location access to discover businesses, events, and circles near you.
+            </p>
+            <button
+              onClick={() => requestLocation()}
+              className="rounded-xl bg-[#00d4ff] px-8 py-3 text-sm font-semibold text-[#0a0b0f] cursor-pointer"
+            >
+              Allow Location
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {isLoading ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : (
+              renderCards()
+            )}
+          </div>
+        )}
       </div>
 
       {/* Circle detail sheet */}

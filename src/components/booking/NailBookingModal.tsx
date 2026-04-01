@@ -122,7 +122,7 @@ export default function NailBookingModal({ business: biz, initialService, onClos
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="w-full max-w-[480px] max-h-[90dvh] rounded-t-3xl lg:rounded-3xl flex flex-col overflow-hidden"
+        className="w-full max-w-[480px] lg:max-w-[640px] max-h-[90dvh] rounded-t-3xl lg:rounded-3xl flex flex-col overflow-hidden"
         style={{ background: '#0a0b0f', border: '1px solid rgba(0,212,255,0.08)' }}
       >
         {/* Header */}
@@ -224,7 +224,7 @@ export default function NailBookingModal({ business: biz, initialService, onClos
                 <div>
                   <p className="text-xs font-semibold text-[#4a5068] mb-2">Time {isClosed && <span className="text-[#f87171]">— Closed</span>}</p>
                   {!isClosed && (
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-4 lg:grid-cols-6 gap-1.5">
                       {timeSlots.map(t => {
                         const sel = selectedTime === t;
                         // Disable past times for today

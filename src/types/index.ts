@@ -436,6 +436,7 @@ export interface NearbyResponse {
   offers: Signal[];
   agents: Agent[];
   profiles: Profile[];
+  circles: Circle[];
 }
 
 export interface AskGaoResponse {
