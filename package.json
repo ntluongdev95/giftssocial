@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@opennextjs/cloudflare": "^1.18.0",
     "@types/three": "^0.183.1",
     "axios": "^1.14.0",
     "date-fns": "^4.1.0",
@@ -47,6 +48,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.79.0"
   }
 }
