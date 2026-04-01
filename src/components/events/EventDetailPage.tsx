@@ -237,7 +237,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed inset-0 z-[60] flex flex-col overflow-hidden lg:hidden"
+        className="fixed inset-0 z-[200] flex flex-col overflow-hidden lg:hidden"
         style={{ background: '#0a0b0f' }}
       >
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 pt-[env(safe-area-inset-top,12px)] pb-2">
@@ -263,7 +263,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
       </motion.div>
 
       {/* ══ DESKTOP: Centered modal ═══════════════════════ */}
-      <div className="fixed inset-0 z-[60] hidden lg:flex items-center justify-center" onClick={(ev) => ev.target === ev.currentTarget && onClose()}>
+      <div className="fixed inset-0 z-[200] hidden lg:flex items-center justify-center" onClick={(ev) => ev.target === ev.currentTarget && onClose()}>
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

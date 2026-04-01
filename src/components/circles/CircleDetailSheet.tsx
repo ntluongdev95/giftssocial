@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { Circle, Event, Signal } from '@/types';
 import EventCard from '@/components/cards/EventCard';
 import OfferCard from '@/components/cards/OfferCard';
+import EventDetailPage from '@/components/events/EventDetailPage';
 
 // ─── Seed events & offers per circle category ─────────────────────────────
 
@@ -143,10 +144,12 @@ type DetailTab = 'events' | 'offers';
 
 export default function CircleDetailSheet({ circle, onClose }: Props) {
   const [tab, setTab] = useState<DetailTab>('events');
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const events = CIRCLE_EVENTS[circle.category] ?? [];
   const offers = CIRCLE_OFFERS[circle.category] ?? [];
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -228,7 +231,7 @@ export default function CircleDetailSheet({ circle, onClose }: Props) {
           <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-3">
             {tab === 'events' && (
               events.length > 0 ? (
-                events.map((ev) => <EventCard key={ev.id} event={ev} />)
+                events.map((ev) => <EventCard key={ev.id} event={ev} onClick={() => setSelectedEvent(ev)} />)
               ) : (
                 <EmptyTab icon={<Calendar size={20} />} label="No upcoming events" />
               )
@@ -244,6 +247,11 @@ export default function CircleDetailSheet({ circle, onClose }: Props) {
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    {selectedEvent && (
+      <EventDetailPage event={selectedEvent!} onClose={() => setSelectedEvent(null)} />
+    )}
+    </>
   );
 }
 

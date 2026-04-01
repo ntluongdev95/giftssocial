@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { z } from 'zod';
+import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required').max(120),
@@ -37,6 +38,8 @@ export default function OfferForm({ onSubmit }: OfferFormProps) {
   const [discount, setDiscount] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'circle'>('public');
+  const [targetCircleId, setTargetCircleId] = useState('');
+  const { myCircles } = useJoinedCircles();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,9 +62,14 @@ export default function OfferForm({ onSubmit }: OfferFormProps) {
       return;
     }
 
+    if (visibility === 'circle' && !targetCircleId) {
+      setErrors({ circle: 'Please select a circle' });
+      return;
+    }
+
     setErrors({});
     setSubmitting(true);
-    await onSubmit(result.data);
+    await onSubmit({ ...result.data, target_circle_id: visibility === 'circle' ? targetCircleId : undefined } as OfferData & { target_circle_id?: string });
     setSubmitting(false);
   };
 
@@ -171,8 +179,8 @@ export default function OfferForm({ onSubmit }: OfferFormProps) {
           {(['public', 'circle'] as const).map((v) => (
             <button
               key={v}
-              onClick={() => setVisibility(v)}
-              className={`flex-1 py-2 text-xs font-medium capitalize transition-colors ${
+              onClick={() => { setVisibility(v); if (v !== 'circle') setTargetCircleId(''); }}
+              className={`flex-1 py-2 text-xs font-medium capitalize transition-colors cursor-pointer ${
                 visibility === v
                   ? 'bg-[#00d4ff]/15 text-[#00d4ff]'
                   : 'bg-[#0a0b0f] text-[#4a5068]'
@@ -182,6 +190,25 @@ export default function OfferForm({ onSubmit }: OfferFormProps) {
             </button>
           ))}
         </div>
+        {visibility === 'circle' && (
+          <div className="mt-2">
+            {myCircles.length === 0 ? (
+              <p className="text-xs text-[#4a5068]">You haven't joined any circles yet.</p>
+            ) : (
+              <select
+                value={targetCircleId}
+                onChange={(e) => { setTargetCircleId(e.target.value); setErrors({}); }}
+                className="w-full rounded-lg border border-[#181c24]/30 bg-[#0a0b0f] px-3 py-2.5 text-sm text-[#f0f4ff] outline-none focus:border-[#00d4ff] cursor-pointer"
+              >
+                <option value="">Select a circle…</option>
+                {myCircles.map((c) => (
+                  <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
+                ))}
+              </select>
+            )}
+            {errors.circle && <p className="mt-1 text-[10px] text-[#EF4444]">{errors.circle}</p>}
+          </div>
+        )}
       </div>
 
       {/* Submit */}

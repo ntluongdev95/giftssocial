@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { z } from 'zod';
 import { MapPin, Clock, DollarSign, Search, X } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
+import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 import { toast } from 'sonner';
 
 const schema = z.object({
@@ -64,6 +65,8 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
   const [note, setNote] = useState('');
   const [duration, setDuration] = useState(4);
   const [visibility, setVisibility] = useState<'public' | 'circle' | 'private' | 'trusted_only'>('public');
+  const [targetCircleId, setTargetCircleId] = useState('');
+  const { myCircles } = useJoinedCircles();
   const [urgency, setUrgency] = useState<'now' | 'today' | 'this_week'>('today');
   const [radius, setRadius] = useState(5000);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -103,6 +106,11 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
   const activeLocationName = customLocation?.name || city || 'Your Location';
 
   const handleSubmit = async () => {
+    if (visibility === 'circle' && !targetCircleId) {
+      setErrors({ circle: 'Please select a circle' });
+      toast.error('Please select a circle');
+      return;
+    }
     const result = schema.safeParse({ title, category, budget, note, duration, visibility, urgency, radius });
     if (!result.success) {
       const fe: Record<string, string> = {};
@@ -113,7 +121,7 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
     }
     setErrors({});
     setSubmitting(true);
-    await onSubmit(result.data);
+    await onSubmit({ ...result.data, target_circle_id: visibility === 'circle' ? targetCircleId : undefined } as IntentData & { target_circle_id?: string });
     setSubmitting(false);
   };
 
@@ -306,7 +314,7 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
           {(['public', 'circle', 'trusted_only'] as const).map((v) => (
             <button
               key={v}
-              onClick={() => setVisibility(v)}
+              onClick={() => { setVisibility(v); if (v !== 'circle') setTargetCircleId(''); }}
               className="flex-1 rounded-xl py-2.5 text-[11px] font-medium capitalize transition-all cursor-pointer"
               style={visibility === v ? {
                 background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.2)',
@@ -318,6 +326,26 @@ export default function IntentForm({ onSubmit }: IntentFormProps) {
             </button>
           ))}
         </div>
+        {visibility === 'circle' && (
+          <div className="mt-2">
+            {myCircles.length === 0 ? (
+              <p className="text-xs text-[#4a5068]">You haven't joined any circles yet.</p>
+            ) : (
+              <select
+                value={targetCircleId}
+                onChange={(e) => { setTargetCircleId(e.target.value); setErrors({}); }}
+                className="w-full rounded-xl px-3 py-2.5 text-sm text-[#f0f4ff] outline-none focus:ring-1 focus:ring-[#00d4ff]/30 cursor-pointer"
+                style={{ background: 'rgba(10,11,15,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <option value="">Select a circle…</option>
+                {myCircles.map((c) => (
+                  <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
+                ))}
+              </select>
+            )}
+            {errors.circle && <p className="mt-1 text-[10px] text-[#EF4444]">{errors.circle}</p>}
+          </div>
+        )}
       </div>
 
       {/* Submit */}

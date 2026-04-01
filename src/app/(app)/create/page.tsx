@@ -143,6 +143,10 @@ function CreateSignalPageInner() {
         },
       };
 
+      if (formData.target_circle_id) {
+        payload.target_circle_id = formData.target_circle_id;
+      }
+
       // Calculate expiry from duration if provided
       if (formData.duration) {
         const hours = Number(formData.duration);
