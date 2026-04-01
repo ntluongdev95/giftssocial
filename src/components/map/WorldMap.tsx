@@ -179,18 +179,29 @@ export default function WorldMap({
     }
   }, []);
 
-  // Pause spin on user interaction, resume after
+  // Pause spin on user drag/zoom, resume after 3s idle
   useEffect(() => {
     const map = mapRef.current;
     if (!map || viewMode !== '3d') return;
 
-    const pause = () => stopSpin();
+    let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const pause = () => {
+      stopSpin();
+      if (resumeTimer) clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => {
+        if (mapRef.current && currentViewRef.current === '3d') {
+          startSpin(mapRef.current);
+        }
+      }, 3000);
+    };
 
     map.on('mousedown', pause);
     map.on('touchstart', pause);
     map.on('wheel', pause);
 
     return () => {
+      if (resumeTimer) clearTimeout(resumeTimer);
       map.off('mousedown', pause);
       map.off('touchstart', pause);
       map.off('wheel', pause);
@@ -216,25 +227,20 @@ export default function WorldMap({
     map.once('style.load', () => {
       fadeMapLabels(map);
 
-      // Re-add all existing markers after style change (style swap removes DOM markers)
-      // Dispatch event so useMapMarkers can re-add
-      window.dispatchEvent(new CustomEvent('gao-style-changed'));
-
       if (is3D) {
         try { map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe:', e); }
-        // Transparent background for starfield
+        // Remove background layer for starfield (mutate in place, don't setStyle again)
         try {
-          const style = map.getStyle();
-          if (style) {
-            style.layers = style.layers?.filter(l => l.id !== 'background') || [];
-            map.setStyle(style);
-          }
+          const bgLayer = map.getLayer('background');
+          if (bgLayer) map.removeLayer('background');
         } catch {}
         const canvas = map.getCanvas();
         if (canvas) canvas.style.background = 'transparent';
+        const globeCenter: [number, number] =
+          lat !== null && lng !== null ? [lng, lat] : [0, 20];
         map.easeTo({
-          center: [0, 20],
-          zoom: 1.8,
+          center: globeCenter,
+          zoom: 1.5,
           pitch: 0,
           bearing: 0,
           duration: 1500,
@@ -259,16 +265,41 @@ export default function WorldMap({
           easing: (t: number) => 1 - Math.pow(1 - t, 3),
         });
       }
+
+      // Notify markers to re-add AFTER all style modifications are done
+      window.dispatchEvent(new CustomEvent('gao-style-changed'));
     });
   }, [viewMode, loading, lat, lng, startSpin, stopSpin]);
 
-  // Fly to user location (only in 2D mode)
+  // Fly to user location — only once on first location grant
+  const hasFlownToUser = useRef(false);
   useEffect(() => {
     if (!mapRef.current || lat === null || lng === null) return;
+    if (hasFlownToUser.current) return;
+    hasFlownToUser.current = true;
     if (viewMode === '2d') {
       mapRef.current.flyTo({ center: [lng, lat], zoom: 13, duration: 1500 });
     }
   }, [lat, lng, viewMode]);
+
+  // User location marker (red dot)
+  const userMarkerRef = useRef<maplibregl.Marker | null>(null);
+  useEffect(() => {
+    if (!mapRef.current || lat === null || lng === null) return;
+
+    // Remove old
+    if (userMarkerRef.current) userMarkerRef.current.remove();
+
+    const el = document.createElement('div');
+    el.style.cssText = `
+      width:14px;height:14px;border-radius:50%;
+      background:#EF4444;border:2px solid white;
+    `;
+
+    userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([lng, lat])
+      .addTo(mapRef.current);
+  }, [lat, lng]);
 
   // Search pin marker
   const searchPinRef = useRef<maplibregl.Marker | null>(null);

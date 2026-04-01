@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       values.push(category);
     }
 
-    if (lat !== 0 || lng !== 0) {
+    if (radiusKm > 0 && (lat !== 0 || lng !== 0)) {
       conditions.push(`(6371 * acos(LEAST(1.0, cos(radians($${idx})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(location_lat))))) < $${idx + 2}`);
       values.push(lat, lng, radiusKm);
       idx += 3;

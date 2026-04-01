@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, EntityType, MarkerState } from '@/types';
 import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
@@ -87,7 +87,8 @@ function verifiedBadge(): string {
 // ─── CSS for marker states ────────────────────────────────────────────────
 
 const MARKER_STYLES = `
-  .gao-marker { position: relative; cursor: pointer; transition: transform 0.2s, opacity 0.2s; }
+  .gao-marker { position: relative; cursor: pointer; transition: transform 0.2s, opacity 0.2s; opacity: 1 !important; }
+  .maplibregl-marker { opacity: 1 !important; filter: none !important; }
   .gao-marker.state-selected { transform: scale(1.25); filter: drop-shadow(0 0 6px rgba(0,212,255,0.6)); }
   .gao-marker.state-suppressed { opacity: 0.5; }
   .gao-marker.state-live::after {
@@ -385,15 +386,14 @@ function createSignalMarkerElement(signal: Signal): HTMLDivElement {
 
 // ─── Image marker (business, event) ──────────────────────────────────────
 
-function createImageMarkerElement(iconSrc: string, borderColor: string, title: string, isLive = false): HTMLDivElement {
+function createImageMarkerElement(iconSrc: string, _borderColor: string, title: string, isLive = false): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'gao-marker' + (isLive ? ' state-live' : '');
   el.style.cssText = `
-    width:40px;height:40px;border-radius:12px;
-    overflow:hidden;cursor:pointer;transition:transform 0.15s;
-    border:2px solid ${borderColor};
-    box-shadow:0 0 12px ${borderColor}50, 0 2px 8px rgba(0,0,0,0.4);
-    background:#0a0b0f;
+    width:40px;height:40px;
+    cursor:pointer;
+    background:transparent;
+    border:none;
   `;
 
   const img = document.createElement('img');
@@ -401,9 +401,6 @@ function createImageMarkerElement(iconSrc: string, borderColor: string, title: s
   img.alt = title;
   img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
   el.appendChild(img);
-
-  el.onmouseenter = () => { el.style.transform = 'scale(1.15)'; };
-  el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
 
   return el;
 }
@@ -420,6 +417,7 @@ export function useMapMarkers(
   circles: Circle[] = []
 ) {
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const [styleVersion, setStyleVersion] = useState(0);
   const { activeLayers, setSelectedMarker, addMarker, removeMarker } =
     useMapStore();
   const { friends, showOnMap: showFriendsOnMap } = useFriendStore();
@@ -430,9 +428,11 @@ export function useMapMarkers(
     injectStyles();
   }, []);
 
-  // Sync signal markers
+  // Sync DOM markers (2D only — 3D uses GeoJSON layers)
   useEffect(() => {
     if (!map) return;
+    const isGlobe = useMapStore.getState().viewMode === '3d';
+    if (isGlobe) return; // Skip — globe mode uses GeoJSON layers instead
 
     const currentIds = new Set<string>();
 
@@ -634,7 +634,7 @@ export function useMapMarkers(
         const el = createImageMarkerElement('/icons/business.png', '#34d399', biz.name);
         el.addEventListener('click', () => setSelectedMarker(bid));
 
-        const marker = new maplibregl.Marker({ element: el })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([biz.location_lng, biz.location_lat])
           .addTo(map);
 
@@ -666,7 +666,7 @@ export function useMapMarkers(
         const el = createImageMarkerElement('/icons/event.png', '#f87171', evt.title, isLive);
         el.addEventListener('click', () => setSelectedMarker(eid));
 
-        const marker = new maplibregl.Marker({ element: el })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([evt.location_lng, evt.location_lat])
           .addTo(map);
 
@@ -746,20 +746,145 @@ export function useMapMarkers(
         removeMarker(id);
       }
     }
-  }, [map, signals, agents, profiles, businesses, events, circles, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, signals, agents, profiles, businesses, events, circles, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker, styleVersion]);
 
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {
     function handleStyleChanged() {
+      console.log('[STYLE-CHANGED] fired — clearing markers, bumping styleVersion');
       // Clear refs so markers get re-created on next render
       for (const marker of markersRef.current.values()) {
         marker.remove();
       }
       markersRef.current.clear();
+      // Trigger re-render to re-create markers
+      setStyleVersion((v: number) => v + 1);
     }
     window.addEventListener('gao-style-changed', handleStyleChanged);
     return () => window.removeEventListener('gao-style-changed', handleStyleChanged);
   }, []);
+
+
+  // ── 3D Globe: GeoJSON layers ─────────────────────────────────────────────
+  const GLOBE_SRC = 'gao-globe-src';
+  const GLOBE_TYPES = ['business', 'event', 'people', 'offer', 'profile'] as const;
+  const GLOBE_COLORS: Record<string, string> = { business: '#22C55E', event: '#EF4444', people: '#3B82F6', offer: '#EAB308', profile: '#818CF8' };
+  const GLOBE_ICONS: Record<string, { src: string; size: number }> = {
+    business: { src: '/icons/business.png', size: 0.12 },
+    event: { src: '/icons/event.png', size: 0.03 },
+  };
+  const globeReady = useRef(false);
+
+  // Build globe layers (called after delay or on layer toggle)
+  const buildGlobe = useCallback(() => {
+    if (!map || useMapStore.getState().viewMode !== '3d') return;
+
+    // Build features
+    const features: GeoJSON.Feature[] = [];
+    for (const b of businesses) {
+      if (b.location_lat && b.location_lng) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [b.location_lng, b.location_lat] }, properties: { id: b.id, entityType: 'business' } });
+    }
+    for (const e of events) {
+      if (e.location_lat && e.location_lng) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.location_lng!, e.location_lat!] }, properties: { id: e.id, entityType: 'event' } });
+    }
+    for (const s of signals) {
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: s.location.coordinates as [number, number] }, properties: { id: s.id, entityType: s.type === 'offer' ? 'offer' : 'people' } });
+    }
+    for (const p of profiles) {
+      if (p.location) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: p.location.coordinates as [number, number] }, properties: { id: p._id, entityType: 'profile' } });
+    }
+
+    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+
+    try {
+      // Source
+      if (map.getSource(GLOBE_SRC)) {
+        (map.getSource(GLOBE_SRC) as maplibregl.GeoJSONSource).setData(geo);
+      } else {
+        map.addSource(GLOBE_SRC, { type: 'geojson', data: geo });
+      }
+
+      // Layers
+      for (const t of GLOBE_TYPES) {
+        const id = `gao-globe-${t}`;
+        const visible = activeLayers.has(t);
+
+        if (!map.getLayer(id)) {
+          const iconCfg = GLOBE_ICONS[t];
+          if (iconCfg && map.hasImage(`globe-icon-${t}`)) {
+            map.addLayer({ id, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], layout: { 'icon-image': `globe-icon-${t}`, 'icon-size': iconCfg.size, 'icon-allow-overlap': true, visibility: visible ? 'visible' : 'none' } });
+          } else {
+            map.addLayer({ id, type: 'circle', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], paint: { 'circle-radius': 7, 'circle-color': GLOBE_COLORS[t] || '#fff', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }, layout: { visibility: visible ? 'visible' : 'none' } });
+          }
+        } else {
+          map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+        }
+      }
+      globeReady.current = true;
+    } catch (err) {
+      console.warn('[GLOBE] build error', err);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, activeLayers, signals, businesses, events, profiles]);
+
+  // Load icons once on map init
+  useEffect(() => {
+    if (!map) return;
+    const load = async () => {
+      for (const [key, cfg] of Object.entries(GLOBE_ICONS)) {
+        const name = `globe-icon-${key}`;
+        if (!map.hasImage(name)) {
+          try { const img = await map.loadImage(cfg.src); map.addImage(name, img.data); } catch {}
+        }
+      }
+    };
+    if (map.isStyleLoaded()) load(); else map.once('load', load);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
+  // Toggle between 2D DOM markers and 3D globe layers
+  useEffect(() => {
+    if (!map) return;
+    const isGlobe = useMapStore.getState().viewMode === '3d';
+
+    // Hide/show DOM markers
+    for (const marker of markersRef.current.values()) {
+      marker.getElement().style.display = isGlobe ? 'none' : '';
+    }
+
+    if (!isGlobe) {
+      // Clean globe layers
+      for (const t of GLOBE_TYPES) { try { if (map.getLayer(`gao-globe-${t}`)) map.removeLayer(`gao-globe-${t}`); } catch {} }
+      try { if (map.getSource(GLOBE_SRC)) map.removeSource(GLOBE_SRC); } catch {}
+      globeReady.current = false;
+      return;
+    }
+
+    // If globe layers already built, just update visibility
+    if (globeReady.current && map.getSource(GLOBE_SRC)) {
+      buildGlobe();
+      return;
+    }
+
+    // First time entering 3D — wait for style then build
+    const timer = setTimeout(() => buildGlobe(), 600);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, activeLayers, styleVersion, buildGlobe]);
+
+  // Globe click handler
+  useEffect(() => {
+    if (!map) return;
+    const handler = (e: maplibregl.MapMouseEvent) => {
+      const layers = GLOBE_TYPES.map(t => `gao-globe-${t}`).filter(id => map.getLayer(id));
+      if (layers.length === 0) return;
+      const features = map.queryRenderedFeatures(e.point, { layers });
+      if (features.length > 0) setSelectedMarker(features[0].properties?.id);
+    };
+    map.on('click', handler);
+    return () => { map.off('click', handler); };
+  }, [map, setSelectedMarker]);
 
   // Cleanup all on unmount
   useEffect(() => {

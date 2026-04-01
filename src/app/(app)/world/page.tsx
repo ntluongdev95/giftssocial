@@ -177,10 +177,10 @@ export default function WorldPage() {
       params.set('lat', '32.7767');
       params.set('lng', '-96.7970');
     }
-    params.set('radius', '5000');
+    params.set('radius', viewMode === '3d' ? '0' : '5000');
     params.set('time', timeFilter);
     return params.toString();
-  }, [lat, lng, timeFilter]);
+  }, [lat, lng, timeFilter, viewMode]);
 
   // Fetch signals
   const { data: signalsData } = useSWR<{ data: Signal[] }>(
@@ -530,7 +530,8 @@ export default function WorldPage() {
                 <button
                   key={label}
                   onClick={() => handleSummaryClick(type)}
-                  className="flex items-center gap-2.5 cursor-pointer rounded-lg px-1 py-1 -mx-1 transition-colors active:bg-white/5"
+                  disabled={count === 0}
+                  className="flex items-center gap-2.5 rounded-lg px-1 py-1 -mx-1 transition-colors active:bg-white/5 disabled:opacity-40 disabled:cursor-default cursor-pointer"
                 >
                   <span className="text-xl font-light tabular-nums w-6 text-right" style={{ color }}>{count}</span>
                   <div className="min-w-0 text-left">
