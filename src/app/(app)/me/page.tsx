@@ -36,6 +36,7 @@ export default function MePage() {
   const savedCount = savedData?.data?.length || 0;
   const bookingsCount = bookingsData?.data?.length || 0;
   const pendingBookings = (bookingsData?.data || []).filter((b: Record<string, unknown>) => b.status === 'pending' || b.status === 'confirmed').length;
+  const upcomingEvents = (bookingsData?.data || []).filter((b: Record<string, unknown>) => b.event_id && (b.status === 'pending' || b.status === 'confirmed') && b.slot_time && new Date(b.slot_time as string) > new Date()).length;
   const followingCount = followsData?.data?.length || 0;
   const circlesCount = circlesData?.data?.length || 0;
 
@@ -90,7 +91,7 @@ export default function MePage() {
         {/* My Activities */}
         <SectionTitle>My Activities</SectionTitle>
         <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
-          <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value={`${upcomingEvents}`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value={`${pendingBookings} pending`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
@@ -173,7 +174,7 @@ export default function MePage() {
             <div>
               <SectionTitle>My Activities</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
-                <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value="0" color="#f87171" onClick={() => {}} />
+                <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value={`${upcomingEvents} upcoming`} color="#f87171" onClick={() => router.push('/me/bookings')} />
                 <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value={`${pendingBookings} pending`} color="#00d4ff" onClick={() => router.push('/me/bookings')} />
                 <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" onClick={() => router.push('/me/signals')} />
                 <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" onClick={() => {}} />
