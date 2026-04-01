@@ -6,6 +6,7 @@ import useSWR from 'swr';
 import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
+import SignInGateSheet from '@/components/auth/SignInGateSheet';
 import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 import type { Circle } from '@/types';
 
@@ -92,6 +93,7 @@ export default function CirclesPage() {
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
   const { joinedCircleIds, refresh: refreshCircles } = useJoinedCircles();
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [showAuthGate, setShowAuthGate] = useState(false);
 
   // Fetch circles from API
   const { data: circlesData } = useSWR('/api/v1/circles?limit=30', fetcher);
@@ -99,7 +101,7 @@ export default function CirclesPage() {
 
   const handleJoinCircle = async (circleId: string) => {
     const token = localStorage.getItem('access_token');
-    if (!token) { toast.error('Please login first'); return; }
+    if (!token) { setShowAuthGate(true); return; }
     setJoiningId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/join`, {
@@ -306,6 +308,7 @@ export default function CirclesPage() {
       </div>
 
       {selectedCircle && <CircleDetailSheet circle={selectedCircle} onClose={() => setSelectedCircle(null)} />}
+      <SignInGateSheet action="join" isOpen={showAuthGate} onClose={() => setShowAuthGate(false)} />
     </div>
   );
 }

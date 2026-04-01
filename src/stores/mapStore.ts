@@ -17,15 +17,7 @@ interface MapStore {
   clearMarkers: () => void;
 }
 
-const DEFAULT_LAYERS = new Set([
-  'people',
-  'business',
-  'event',
-  'offer',
-  'agent',
-  'circle',
-  'profile',
-]);
+const DEFAULT_LAYERS = new Set<string>([]);
 
 export const useMapStore = create<MapStore>((set) => ({
   markers: new Map(),

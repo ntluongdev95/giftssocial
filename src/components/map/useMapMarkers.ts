@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
-import type { Signal, Agent, Friend, Developer, Profile, Business, Event, EntityType, MarkerState } from '@/types';
+import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, EntityType, MarkerState } from '@/types';
 import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
 import { useFriendStore } from '@/stores/friendStore';
@@ -391,7 +391,8 @@ export function useMapMarkers(
   agents: Agent[],
   profiles: Profile[] = [],
   businesses: Business[] = [],
-  events: Event[] = []
+  events: Event[] = [],
+  circles: Circle[] = []
 ) {
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const { activeLayers, setSelectedMarker, addMarker, removeMarker } =
@@ -659,6 +660,36 @@ export function useMapMarkers(
       }
     }
 
+    // Add / update circle markers
+    if (activeLayers.has('circle')) {
+      for (const circle of circles) {
+        if (!circle.location_lat || !circle.location_lng) continue;
+        const cid = circle.id;
+        currentIds.add(cid);
+        if (markersRef.current.has(cid)) continue;
+
+        const el = createMarkerElement('circle', 'default', circle.trust_score >= 60);
+        el.addEventListener('click', () => setSelectedMarker(cid));
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([circle.location_lng, circle.location_lat])
+          .addTo(map);
+
+        markersRef.current.set(cid, marker);
+        addMarker({
+          id: cid, entity_type: 'circle',
+          lat: circle.location_lat, lng: circle.location_lng,
+          title: circle.name, state: 'default',
+          metadata: { category: circle.category, member_count: circle.member_count },
+        });
+      }
+    } else {
+      for (const circle of circles) {
+        const existing = markersRef.current.get(circle.id);
+        if (existing) { existing.remove(); markersRef.current.delete(circle.id); removeMarker(circle.id); }
+      }
+    }
+
     // Add / update landmark markers (only in globe/3D mode or always)
     if (showLandmarksOnMap) {
       for (const lm of landmarks) {
@@ -684,13 +715,13 @@ export function useMapMarkers(
 
     // Remove stale signal/agent markers only — keep friends, developers, landmarks
     for (const [id, marker] of markersRef.current) {
-      if (!currentIds.has(id) && !id.startsWith('friend_') && !id.startsWith('dev_') && !id.startsWith('lm_') && !id.startsWith('biz_') && !id.startsWith('evt_') && !id.startsWith('profile_')) {
+      if (!currentIds.has(id) && !id.startsWith('friend_') && !id.startsWith('dev_') && !id.startsWith('lm_') && !id.startsWith('biz_') && !id.startsWith('evt_') && !id.startsWith('profile_') && !id.startsWith('circle_')) {
         marker.remove();
         markersRef.current.delete(id);
         removeMarker(id);
       }
     }
-  }, [map, signals, agents, profiles, businesses, events, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker]);
+  }, [map, signals, agents, profiles, businesses, events, circles, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker]);
 
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {

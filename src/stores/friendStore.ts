@@ -88,7 +88,7 @@ const SEED_FRIENDS: Friend[] = [
 
 export const useFriendStore = create<FriendStore>((set) => ({
   friends: SEED_FRIENDS,
-  showOnMap: true,
+  showOnMap: false,
 
   addFriend: (friend) =>
     set((s) => ({ friends: [...s.friends, friend] })),

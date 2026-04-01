@@ -155,6 +155,6 @@ const SEED_DEVELOPERS: Developer[] = [
 
 export const useDeveloperStore = create<DeveloperStore>((set) => ({
   developers: SEED_DEVELOPERS,
-  showOnMap: true,
+  showOnMap: false,
   toggleShowOnMap: () => set((s) => ({ showOnMap: !s.showOnMap })),
 }));

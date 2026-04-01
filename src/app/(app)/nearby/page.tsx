@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { MapPin } from 'lucide-react';
 import { useLocationStore } from '@/stores/locationStore';
@@ -166,8 +166,12 @@ const FALLBACK_CIRCLES: Circle[] = [
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function NearbyPage() {
-  const { lat, lng } = useLocationStore();
+  const { lat, lng, granted, requestLocation } = useLocationStore();
   const [activeTab, setActiveTab] = useState<Tab>('Businesses');
+
+  useEffect(() => {
+    if (!granted) requestLocation();
+  }, [granted, requestLocation]);
   const [sort, setSort] = useState<Sort>('Closest');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);

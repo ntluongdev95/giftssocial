@@ -18,7 +18,7 @@ import EventSheet from '@/components/map/EventSheet';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import EventDetailPage from '@/components/events/EventDetailPage';
 import SignalSheet from '@/components/map/SignalSheet';
-import type { Signal, Agent, Profile, Business, Event, EntityType } from '@/types';
+import type { Signal, Agent, Profile, Business, Event, Circle, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
 const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
@@ -49,15 +49,17 @@ function WorldMapInner({
   profiles,
   businesses,
   events,
+  circles,
 }: {
   signals: Signal[];
   agents: Agent[];
   profiles: Profile[];
   businesses: Business[];
   events: Event[];
+  circles: Circle[];
 }) {
   const { map } = useMap();
-  useMapMarkers(map, signals, agents, profiles, businesses, events);
+  useMapMarkers(map, signals, agents, profiles, businesses, events, circles);
   return null;
 }
 
@@ -214,11 +216,19 @@ export default function WorldPage() {
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
+  // Fetch circles
+  const { data: circlesData } = useSWR<{ data: Circle[] }>(
+    `/api/v1/circles?limit=50`,
+    fetcher,
+    { refreshInterval: 60000, fallbackData: { data: [] } }
+  );
+
   const signals = signalsData?.data ?? [];
   const agents = agentsData?.data ?? [];
   const profiles = profilesData?.data ?? [];
   const businesses = businessesData?.data ?? [];
   const events = eventsData?.data ?? [];
+  const circles = circlesData?.data ?? [];
 
   // Count for summary
   const counts = useMemo(() => ({
@@ -267,7 +277,7 @@ export default function WorldPage() {
     <div className="relative h-full w-full">
       <WorldMap onMapReady={handleMapReady}>
         {/* Marker sync */}
-        <WorldMapInner signals={signals} agents={agents} profiles={profiles} businesses={businesses} events={events} />
+        <WorldMapInner signals={signals} agents={agents} profiles={profiles} businesses={businesses} events={events} circles={circles} />
 
         {/* ── Top Bar ─────────────────────────────────── */}
         <div className="absolute left-0 right-0 top-0 z-30">

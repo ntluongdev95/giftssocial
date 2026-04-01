@@ -11,6 +11,7 @@ import OfferForm from '@/components/signals/forms/OfferForm';
 import EventForm from '@/components/signals/forms/EventForm';
 import UpdateForm from '@/components/signals/forms/UpdateForm';
 import ProofForm from '@/components/signals/forms/ProofForm';
+import AuthPopup from '@/components/ui/AuthPopup';
 import { useAuthStore } from '@/stores/auth-store';
 import { useLocationStore } from '@/stores/locationStore';
 import { SIGNAL_LABELS, SIGNAL_ICONS } from '@/styles/tokens';
@@ -30,28 +31,32 @@ const pageVariants = {
 
 function SignInGateSheet() {
   const router = useRouter();
+  const [showAuth, setShowAuth] = useState(false);
   return (
-    <div className="flex flex-col items-center gap-4 py-16 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#00d4ff]/10">
-        <User size={32} className="text-[#00d4ff]" />
+    <>
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#00d4ff]/10">
+          <User size={32} className="text-[#00d4ff]" />
+        </div>
+        <h2 className="text-lg font-bold text-[#f0f4ff]">Sign in to create</h2>
+        <p className="max-w-xs text-sm text-[#4a5068]">
+          You need an account to publish signals on the map.
+        </p>
+        <button
+          onClick={() => setShowAuth(true)}
+          className="rounded-xl bg-[#00d4ff] px-8 py-3 text-sm font-semibold text-[#0a0b0f] cursor-pointer"
+        >
+          Sign In
+        </button>
+        <button
+          onClick={() => router.back()}
+          className="text-sm text-[#4a5068] cursor-pointer"
+        >
+          Go back
+        </button>
       </div>
-      <h2 className="text-lg font-bold text-[#f0f4ff]">Sign in to create</h2>
-      <p className="max-w-xs text-sm text-[#4a5068]">
-        You need an account to publish signals on the map.
-      </p>
-      <button
-        onClick={() => router.push('/auth')}
-        className="rounded-xl bg-[#00d4ff] px-8 py-3 text-sm font-semibold text-[#0a0b0f]"
-      >
-        Sign In
-      </button>
-      <button
-        onClick={() => router.back()}
-        className="text-sm text-[#4a5068]"
-      >
-        Go back
-      </button>
-    </div>
+      <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
+    </>
   );
 }
 

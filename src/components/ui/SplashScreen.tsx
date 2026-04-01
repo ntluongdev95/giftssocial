@@ -16,7 +16,7 @@ export default function SplashScreen() {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 2.8;
+    camera.position.z = window.innerWidth < 768 ? 3.8 : 2.8;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -147,6 +147,7 @@ export default function SplashScreen() {
     // Resize
     const onResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
+      camera.position.z = window.innerWidth < 768 ? 3.8 : 2.8;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
