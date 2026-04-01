@@ -383,6 +383,31 @@ function createSignalMarkerElement(signal: Signal): HTMLDivElement {
   return el;
 }
 
+// ─── Image marker (business, event) ──────────────────────────────────────
+
+function createImageMarkerElement(iconSrc: string, borderColor: string, title: string, isLive = false): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'gao-marker' + (isLive ? ' state-live' : '');
+  el.style.cssText = `
+    width:40px;height:40px;border-radius:12px;
+    overflow:hidden;cursor:pointer;transition:transform 0.15s;
+    border:2px solid ${borderColor};
+    box-shadow:0 0 12px ${borderColor}50, 0 2px 8px rgba(0,0,0,0.4);
+    background:#0a0b0f;
+  `;
+
+  const img = document.createElement('img');
+  img.src = iconSrc;
+  img.alt = title;
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+  el.appendChild(img);
+
+  el.onmouseenter = () => { el.style.transform = 'scale(1.15)'; };
+  el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
+
+  return el;
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────
 
 export function useMapMarkers(
@@ -606,7 +631,7 @@ export function useMapMarkers(
         currentIds.add(bid);
         if (markersRef.current.has(bid)) continue;
 
-        const el = createMarkerElement('business', 'default', biz.trust_score >= 60);
+        const el = createImageMarkerElement('/icons/business.png', '#34d399', biz.name);
         el.addEventListener('click', () => setSelectedMarker(bid));
 
         const marker = new maplibregl.Marker({ element: el })
@@ -638,7 +663,7 @@ export function useMapMarkers(
         if (markersRef.current.has(eid)) continue;
 
         const isLive = evt.status === 'live';
-        const el = createMarkerElement('event', isLive ? 'live' : 'default', evt.verified);
+        const el = createImageMarkerElement('/icons/event.png', '#f87171', evt.title, isLive);
         el.addEventListener('click', () => setSelectedMarker(eid));
 
         const marker = new maplibregl.Marker({ element: el })

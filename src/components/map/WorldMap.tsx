@@ -108,10 +108,12 @@ export default function WorldMap({
       attributionControl: false,
     } as maplibregl.MapOptions);
 
-    map.addControl(
-      new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
-      'bottom-right'
-    );
+    if (window.innerWidth >= 1024) {
+      map.addControl(
+        new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
+        'bottom-right'
+      );
+    }
 
     map.on('load', () => {
       // Set globe projection after style is fully loaded

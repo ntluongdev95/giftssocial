@@ -36,7 +36,7 @@ export default function LayerFilterPanel() {
   };
 
   return (
-    <div className="flex gap-1.5 overflow-x-auto px-4 lg:px-6 py-1.5">
+    <div className="flex gap-1.5 overflow-x-auto px-4 lg:px-6 py-1.5 scrollbar-hide" style={{ paddingRight: '2rem' }}>
       {/* Entity layers */}
       {ENTITY_LAYERS.map(({ key, icon }) => {
         const config = ENTITY_MARKER_CONFIG[key];

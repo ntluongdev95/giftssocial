@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { Search, Layers, X, MapPin, Loader2, Store, User } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
 import { useDeveloperStore } from '@/stores/developerStore';
@@ -67,7 +68,7 @@ function WorldMapInner({
 
 export default function WorldPage() {
   const { lat, lng, granted, requestLocation } = useLocationStore();
-  const { timeFilter, setTimeFilter, viewMode, setViewMode, selectedMarkerId, markers, setSelectedMarker } =
+  const { timeFilter, setTimeFilter, viewMode, setViewMode, selectedMarkerId, markers, setSelectedMarker, activeLayers, toggleLayer } =
     useMapStore();
   const { developers } = useDeveloperStore();
   const [showLayers, setShowLayers] = useState(true);
@@ -273,6 +274,49 @@ export default function WorldPage() {
     // Map ready — could subscribe to WebSocket here
   }, []);
 
+  // Handle summary card click — enable layer + fly to nearest
+  const handleSummaryClick = useCallback((type: 'signals' | 'events' | 'offers' | 'businesses') => {
+    const layerMap: Record<string, string> = { signals: 'people', events: 'event', offers: 'offer', businesses: 'business' };
+    const layer = layerMap[type];
+
+    // Get items with location
+    let items: { lng: number; lat: number; id: string }[] = [];
+    if (type === 'signals') {
+      items = signals.map(s => ({ lng: s.location.coordinates[0], lat: s.location.coordinates[1], id: s.id }));
+    } else if (type === 'events') {
+      items = events.filter(e => e.location_lat && e.location_lng).map(e => ({ lng: e.location_lng, lat: e.location_lat, id: e.id }));
+    } else if (type === 'offers') {
+      items = signals.filter(s => s.type === 'offer').map(s => ({ lng: s.location.coordinates[0], lat: s.location.coordinates[1], id: s.id }));
+    } else if (type === 'businesses') {
+      items = businesses.filter(b => b.location_lat && b.location_lng).map(b => ({ lng: b.location_lng, lat: b.location_lat, id: b.id }));
+    }
+
+    if (items.length === 0) {
+      toast.info(`No ${type} nearby`);
+      return;
+    }
+
+    // Ensure layer is on
+    if (!activeLayers.has(layer)) toggleLayer(layer);
+
+    // Fly to nearest item
+    const userLat = lat ?? 32.7767;
+    const userLng = lng ?? -96.797;
+    const nearest = items.reduce((best, item) => {
+      const dist = Math.hypot(item.lat - userLat, item.lng - userLng);
+      return dist < best.dist ? { ...item, dist } : best;
+    }, { ...items[0], dist: Infinity });
+
+    window.dispatchEvent(new CustomEvent('gao-fly-to', {
+      detail: { lng: nearest.lng, lat: nearest.lat, zoom: 15 }
+    }));
+
+    // If only 1 item, auto-select it
+    if (items.length === 1) {
+      setTimeout(() => setSelectedMarker(nearest.id), 500);
+    }
+  }, [signals, events, businesses, lat, lng, activeLayers, toggleLayer, setSelectedMarker]);
+
   return (
     <div className="relative h-full w-full">
       <WorldMap onMapReady={handleMapReady}>
@@ -282,7 +326,7 @@ export default function WorldPage() {
         {/* ── Top Bar ─────────────────────────────────── */}
         <div className="absolute left-0 right-0 top-0 z-30">
           {/* Search + controls */}
-          <div className="flex items-center gap-2 px-4 pb-1 pt-[env(safe-area-inset-top,12px)] lg:pt-4 lg:px-6 max-w-4xl lg:mx-auto">
+          <div className="flex items-center gap-2 px-4 pb-1 pt-[calc(env(safe-area-inset-top,12px)+12px)] lg:pt-4 lg:px-6 max-w-4xl lg:mx-auto">
             {/* Search — mobile: icon only, expand on tap */}
             {/* Mobile search icon */}
             <button
@@ -467,7 +511,7 @@ export default function WorldPage() {
         </div>
 
         {/* ── Bottom Summary Grid ─────────────────────── */}
-        <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+40px)] lg:bottom-4 left-0 right-0 z-30 max-w-sm lg:max-w-md mx-auto">
+        <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+12px)] lg:bottom-4 left-0 right-0 z-30 max-w-sm lg:max-w-md mx-auto">
           <div
             className="mx-3 rounded-2xl px-3 py-3 lg:px-4 lg:py-4"
             style={{
@@ -478,18 +522,22 @@ export default function WorldPage() {
           >
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               {[
-                { label: 'Live Signals', sub: `${counts.signals} nearby`, count: counts.signals, color: '#3B82F6' },
-                { label: 'Events Tonight', sub: `${counts.events} upcoming`, count: counts.events, color: '#EF4444' },
-                { label: 'Active Deals', sub: `${counts.offers} offers`, count: counts.offers, color: '#EAB308' },
-                { label: 'Businesses', sub: `${counts.businesses} open`, count: counts.businesses, color: '#22C55E' },
-              ].map(({ label, sub, count, color }) => (
-                <div key={label} className="flex items-center gap-2.5">
+                { label: 'Live Signals', sub: `${counts.signals} nearby`, count: counts.signals, color: '#3B82F6', type: 'signals' as const },
+                { label: 'Events Tonight', sub: `${counts.events} upcoming`, count: counts.events, color: '#EF4444', type: 'events' as const },
+                { label: 'Active Deals', sub: `${counts.offers} offers`, count: counts.offers, color: '#EAB308', type: 'offers' as const },
+                { label: 'Businesses', sub: `${counts.businesses} open`, count: counts.businesses, color: '#22C55E', type: 'businesses' as const },
+              ].map(({ label, sub, count, color, type }) => (
+                <button
+                  key={label}
+                  onClick={() => handleSummaryClick(type)}
+                  className="flex items-center gap-2.5 cursor-pointer rounded-lg px-1 py-1 -mx-1 transition-colors active:bg-white/5"
+                >
                   <span className="text-xl font-light tabular-nums w-6 text-right" style={{ color }}>{count}</span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 text-left">
                     <p className="text-[11px] font-medium text-[#f0f4ff] truncate">{label}</p>
                     <p className="text-[9px] text-[#4a5068] truncate">{sub}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
