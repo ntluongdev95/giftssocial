@@ -26,7 +26,7 @@ const DAY_NAMES: Record<string, string> = {
   sun: 'Sunday',
 };
 
-function HoursAccordion({ hours }: { hours: Record<string, string[]> }) {
+function HoursAccordion({ hours }: { hours: Record<string, { open?: string; close?: string; closed?: boolean }> }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -44,12 +44,12 @@ function HoursAccordion({ hours }: { hours: Record<string, string[]> }) {
       {open && (
         <div className="space-y-1 px-4 pb-3">
           {DAY_LABELS.map((day) => {
-            const slots = hours[day];
+            const slot = hours[day];
             return (
               <div key={day} className="flex justify-between text-xs">
                 <span className="text-[#4a5068]">{DAY_NAMES[day]}</span>
                 <span className="text-[#f0f4ff]/80">
-                  {slots && slots.length > 0 ? slots.join(', ') : 'Closed'}
+                  {slot && !slot.closed ? `${slot.open || ''} – ${slot.close || ''}` : 'Closed'}
                 </span>
               </div>
             );
