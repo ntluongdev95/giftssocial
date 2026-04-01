@@ -54,9 +54,10 @@ const eventSchema = z.object({
   start_time: z.string(),
   end_time: z.string(),
   capacity: z.number().int().min(1).optional(),
-  visibility: z.enum(['public', 'private']).optional(),
+  visibility: z.enum(['public', 'circle', 'private']).optional(),
   host_type: z.enum(['user', 'business', 'circle']).optional(),
   host_id: z.string().optional(),
+  target_circle_id: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -76,11 +77,13 @@ export async function POST(req: NextRequest) {
     const d = parsed.data;
     const [lngVal, latVal] = d.location.coordinates;
 
+    const circleId = d.target_circle_id || (d.visibility === 'circle' && d.host_id ? d.host_id : null);
+
     const result = await pgPool.query(
-      `INSERT INTO events (host_user_id, host_type, host_id, title, description, category, location_lat, location_lng, location_name, city, start_time, end_time, capacity, visibility)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      `INSERT INTO events (host_user_id, host_type, host_id, title, description, category, location_lat, location_lng, location_name, city, start_time, end_time, capacity, visibility, circle_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING id, status, created_at`,
-      [userId, d.host_type || 'user', d.host_id || userId, d.title, d.description || '', d.category || 'general', latVal, lngVal, d.location_name || '', d.city || '', d.start_time, d.end_time, d.capacity || null, d.visibility || 'public']
+      [userId, d.host_type || 'user', d.host_id || userId, d.title, d.description || '', d.category || 'general', latVal, lngVal, d.location_name || '', d.city || '', d.start_time, d.end_time, d.capacity || null, d.visibility || 'public', circleId]
     );
 
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });

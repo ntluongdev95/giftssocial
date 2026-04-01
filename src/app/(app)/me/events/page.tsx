@@ -10,6 +10,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 
 const EVENT_CATEGORIES = [
   'Meetup', 'Workshop', 'Conference', 'Food & Drink', 'Fitness',
@@ -27,7 +28,8 @@ interface EventForm {
   end_date: string;
   end_time: string;
   capacity: string;
-  visibility: 'public' | 'private';
+  visibility: 'public' | 'circle' | 'private';
+  target_circle_id: string;
 }
 
 export default function EventCreatePage() {
@@ -50,13 +52,17 @@ export default function EventCreatePage() {
     end_time: '21:00',
     capacity: '50',
     visibility: 'public',
+    target_circle_id: '',
   });
+
+  const { myCircles } = useJoinedCircles();
 
   const updateField = <K extends keyof EventForm>(key: K, value: EventForm[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
 
   const handleSave = async () => {
     if (!form.title) { toast.error('Event title is required'); return; }
+    if (form.visibility === 'circle' && !form.target_circle_id) { toast.error('Please select a circle'); return; }
     setSaving(true);
     try {
       const startTime = `${form.start_date}T${form.start_time}:00`;
@@ -72,6 +78,7 @@ export default function EventCreatePage() {
           start_time: startTime, end_time: endTime,
           capacity: form.capacity ? Number(form.capacity) : undefined,
           visibility: form.visibility,
+          ...(form.visibility === 'circle' && form.target_circle_id ? { target_circle_id: form.target_circle_id } : {}),
         }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'Failed to save'); }
@@ -137,8 +144,8 @@ export default function EventCreatePage() {
 
           <Section title="Visibility">
             <div className="flex gap-2">
-              {(['public', 'private'] as const).map(v => (
-                <button key={v} onClick={() => updateField('visibility', v)} className="flex-1 rounded-xl py-2.5 text-xs font-semibold transition-all cursor-pointer capitalize" style={{
+              {(['public', 'circle', 'private'] as const).map(v => (
+                <button key={v} onClick={() => { updateField('visibility', v); if (v !== 'circle') updateField('target_circle_id', ''); }} className="flex-1 rounded-xl py-2.5 text-xs font-semibold transition-all cursor-pointer capitalize" style={{
                   background: form.visibility === v ? 'rgba(0,212,255,0.15)' : 'rgba(17,19,24,0.8)',
                   border: `1px solid ${form.visibility === v ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.07)'}`,
                   color: form.visibility === v ? '#00d4ff' : '#a3adc3',
@@ -147,6 +154,25 @@ export default function EventCreatePage() {
                 </button>
               ))}
             </div>
+            {form.visibility === 'circle' && (
+              <div className="mt-2">
+                {myCircles.length === 0 ? (
+                  <p className="text-xs text-[#4a5068]">You haven't joined any circles yet.</p>
+                ) : (
+                  <select
+                    value={form.target_circle_id}
+                    onChange={(e) => updateField('target_circle_id', e.target.value)}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm text-[#f0f4ff] outline-none cursor-pointer"
+                    style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  >
+                    <option value="">Select a circle…</option>
+                    {myCircles.map((c) => (
+                      <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </Section>
         </div>
 

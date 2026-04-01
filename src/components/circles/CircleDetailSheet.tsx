@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Calendar, Tag, Users, MapPin, Star, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Circle, Event, Signal } from '@/types';
@@ -145,8 +145,25 @@ type DetailTab = 'events' | 'offers';
 export default function CircleDetailSheet({ circle, onClose }: Props) {
   const [tab, setTab] = useState<DetailTab>('events');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const events = CIRCLE_EVENTS[circle.category] ?? [];
-  const offers = CIRCLE_OFFERS[circle.category] ?? [];
+  const [apiEvents, setApiEvents] = useState<Event[] | null>(null);
+  const [apiOffers, setApiOffers] = useState<Signal[] | null>(null);
+  const seedEvents = CIRCLE_EVENTS[circle.category] ?? [];
+  const seedOffers = CIRCLE_OFFERS[circle.category] ?? [];
+
+  // Fetch real events & offers for this circle, fallback to seed
+  useEffect(() => {
+    fetch(`/api/v1/circles/${circle.id}/events`)
+      .then(r => r.json())
+      .then(d => { if (d.data?.length > 0) setApiEvents(d.data); })
+      .catch(() => {});
+    fetch(`/api/v1/circles/${circle.id}/offers`)
+      .then(r => r.json())
+      .then(d => { if (d.data?.length > 0) setApiOffers(d.data); })
+      .catch(() => {});
+  }, [circle.id]);
+
+  const events = apiEvents ?? seedEvents;
+  const offers = apiOffers ?? seedOffers;
 
   return (
     <>

@@ -469,6 +469,10 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS qr_checkin_enabled BOOLEAN DEFAULT F
 
 CREATE INDEX IF NOT EXISTS idx_evt_circle ON events(circle_id) WHERE circle_id IS NOT NULL;
 
+-- Update visibility constraint to include 'circle'
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_visibility_check;
+ALTER TABLE events ADD CONSTRAINT events_visibility_check CHECK (visibility IN ('public', 'circle', 'private'));
+
 -- ============================================================================
 -- HELPER FUNCTIONS
 -- ============================================================================

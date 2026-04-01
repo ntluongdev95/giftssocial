@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { z } from 'zod';
+import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 
 const schema = z
   .object({
@@ -12,6 +13,7 @@ const schema = z
     end_time: z.string().min(1, 'End time is required'),
     host_type: z.enum(['user', 'circle']),
     capacity: z.number().min(1).optional(),
+    visibility: z.enum(['public', 'circle', 'private']),
   })
   .refine(
     (d) => !d.end_time || !d.start_time || new Date(d.end_time) > new Date(d.start_time),
@@ -32,10 +34,18 @@ export default function EventForm({ onSubmit }: EventFormProps) {
   const [endTime, setEndTime] = useState('');
   const [hostType, setHostType] = useState<'user' | 'circle'>('user');
   const [capacity, setCapacity] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'circle' | 'private'>('public');
+  const [targetCircleId, setTargetCircleId] = useState('');
+  const { myCircles } = useJoinedCircles();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
+    if (visibility === 'circle' && !targetCircleId) {
+      setErrors({ circle: 'Please select a circle' });
+      return;
+    }
+
     const result = schema.safeParse({
       title,
       description,
@@ -44,6 +54,7 @@ export default function EventForm({ onSubmit }: EventFormProps) {
       end_time: endTime,
       host_type: hostType,
       capacity: capacity ? Number(capacity) : undefined,
+      visibility,
     });
 
     if (!result.success) {
@@ -57,7 +68,7 @@ export default function EventForm({ onSubmit }: EventFormProps) {
 
     setErrors({});
     setSubmitting(true);
-    await onSubmit(result.data);
+    await onSubmit({ ...result.data, target_circle_id: visibility === 'circle' ? targetCircleId : undefined } as EventData & { target_circle_id?: string });
     setSubmitting(false);
   };
 
@@ -172,6 +183,45 @@ export default function EventForm({ onSubmit }: EventFormProps) {
           min={1}
           className={inputCls}
         />
+      </div>
+
+      {/* Visibility */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-[#4a5068]">Visibility</label>
+        <div className="flex overflow-hidden rounded-lg border border-[#181c24]/30">
+          {(['public', 'circle', 'private'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => { setVisibility(v); if (v !== 'circle') setTargetCircleId(''); }}
+              className={`flex-1 py-2 text-xs font-medium capitalize transition-colors cursor-pointer ${
+                visibility === v
+                  ? 'bg-[#00d4ff]/15 text-[#00d4ff]'
+                  : 'bg-[#0a0b0f] text-[#4a5068]'
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        {visibility === 'circle' && (
+          <div className="mt-2">
+            {myCircles.length === 0 ? (
+              <p className="text-xs text-[#4a5068]">You haven't joined any circles yet.</p>
+            ) : (
+              <select
+                value={targetCircleId}
+                onChange={(e) => { setTargetCircleId(e.target.value); setErrors({}); }}
+                className={`${inputCls} cursor-pointer`}
+              >
+                <option value="">Select a circle…</option>
+                {myCircles.map((c) => (
+                  <option key={c.id as string} value={c.id as string}>{c.name as string}</option>
+                ))}
+              </select>
+            )}
+            {errors.circle && <p className="mt-1 text-[10px] text-[#EF4444]">{errors.circle}</p>}
+          </div>
+        )}
       </div>
 
       {/* Submit */}
