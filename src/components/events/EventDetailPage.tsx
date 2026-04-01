@@ -27,10 +27,22 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
   const alreadyJoined = joinedEventIds.has(e.id);
   const [joining, setJoining] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
+  const [extraJoined, setExtraJoined] = useState(0);
   const joined = alreadyJoined || justJoined;
 
+  const [imgIdx, setImgIdx] = useState(0);
+  const images = e.images && e.images.length > 0 ? e.images : EVENT_PLACEHOLDERS;
+  const startDate = new Date(e.start_time);
+  const endDate = new Date(e.end_time);
+  const isLive = e.status === 'live';
+  const currentJoinedCount = e.joined_count + extraJoined;
+  const spotsLeft = e.capacity ? e.capacity - currentJoinedCount : null;
+  const capacityPct = e.capacity ? Math.min((currentJoinedCount / e.capacity) * 100, 100) : 0;
+  const isFull = e.capacity ? currentJoinedCount >= e.capacity : false;
+  const isPast = new Date(e.end_time) < new Date();
+
   const handleJoin = async () => {
-    if (joined) return;
+    if (joined || isFull || isPast) return;
     setJoining(true);
     try {
       const res = await fetch('/api/v1/bookings', {
@@ -38,19 +50,11 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({ event_id: e.id, service_name: e.title, slot_time: e.start_time }),
       });
-      if (res.ok) { setJustJoined(true); refresh(); toast.success('Joined! Check My Bookings for details.'); }
+      if (res.ok) { setJustJoined(true); setExtraJoined(1); refresh(); toast.success('Joined! Check My Bookings for details.'); }
       else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
     } catch { toast.error('Network error'); }
     finally { setJoining(false); }
   };
-
-  const [imgIdx, setImgIdx] = useState(0);
-  const images = e.images && e.images.length > 0 ? e.images : EVENT_PLACEHOLDERS;
-  const startDate = new Date(e.start_time);
-  const endDate = new Date(e.end_time);
-  const isLive = e.status === 'live';
-  const spotsLeft = e.capacity ? e.capacity - e.joined_count : null;
-  const capacityPct = e.capacity ? Math.min((e.joined_count / e.capacity) * 100, 100) : 0;
 
   let dateLabel = '';
   try {
@@ -141,8 +145,14 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
       {/* Attendance bar */}
       <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.04)' }}>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-white">{e.joined_count} attending</span>
-          {spotsLeft !== null && <span className="text-xs text-[#00d4ff]">{spotsLeft} spots left</span>}
+          <span className="text-sm font-medium text-white">{currentJoinedCount} attending</span>
+          {isPast ? (
+            <span className="text-xs text-[#4a5068]">Event ended</span>
+          ) : isFull ? (
+            <span className="text-xs text-[#f87171]">Full</span>
+          ) : spotsLeft !== null ? (
+            <span className="text-xs text-[#00d4ff]">{spotsLeft} spots left</span>
+          ) : null}
         </div>
         {e.capacity && (
           <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -154,7 +164,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
       {/* Quick actions */}
       <div className="flex gap-2">
         <ActionBtn icon={<MessageCircle size={15} />} label="Chat" />
-        <ActionBtn icon={joined ? <CheckCircle size={15} /> : <Bookmark size={15} />} label={joined ? 'Joined' : joining ? 'Joining...' : 'Join Event'} primary onClick={handleJoin} disabled={joining || joined} />
+        <ActionBtn icon={joined ? <CheckCircle size={15} /> : <Bookmark size={15} />} label={isPast ? 'Closed' : isFull ? 'Full' : joined ? 'Joined' : joining ? 'Joining...' : 'Join Event'} primary onClick={handleJoin} disabled={joining || joined || isFull || isPast} />
         <ActionBtn icon={<Heart size={15} />} label="Save" />
       </div>
 
@@ -223,8 +233,13 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
         </div>
         <p className="text-[10px] text-[#4a5068] mt-0.5">{timeLabel}</p>
       </div>
-      <button onClick={handleJoin} disabled={joining || joined} className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer disabled:opacity-50" style={{ background: joined ? '#34d399' : '#00d4ff', color: '#0a0b0f' }}>
-        {joined ? '✓ Joined' : joining ? '...' : 'Join'}
+      <button
+        onClick={handleJoin}
+        disabled={joining || joined || isFull || isPast}
+        className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer disabled:opacity-50"
+        style={{ background: isPast ? '#4a5068' : isFull ? '#EF4444' : joined ? '#34d399' : '#00d4ff', color: isPast || isFull ? '#ffffff' : '#0a0b0f' }}
+      >
+        {isPast ? 'Closed' : isFull ? 'Full' : joined ? '✓ Joined' : joining ? '...' : 'Join'}
       </button>
     </div>
   );

@@ -777,8 +777,16 @@ export function useMapMarkers(
   const globeReady = useRef(false);
 
   // Build globe layers (called after delay or on layer toggle)
-  const buildGlobe = useCallback(() => {
+  const buildGlobe = useCallback(async () => {
     if (!map || useMapStore.getState().viewMode !== '3d') return;
+
+    // Ensure icons are loaded (style swap removes them)
+    for (const [key, cfg] of Object.entries(GLOBE_ICONS)) {
+      const name = `globe-icon-${key}`;
+      if (!map.hasImage(name)) {
+        try { const img = await map.loadImage(cfg.src); map.addImage(name, img.data); } catch {}
+      }
+    }
 
     // Build features
     const features: GeoJSON.Feature[] = [];
@@ -827,21 +835,6 @@ export function useMapMarkers(
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, activeLayers, signals, businesses, events, profiles]);
-
-  // Load icons once on map init
-  useEffect(() => {
-    if (!map) return;
-    const load = async () => {
-      for (const [key, cfg] of Object.entries(GLOBE_ICONS)) {
-        const name = `globe-icon-${key}`;
-        if (!map.hasImage(name)) {
-          try { const img = await map.loadImage(cfg.src); map.addImage(name, img.data); } catch {}
-        }
-      }
-    };
-    if (map.isStyleLoaded()) load(); else map.once('load', load);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map]);
 
   // Toggle between 2D DOM markers and 3D globe layers
   useEffect(() => {

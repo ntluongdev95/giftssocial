@@ -282,23 +282,40 @@ export default function WorldMap({
     }
   }, [lat, lng, viewMode]);
 
-  // User location marker (red dot)
-  const userMarkerRef = useRef<maplibregl.Marker | null>(null);
+  // User location dot (GeoJSON layer — no pointer event blocking)
   useEffect(() => {
-    if (!mapRef.current || lat === null || lng === null) return;
+    const map = mapRef.current;
+    if (!map || lat === null || lng === null) return;
 
-    // Remove old
-    if (userMarkerRef.current) userMarkerRef.current.remove();
+    const geo: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {} }],
+    };
 
-    const el = document.createElement('div');
-    el.style.cssText = `
-      width:14px;height:14px;border-radius:50%;
-      background:#EF4444;border:2px solid white;
-    `;
+    const addUserDot = () => {
+      try {
+        if (map.getSource('gao-user-loc')) {
+          (map.getSource('gao-user-loc') as maplibregl.GeoJSONSource).setData(geo);
+        } else {
+          map.addSource('gao-user-loc', { type: 'geojson', data: geo });
+          // Outer pulse ring (not interactive)
+          map.addLayer({
+            id: 'gao-user-pulse', type: 'circle', source: 'gao-user-loc',
+            paint: { 'circle-radius': 16, 'circle-color': '#3B82F6', 'circle-opacity': 0.12 },
+            metadata: { interactive: false },
+          });
+          // Inner dot (not interactive)
+          map.addLayer({
+            id: 'gao-user-dot', type: 'circle', source: 'gao-user-loc',
+            paint: { 'circle-radius': 4, 'circle-color': '#3B82F6', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
+            metadata: { interactive: false },
+          });
+        }
+      } catch {}
+    };
 
-    userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([lng, lat])
-      .addTo(mapRef.current);
+    if (map.isStyleLoaded()) addUserDot();
+    else map.once('style.load', addUserDot);
   }, [lat, lng]);
 
   // Search pin marker

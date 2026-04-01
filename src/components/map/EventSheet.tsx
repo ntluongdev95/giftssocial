@@ -19,10 +19,17 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
   const alreadyJoined = joinedEventIds.has(e.id);
   const [joining, setJoining] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
+  const [extraJoined, setExtraJoined] = useState(0);
   const joined = alreadyJoined || justJoined;
+  const currentJoinedCount = e.joined_count + extraJoined;
+  const spotsLeft = e.capacity ? e.capacity - currentJoinedCount : null;
+  const capacityPct = e.capacity ? Math.min((currentJoinedCount / e.capacity) * 100, 100) : 0;
+  const isLive = e.status === 'live';
+  const isFull = e.capacity ? currentJoinedCount >= e.capacity : false;
+  const isPast = new Date(e.end_time) < new Date();
 
   const handleJoin = async () => {
-    if (joined) return;
+    if (joined || isFull || isPast) return;
     setJoining(true);
     try {
       const res = await fetch('/api/v1/bookings', {
@@ -30,14 +37,11 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({ event_id: e.id, service_name: e.title, slot_time: e.start_time }),
       });
-      if (res.ok) { setJustJoined(true); refresh(); toast.success('Joined! Check My Bookings for details.'); }
+      if (res.ok) { setJustJoined(true); setExtraJoined(1); refresh(); toast.success('Joined! Check My Bookings for details.'); }
       else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
     } catch { toast.error('Network error'); }
     finally { setJoining(false); }
   };
-  const spotsLeft = e.capacity ? e.capacity - e.joined_count : null;
-  const capacityPct = e.capacity ? Math.min((e.joined_count / e.capacity) * 100, 100) : 0;
-  const isLive = e.status === 'live';
 
   let dateLabel = '';
   try {
@@ -112,7 +116,7 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
             <div className="grid grid-cols-3 gap-2">
               <StatCard icon={<Calendar size={14} />} label="Date" value={dateLabel ? format(new Date(e.start_time), 'MMM d') : '—'} color="#f87171" />
               <StatCard icon={<Clock size={14} />} label="Time" value={dateLabel ? `${format(new Date(e.start_time), 'h:mm a')}` : '—'} color="#fbbf24" />
-              <StatCard icon={<Users size={14} />} label="Joined" value={`${e.joined_count}${e.capacity ? `/${e.capacity}` : ''}`} color="#00d4ff" />
+              <StatCard icon={<Users size={14} />} label="Joined" value={`${currentJoinedCount}${e.capacity ? `/${e.capacity}` : ''}`} color="#00d4ff" />
             </div>
 
             {/* Date & Time detail */}
@@ -140,8 +144,14 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
               <Sect title="Attendance">
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-[#a3adc3]">{e.joined_count} joined</span>
-                    <span className="text-[#4a5068]">{spotsLeft} spots left</span>
+                    <span className="text-[#a3adc3]">{currentJoinedCount} joined</span>
+                    {isPast ? (
+                      <span className="text-[#4a5068]">Event ended</span>
+                    ) : isFull ? (
+                      <span className="text-[#f87171]">Full</span>
+                    ) : (
+                      <span className="text-[#00d4ff]">{spotsLeft} spots left</span>
+                    )}
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'rgba(17,19,24,0.8)' }}>
                     <div className="h-full rounded-full transition-all" style={{ width: `${capacityPct}%`, background: capacityPct > 80 ? '#f87171' : '#00d4ff' }} />
@@ -153,8 +163,8 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
 
           {/* Footer */}
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button onClick={handleJoin} disabled={joining || joined} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50" style={{ background: joined ? '#34d399' : '#00d4ff', color: '#0a0b0f' }}>
-              {joined ? <><CheckCircle size={15} /> Joined</> : joining ? 'Joining...' : <><Users size={15} /> Join</>}
+            <button onClick={handleJoin} disabled={joining || joined || isFull || isPast} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50" style={{ background: isPast ? '#4a5068' : isFull ? '#EF4444' : joined ? '#34d399' : '#00d4ff', color: isPast || isFull ? '#ffffff' : '#0a0b0f' }}>
+              {isPast ? 'Closed' : isFull ? 'Full' : joined ? <><CheckCircle size={15} /> Joined</> : joining ? 'Joining...' : <><Users size={15} /> Join</>}
             </button>
             <button className="rounded-xl py-3 px-5 text-sm font-semibold transition-colors cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
               Save

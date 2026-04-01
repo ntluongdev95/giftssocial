@@ -224,6 +224,24 @@ export default function WorldPage() {
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
+  // Nearby query (always 5km) for summary counts
+  const nearbyParams = useMemo(() => {
+    const p = new URLSearchParams();
+    p.set('lat', String(lat ?? 32.7767));
+    p.set('lng', String(lng ?? -96.797));
+    p.set('radius', '5000');
+    return p.toString();
+  }, [lat, lng]);
+
+  const { data: nearbyBiz } = useSWR<{ data: Business[] }>(
+    viewMode === '3d' ? `/api/v1/businesses?${nearbyParams}` : null,
+    fetcher, { refreshInterval: 60000, fallbackData: { data: [] } }
+  );
+  const { data: nearbyEvt } = useSWR<{ data: Event[] }>(
+    viewMode === '3d' ? `/api/v1/events?${nearbyParams}` : null,
+    fetcher, { refreshInterval: 60000, fallbackData: { data: [] } }
+  );
+
   const signals = signalsData?.data ?? [];
   const agents = agentsData?.data ?? [];
   const profiles = profilesData?.data ?? [];
@@ -231,14 +249,19 @@ export default function WorldPage() {
   const events = eventsData?.data ?? [];
   const circles = circlesData?.data ?? [];
 
-  // Count for summary
-  const counts = useMemo(() => ({
-    signals: signals.length,
-    events: events.length,
-    offers: signals.filter(s => s.type === 'offer').length,
-    businesses: businesses.length,
-    profiles: profiles.length,
-  }), [signals, events, businesses, profiles]);
+  // Count for summary — always nearby (5km)
+  const counts = useMemo(() => {
+    const nearbySigs = viewMode === '3d' ? [] : signals;
+    const nearbyBizList = viewMode === '3d' ? (nearbyBiz?.data ?? []) : businesses;
+    const nearbyEvtList = viewMode === '3d' ? (nearbyEvt?.data ?? []) : events;
+    return {
+      signals: nearbySigs.length,
+      events: nearbyEvtList.length,
+      offers: nearbySigs.filter(s => s.type === 'offer').length,
+      businesses: nearbyBizList.length,
+      profiles: profiles.length,
+    };
+  }, [viewMode, signals, businesses, events, profiles, nearbyBiz, nearbyEvt]);
 
   // Selected marker detail
   const selectedMarker = selectedMarkerId
@@ -523,7 +546,7 @@ export default function WorldPage() {
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               {[
                 { label: 'Live Signals', sub: `${counts.signals} nearby`, count: counts.signals, color: '#3B82F6', type: 'signals' as const },
-                { label: 'Events Tonight', sub: `${counts.events} upcoming`, count: counts.events, color: '#EF4444', type: 'events' as const },
+                { label: 'Events Nearby', sub: `${counts.events} upcoming`, count: counts.events, color: '#EF4444', type: 'events' as const },
                 { label: 'Active Deals', sub: `${counts.offers} offers`, count: counts.offers, color: '#EAB308', type: 'offers' as const },
                 { label: 'Businesses', sub: `${counts.businesses} open`, count: counts.businesses, color: '#22C55E', type: 'businesses' as const },
               ].map(({ label, sub, count, color, type }) => (
