@@ -116,14 +116,27 @@ export async function POST(req: NextRequest) {
       const notifyIds = new Set(participants.rows.map((r: Record<string, unknown>) => r.sender_id as string));
       if (ownerId && ownerId !== userId) notifyIds.add(ownerId);
 
-      console.log('[Messages] notify:', { userId, ownerId, participants: participants.rows.length, notifyIds: [...notifyIds] });
-
       for (const targetId of notifyIds) {
-        await pgPool.query(
-          `INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id)
-           VALUES ($1, 'new_message', $2, $3, $4, $5)`,
-          [targetId, `New message from ${user?.display_name || 'Someone'}`, body.trim().slice(0, 100), room_type || 'event', room_id]
-        ).catch((err) => console.error('[Messages] notify error:', err));
+        // Check for existing unread notification for this room
+        const existing = await pgPool.query(
+          `SELECT id FROM notifications WHERE user_id = $1 AND type = 'new_message' AND ref_id = $2 AND read = false LIMIT 1`,
+          [targetId, room_id]
+        );
+
+        if (existing.rows.length > 0) {
+          // Update existing — show latest message
+          await pgPool.query(
+            `UPDATE notifications SET title = $1, body = $2, created_at = NOW() WHERE id = $3`,
+            [`New message from ${user?.display_name || 'Someone'}`, body.trim().slice(0, 100), existing.rows[0].id]
+          ).catch(() => {});
+        } else {
+          // Create new
+          await pgPool.query(
+            `INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id)
+             VALUES ($1, 'new_message', $2, $3, $4, $5)`,
+            [targetId, `New message from ${user?.display_name || 'Someone'}`, body.trim().slice(0, 100), room_type || 'event', room_id]
+          ).catch(() => {});
+        }
       }
     } catch (err) { console.error('[Messages] notify block error:', err); }
 

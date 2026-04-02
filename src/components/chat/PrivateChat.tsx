@@ -36,7 +36,6 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
 
   const messages = data?.data ?? [];
   const myUserId = useAuthStore(s => s.user?.id);
-  const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,9 +47,13 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
   const userName = useAuthStore(s => s.user?.fullName || s.user?.firstName || 'You');
 
   const handleSend = async () => {
-    if (!text.trim() || sending) return;
-    const msgText = text.trim();
-    setText('');
+    const input = inputRef.current;
+    const val = input?.value || '';
+    if (!val.trim() || sending) return;
+    const msgText = val.trim();
+
+    // Clear input immediately + after next frame
+    if (input) { input.value = ''; requestAnimationFrame(() => { input.value = ''; }); }
 
     // Optimistic update — show message instantly
     const optimistic: Message = {
@@ -157,8 +160,7 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
           <div className="shrink-0 px-4 py-3 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <input
               ref={inputRef}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
+              defaultValue=""
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
               placeholder="Type a message..."
               className="flex-1 rounded-xl px-4 py-2.5 text-sm text-white outline-none placeholder:text-[#4a5068]"
@@ -167,7 +169,7 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
             />
             <button
               onClick={handleSend}
-              disabled={!text.trim() || sending}
+              disabled={sending}
               className="rounded-xl px-4 py-2.5 cursor-pointer disabled:opacity-30"
               style={{ background: '#00d4ff', color: '#0a0b0f' }}
             >
