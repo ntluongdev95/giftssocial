@@ -69,6 +69,10 @@ const businessSchema = z.object({
   website: z.string().url().max(500).optional(),
   hours: z.record(z.string(), z.unknown()).optional(),
   booking_enabled: z.boolean().optional(),
+  cover_image: z.string().optional(),
+  images: z.array(z.string()).optional(),
+  services: z.array(z.object({ name: z.string(), price: z.number(), duration: z.number() })).optional(),
+  social_links: z.array(z.object({ platform: z.string(), url: z.string() })).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -89,15 +93,17 @@ export async function POST(req: NextRequest) {
     const [lngVal, latVal] = d.location.coordinates;
 
     const result = await pgPool.query(
-      `INSERT INTO businesses (owner_user_id, name, category, description, location_lat, location_lng, address, city, phone, website, hours, booking_enabled, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+      `INSERT INTO businesses (owner_user_id, name, category, description, location_lat, location_lng, address, city, phone, website, hours, booking_enabled, cover_image, images, services, social_links, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
        ON CONFLICT (owner_user_id) DO UPDATE SET
          name=EXCLUDED.name, category=EXCLUDED.category, description=EXCLUDED.description,
          location_lat=EXCLUDED.location_lat, location_lng=EXCLUDED.location_lng,
          address=EXCLUDED.address, city=EXCLUDED.city, phone=EXCLUDED.phone, website=EXCLUDED.website,
-         hours=EXCLUDED.hours, booking_enabled=EXCLUDED.booking_enabled, status='active', updated_at=NOW()
+         hours=EXCLUDED.hours, booking_enabled=EXCLUDED.booking_enabled,
+         cover_image=EXCLUDED.cover_image, images=EXCLUDED.images, services=EXCLUDED.services, social_links=EXCLUDED.social_links,
+         status='active', updated_at=NOW()
        RETURNING id, status, updated_at`,
-      [userId, d.name, d.category, d.description || '', latVal, lngVal, d.address || '', d.city || '', d.phone || null, d.website || null, JSON.stringify(d.hours || {}), d.booking_enabled ?? false]
+      [userId, d.name, d.category, d.description || '', latVal, lngVal, d.address || '', d.city || '', d.phone || null, d.website || null, JSON.stringify(d.hours || {}), d.booking_enabled ?? false, d.cover_image || null, d.images || [], JSON.stringify(d.services || []), JSON.stringify(d.social_links || [])]
     );
 
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });

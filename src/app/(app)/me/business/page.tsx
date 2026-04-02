@@ -37,6 +37,8 @@ interface BusinessForm {
   booking_enabled: boolean;
   services: Service[];
   social_links: { platform: string; url: string }[];
+  cover_image: string;
+  images: string[];
 }
 
 const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'Twitter/X', 'YouTube', 'LinkedIn', 'Zalo', 'Other'];
@@ -68,7 +70,52 @@ export default function BusinessEditPage() {
     booking_enabled: true,
     services: [],
     social_links: [],
+    cover_image: '',
+    images: [],
   });
+
+  const [uploading, setUploading] = useState(false);
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/api/v1/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        body: fd,
+      });
+      if (res.ok) { const d = await res.json(); return d.data?.url; }
+    } catch {}
+    return null;
+  };
+
+  const handleAddImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploading(true);
+    const urls: string[] = [];
+    for (const file of files.slice(0, 8 - form.images.length)) {
+      const url = await uploadImage(file);
+      if (url) urls.push(url);
+    }
+    updateField('images', [...form.images, ...urls]);
+    setUploading(false);
+    e.target.value = '';
+  };
+
+  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const url = await uploadImage(file);
+    if (url) updateField('cover_image', url);
+    setUploading(false);
+  };
+
+  const removeImage = (index: number) => {
+    updateField('images', form.images.filter((_, i) => i !== index));
+  };
 
   useEffect(() => {
     fetch('/api/v1/businesses/me', {
@@ -92,6 +139,8 @@ export default function BusinessEditPage() {
             booking_enabled: b.booking_enabled ?? false,
             services: b.services || [],
             social_links: b.social_links || [],
+            cover_image: b.cover_image || '',
+            images: b.images || [],
           });
         }
       })
@@ -122,6 +171,7 @@ export default function BusinessEditPage() {
           address: form.address, city: form.city, phone: form.phone || undefined,
           website: form.website || undefined, hours: form.hours, booking_enabled: form.booking_enabled,
           services: form.services.filter(s => s.name), social_links: form.social_links.filter(l => l.url),
+          cover_image: form.cover_image || undefined, images: form.images,
         }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'Failed to save'); }
@@ -272,6 +322,43 @@ export default function BusinessEditPage() {
             </div>
           </Section>
 
+          {/* Cover Image */}
+          <Section title="Cover Image">
+            <div className="relative rounded-xl overflow-hidden h-40" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+              {form.cover_image ? (
+                <>
+                  <img src={form.cover_image} alt="" className="h-full w-full object-cover" />
+                  <button onClick={() => updateField('cover_image', '')} className="absolute top-2 right-2 h-7 w-7 rounded-full flex items-center justify-center cursor-pointer text-white text-xs font-bold" style={{ background: 'rgba(239,68,68,0.8)' }}>✕</button>
+                </>
+              ) : (
+                <label className="flex flex-col items-center justify-center h-full cursor-pointer gap-2">
+                  <Plus size={24} className="text-[#4a5068]" />
+                  <span className="text-xs text-[#4a5068]">{uploading ? 'Uploading...' : 'Upload cover image'}</span>
+                  <input type="file" accept="image/*" onChange={handleCoverChange} className="hidden" disabled={uploading} />
+                </label>
+              )}
+            </div>
+          </Section>
+
+          {/* Business Photos */}
+          <Section title={`Photos (${form.images.length}/8)`}>
+            <div className="grid grid-cols-4 gap-2.5">
+              {form.images.map((url, i) => (
+                <div key={i} className="relative aspect-square rounded-xl overflow-hidden">
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <button onClick={() => removeImage(i)} className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full flex items-center justify-center cursor-pointer text-white text-[10px] font-bold" style={{ background: 'rgba(239,68,68,0.85)' }}>✕</button>
+                </div>
+              ))}
+              {form.images.length < 8 && (
+                <label className="aspect-square rounded-xl flex flex-col items-center justify-center cursor-pointer gap-1" style={{ background: 'rgba(10,11,15,0.8)', border: '1px dashed rgba(255,255,255,0.08)' }}>
+                  <Plus size={18} className="text-[#4a5068]" />
+                  <span className="text-[9px] text-[#4a5068]">{uploading ? '...' : 'Add'}</span>
+                  <input type="file" accept="image/*" multiple onChange={handleAddImages} className="hidden" disabled={uploading} />
+                </label>
+              )}
+            </div>
+          </Section>
+
           {/* Settings */}
           <Section title="Settings">
             <Toggle label="Enable Booking" desc="Allow customers to book appointments" value={form.booking_enabled} onChange={v => updateField('booking_enabled', v)} />
@@ -286,8 +373,14 @@ export default function BusinessEditPage() {
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[#4a5068]">Live Preview</span>
             </div>
             <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(34,197,94,0.08)', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}>
+              {/* Cover preview */}
+              {form.cover_image && (
+                <div className="h-28 overflow-hidden">
+                  <img src={form.cover_image} alt="" className="h-full w-full object-cover" />
+                </div>
+              )}
               <div className="relative px-5 pt-5 pb-4">
-                <div className="absolute inset-x-0 top-0 h-20 opacity-40" style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(0,212,255,0.1))' }} />
+                {!form.cover_image && <div className="absolute inset-x-0 top-0 h-20 opacity-40" style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(0,212,255,0.1))' }} />}
                 <div className="relative flex items-start gap-4">
                   <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-xl font-bold shrink-0" style={{ background: 'linear-gradient(135deg, #22C55E, #00d4ff)', color: 'white' }}>
                     <Store size={24} />
@@ -331,6 +424,21 @@ export default function BusinessEditPage() {
                       ))}
                       {form.services.filter(s => s.name).length > 3 && <p className="text-[9px] text-[#4a5068]">+{form.services.filter(s => s.name).length - 3} more</p>}
                     </div>
+                  </div>
+                )}
+
+                {/* Photos preview */}
+                {form.images.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1.5">Photos</h4>
+                    <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">
+                      {form.images.slice(0, 3).map((url, i) => (
+                        <div key={i} className="aspect-square overflow-hidden">
+                          <img src={url} alt="" className="h-full w-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                    {form.images.length > 3 && <p className="text-[9px] text-[#4a5068] mt-1">+{form.images.length - 3} more</p>}
                   </div>
                 )}
 

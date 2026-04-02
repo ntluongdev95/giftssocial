@@ -27,7 +27,12 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
   const [showBooking, setShowBooking] = useState(false);
   const [bookingService, setBookingService] = useState<string | undefined>();
   const [imgIdx, setImgIdx] = useState(0);
-  const images = b.images && b.images.length > 0 ? b.images : PLACEHOLDER_IMAGES;
+  const coverImage = (b as Record<string, unknown>).cover_image as string;
+  const allImages = [
+    ...(coverImage ? [coverImage] : []),
+    ...(b.images && b.images.length > 0 ? b.images : []),
+  ];
+  const images = allImages.length > 0 ? allImages : PLACEHOLDER_IMAGES;
   const services = (b.services || []) as { name: string; price: number; duration: number }[];
   const todayIdx = new Date().getDay();
   const todayKey = DAYS[todayIdx];
@@ -123,6 +128,22 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
       </div>
 
       {b.description && <p className="text-sm text-[#a3adc3] leading-relaxed">{b.description}</p>}
+
+      {/* Photos gallery */}
+      {allImages.length > 1 && (
+        <div>
+          <Sect title="Photos">
+            <div className="grid grid-cols-3 gap-1.5 rounded-xl overflow-hidden">
+              {allImages.slice(0, 6).map((url, i) => (
+                <div key={i} className="aspect-square overflow-hidden cursor-pointer" onClick={() => setImgIdx(i)}>
+                  <img src={url} alt="" className="h-full w-full object-cover transition-transform hover:scale-105" />
+                </div>
+              ))}
+            </div>
+            {allImages.length > 6 && <p className="text-[10px] text-[#4a5068] mt-1">+{allImages.length - 6} more</p>}
+          </Sect>
+        </div>
+      )}
 
       {/* Services */}
       {services.length > 0 && (
