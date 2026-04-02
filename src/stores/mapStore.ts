@@ -7,6 +7,8 @@ interface MapStore {
   timeFilter: 'live' | '24h' | '7d';
   selectedMarkerId: string | null;
   viewMode: '2d' | '3d';
+  mapCenter: { lat: number; lng: number } | null;
+  mapZoom: number;
   addMarker: (data: MarkerData) => void;
   removeMarker: (id: string) => void;
   setMarkerState: (id: string, state: MarkerState) => void;
@@ -14,6 +16,7 @@ interface MapStore {
   setSelectedMarker: (id: string | null) => void;
   setTimeFilter: (filter: 'live' | '24h' | '7d') => void;
   setViewMode: (mode: '2d' | '3d') => void;
+  setMapCenter: (lat: number, lng: number, zoom: number) => void;
   clearMarkers: () => void;
 }
 
@@ -25,6 +28,8 @@ export const useMapStore = create<MapStore>((set) => ({
   timeFilter: 'live',
   selectedMarkerId: null,
   viewMode: '2d',
+  mapCenter: null,
+  mapZoom: 13,
 
   addMarker: (data) =>
     set((state) => {
@@ -68,6 +73,9 @@ export const useMapStore = create<MapStore>((set) => ({
 
   setViewMode: (mode) =>
     set({ viewMode: mode }),
+
+  setMapCenter: (lat, lng, zoom) =>
+    set({ mapCenter: { lat, lng }, mapZoom: zoom }),
 
   clearMarkers: () =>
     set({ markers: new Map(), selectedMarkerId: null }),

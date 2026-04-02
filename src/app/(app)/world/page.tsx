@@ -60,7 +60,28 @@ function WorldMapInner({
   circles: Circle[];
 }) {
   const { map } = useMap();
+  const setMapCenter = useMapStore((s) => s.setMapCenter);
   useMapMarkers(map, signals, agents, profiles, businesses, events, circles);
+
+  // Track map center on pan/zoom (debounced)
+  useEffect(() => {
+    if (!map) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const onMoveEnd = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const c = map.getCenter();
+        const z = map.getZoom();
+        setMapCenter(c.lat, c.lng, z);
+      }, 400);
+    };
+    map.on('moveend', onMoveEnd);
+    // Set initial center
+    const c = map.getCenter();
+    setMapCenter(c.lat, c.lng, map.getZoom());
+    return () => { clearTimeout(timer); map.off('moveend', onMoveEnd); };
+  }, [map, setMapCenter]);
+
   return null;
 }
 
@@ -68,7 +89,7 @@ function WorldMapInner({
 
 export default function WorldPage() {
   const { lat, lng, granted, requestLocation } = useLocationStore();
-  const { timeFilter, setTimeFilter, viewMode, setViewMode, selectedMarkerId, markers, setSelectedMarker, activeLayers, toggleLayer } =
+  const { timeFilter, setTimeFilter, viewMode, setViewMode, selectedMarkerId, markers, setSelectedMarker, activeLayers, toggleLayer, mapCenter, mapZoom } =
     useMapStore();
   const { developers } = useDeveloperStore();
   const [showLayers, setShowLayers] = useState(true);
@@ -167,20 +188,32 @@ export default function WorldPage() {
     });
   }, [granted, requestLocation]);
 
-  // Build query params
+  // Compute radius (meters) from zoom level — wider view = bigger radius
+  const radiusFromZoom = useCallback((zoom: number) => {
+    // ~40000km at zoom 0, halves per zoom level
+    return Math.round(Math.min(40_000_000 / Math.pow(2, zoom), 200_000));
+  }, []);
+
+  // Build query params — in 2D, follow map center; in 3D, fetch all
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
-    if (lat !== null && lng !== null) {
-      params.set('lat', String(lat));
-      params.set('lng', String(lng));
+    if (viewMode === '2d' && mapCenter) {
+      params.set('lat', String(mapCenter.lat));
+      params.set('lng', String(mapCenter.lng));
+      params.set('radius', String(radiusFromZoom(mapZoom)));
+    } else if (viewMode === '3d') {
+      params.set('lat', '0');
+      params.set('lng', '0');
+      params.set('radius', '0');
     } else {
-      params.set('lat', '32.7767');
-      params.set('lng', '-96.7970');
+      // Fallback before map is ready
+      params.set('lat', String(lat ?? 32.7767));
+      params.set('lng', String(lng ?? -96.797));
+      params.set('radius', '50000');
     }
-    params.set('radius', viewMode === '3d' ? '0' : '50000');
     params.set('time', timeFilter);
     return params.toString();
-  }, [lat, lng, timeFilter, viewMode]);
+  }, [viewMode, mapCenter, mapZoom, lat, lng, timeFilter, radiusFromZoom]);
 
   // Fetch signals
   const { data: signalsData } = useSWR<{ data: Signal[] }>(
@@ -224,24 +257,6 @@ export default function WorldPage() {
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
-  // Nearby query (always 5km) for summary counts
-  const nearbyParams = useMemo(() => {
-    const p = new URLSearchParams();
-    p.set('lat', String(lat ?? 32.7767));
-    p.set('lng', String(lng ?? -96.797));
-    p.set('radius', '50000');
-    return p.toString();
-  }, [lat, lng]);
-
-  const { data: nearbyBiz } = useSWR<{ data: Business[] }>(
-    viewMode === '3d' ? `/api/v1/businesses?${nearbyParams}` : null,
-    fetcher, { refreshInterval: 60000, fallbackData: { data: [] } }
-  );
-  const { data: nearbyEvt } = useSWR<{ data: Event[] }>(
-    viewMode === '3d' ? `/api/v1/events?${nearbyParams}` : null,
-    fetcher, { refreshInterval: 60000, fallbackData: { data: [] } }
-  );
-
   const signals = signalsData?.data ?? [];
   const agents = agentsData?.data ?? [];
   const profiles = profilesData?.data ?? [];
@@ -249,19 +264,14 @@ export default function WorldPage() {
   const events = eventsData?.data ?? [];
   const circles = circlesData?.data ?? [];
 
-  // Count for summary — always nearby (5km)
-  const counts = useMemo(() => {
-    const nearbySigs = viewMode === '3d' ? [] : signals;
-    const nearbyBizList = viewMode === '3d' ? (nearbyBiz?.data ?? []) : businesses;
-    const nearbyEvtList = viewMode === '3d' ? (nearbyEvt?.data ?? []) : events;
-    return {
-      signals: nearbySigs.length,
-      events: nearbyEvtList.length,
-      offers: nearbySigs.filter(s => s.type === 'offer').length,
-      businesses: nearbyBizList.length,
-      profiles: profiles.length,
-    };
-  }, [viewMode, signals, businesses, events, profiles, nearbyBiz, nearbyEvt]);
+  // Count for summary — uses the same fetched data (already scoped to viewport)
+  const counts = useMemo(() => ({
+    signals: signals.length,
+    events: events.length,
+    offers: signals.filter(s => s.type === 'offer').length,
+    businesses: businesses.length,
+    profiles: profiles.length,
+  }), [signals, businesses, events, profiles]);
 
   // Selected marker detail
   const selectedMarker = selectedMarkerId
@@ -338,11 +348,11 @@ export default function WorldPage() {
     // Ensure layer is on
     if (!activeLayers.has(layer)) toggleLayer(layer);
 
-    // Fly to nearest item
-    const userLat = lat ?? 32.7767;
-    const userLng = lng ?? -96.797;
+    // Fly to nearest item relative to current map center
+    const centerLat = mapCenter?.lat ?? lat ?? 32.7767;
+    const centerLng = mapCenter?.lng ?? lng ?? -96.797;
     const nearest = items.reduce((best, item) => {
-      const dist = Math.hypot(item.lat - userLat, item.lng - userLng);
+      const dist = Math.hypot(item.lat - centerLat, item.lng - centerLng);
       return dist < best.dist ? { ...item, dist } : best;
     }, { ...items[0], dist: Infinity });
 
@@ -354,7 +364,7 @@ export default function WorldPage() {
     if (items.length === 1) {
       setTimeout(() => setSelectedMarker(nearest.id), 500);
     }
-  }, [signals, events, businesses, lat, lng, activeLayers, toggleLayer, setSelectedMarker]);
+  }, [signals, events, businesses, mapCenter, lat, lng, activeLayers, toggleLayer, setSelectedMarker]);
 
   return (
     <div className="relative h-full w-full">
