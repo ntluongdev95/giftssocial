@@ -400,9 +400,9 @@ CREATE TABLE IF NOT EXISTS notifications (
                       'booking_confirmed', 'booking_reminder', 'booking_canceled',
                       'event_reminder', 'event_starting',
                       'signal_response', 'signal_matched',
-                      'circle_invite', 'circle_activity',
+                      'circle_invite', 'circle_activity', 'circle_join_request',
                       'proof_earned', 'trust_upgraded',
-                      'review_received', 'follow_new',
+                      'review_received', 'follow_new', 'new_message',
                       'system'
                     )),
   title             VARCHAR(200) NOT NULL,
