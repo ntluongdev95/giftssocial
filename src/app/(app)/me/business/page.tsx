@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { mutate } from 'swr';
 import { useLocationStore } from '@/stores/locationStore';
@@ -113,6 +113,36 @@ export default function BusinessEditPage() {
     setUploading(false);
   };
 
+  // Address geocoding
+  const [addressResults, setAddressResults] = useState<{ name: string; lat: number; lng: number }[]>([]);
+  const [addressCoords, setAddressCoords] = useState<[number, number] | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchAddress = useCallback((q: string) => {
+    updateField('address', q);
+    setAddressCoords(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (q.length < 3) { setAddressResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+        const data = await res.json();
+        setAddressResults(data.map((r: Record<string, unknown>) => ({
+          name: r.display_name as string,
+          lat: parseFloat(r.lat as string),
+          lng: parseFloat(r.lon as string),
+        })));
+      } catch { setAddressResults([]); }
+    }, 400);
+  }, []);
+
+  const selectAddress = (r: { name: string; lat: number; lng: number }) => {
+    updateField('address', r.name.split(',').slice(0, 2).join(',').trim());
+    updateField('city', r.name.split(',').slice(2, 4).join(',').trim());
+    setAddressCoords([r.lng, r.lat]);
+    setAddressResults([]);
+  };
+
   const removeImage = (index: number) => {
     updateField('images', form.images.filter((_, i) => i !== index));
   };
@@ -142,6 +172,9 @@ export default function BusinessEditPage() {
             cover_image: b.cover_image || '',
             images: b.images || [],
           });
+          if (b.location_lng && b.location_lat) {
+            setAddressCoords([b.location_lng, b.location_lat]);
+          }
         }
       })
       .catch(() => {})
@@ -167,7 +200,7 @@ export default function BusinessEditPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({
           name: form.name, category: form.category.toLowerCase(), description: form.description,
-          location: { type: 'Point', coordinates: [lng || -96.797, lat || 32.7767] },
+          location: { type: 'Point', coordinates: addressCoords || [lng || -96.797, lat || 32.7767] },
           address: form.address, city: form.city, phone: form.phone || undefined,
           website: form.website || undefined, hours: form.hours, booking_enabled: form.booking_enabled,
           services: form.services.filter(s => s.name), social_links: form.social_links.filter(l => l.url),
@@ -178,7 +211,10 @@ export default function BusinessEditPage() {
       mutate((key: string) => typeof key === 'string' && key.includes('/api/v1/businesses'));
       clearMarkers();
       toast.success('Business saved! Showing on map...');
-      router.push('/world');
+      const coords = addressCoords || [lng || -96.797, lat || 32.7767];
+      useMapStore.getState().setViewMode('2d');
+      router.push(`/world?flyTo=${coords[0]},${coords[1]},16`);
+
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally { setSaving(false); }
@@ -216,8 +252,18 @@ export default function BusinessEditPage() {
               <div className="lg:col-span-2">
                 <Textarea label="Description" placeholder="What does your business offer?" value={form.description} onChange={v => updateField('description', v)} maxLength={1000} />
               </div>
-              <div className="lg:col-span-2">
-                <Input label="Address" placeholder="123 Main St, Suite 100" value={form.address} onChange={v => updateField('address', v)} icon={<MapPin size={14} />} />
+              <div className="lg:col-span-2 relative">
+                <Input label="Address" placeholder="Search address..." value={form.address} onChange={v => searchAddress(v)} icon={addressCoords ? <CheckCircle size={14} className="text-[#34d399]" /> : <MapPin size={14} />} />
+                {addressResults.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+                    {addressResults.map((r, i) => (
+                      <button key={i} onMouseDown={() => selectAddress(r)} className="w-full text-left px-3 py-2.5 text-xs text-[#a3adc3] hover:bg-[rgba(0,212,255,0.06)] cursor-pointer truncate" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                        📍 {r.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {addressCoords && <p className="text-[10px] text-[#4a5068] mt-1">{addressCoords[1].toFixed(4)}, {addressCoords[0].toFixed(4)}</p>}
               </div>
               <Input label="Phone" placeholder="+1 (555) 000-0000" value={form.phone} onChange={v => updateField('phone', v)} icon={<Phone size={14} />} />
               <Input label="Website" placeholder="https://yourbusiness.com" value={form.website} onChange={v => updateField('website', v)} icon={<Globe size={14} />} />

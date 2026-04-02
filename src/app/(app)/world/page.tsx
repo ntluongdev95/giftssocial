@@ -295,7 +295,22 @@ export default function WorldPage() {
   if (selectedSignal) console.log('[World] selectedSignal keys:', Object.keys(selectedSignal), 'author_id:', (selectedSignal as unknown as Record<string, unknown>).author_id);
 
   const handleMapReady = useCallback(() => {
-    // Map ready — could subscribe to WebSocket here
+    // Check for flyTo URL param (from business save, event create, etc.)
+    const params = new URLSearchParams(window.location.search);
+    const flyTo = params.get('flyTo');
+    if (flyTo) {
+      const [fLng, fLat, fZoom] = flyTo.split(',').map(Number);
+      if (fLng && fLat) {
+        // Enable business layer and fly
+        if (!activeLayers.has('business')) toggleLayer('business');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('gao-fly-to', { detail: { lng: fLng, lat: fLat, zoom: fZoom || 16 } }));
+        }, 500);
+        // Clean URL
+        window.history.replaceState(null, '', '/world');
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle summary card click — enable layer + fly to nearest

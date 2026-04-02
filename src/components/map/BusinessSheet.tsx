@@ -56,9 +56,16 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
           className="w-full max-w-[520px] max-h-[90dvh] rounded-t-3xl lg:rounded-3xl flex flex-col overflow-hidden"
           style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(34,197,94,0.1)', boxShadow: '0 -8px 60px rgba(0,0,0,0.6), 0 0 30px rgba(34,197,94,0.06)' }}
         >
+          {/* ── Cover Image ──────────────────────────────── */}
+          {(biz as Record<string, unknown>).cover_image && (
+            <div className="h-36 overflow-hidden shrink-0">
+              <img src={(biz as Record<string, unknown>).cover_image as string} alt="" className="h-full w-full object-cover" />
+            </div>
+          )}
+
           {/* ── Header ────────────────────────────────────── */}
           <div className="relative px-5 pt-5 pb-4">
-            <div className="absolute inset-x-0 top-0 h-28 opacity-40 rounded-t-3xl" style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.25), rgba(0,212,255,0.1))' }} />
+            {!(biz as Record<string, unknown>).cover_image && <div className="absolute inset-x-0 top-0 h-28 opacity-40 rounded-t-3xl" style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.25), rgba(0,212,255,0.1))' }} />}
             <button onClick={onClose} className="absolute top-4 right-4 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-[#4a5068] hover:text-white transition-colors cursor-pointer" style={{ background: 'rgba(255,255,255,0.05)' }}>
               <X size={16} />
             </button>
@@ -118,6 +125,17 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
           {/* ── Content (scrollable) ──────────────────────── */}
           <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-5">
             {biz.description && <p className="text-sm text-[#a3adc3] leading-relaxed">{biz.description}</p>}
+
+            {/* Photos */}
+            {biz.images && biz.images.length > 0 && (
+              <div className="grid grid-cols-3 gap-1.5 rounded-xl overflow-hidden">
+                {biz.images.slice(0, 3).map((url, i) => (
+                  <div key={i} className="aspect-square overflow-hidden">
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Quick stats */}
             <div className="grid grid-cols-3 gap-2">
