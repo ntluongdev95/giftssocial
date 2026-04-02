@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import { useJoinedEvents } from '@/hooks/useJoinedEvents';
 import { useSavedItems } from '@/hooks/useSavedItems';
 import EventChat from '@/components/events/EventChat';
+import SignInGateSheet from '@/components/auth/SignInGateSheet';
+import { useAuthStore } from '@/stores/auth-store';
 import type { Event } from '@/types';
 
 interface Props {
@@ -18,11 +20,14 @@ interface Props {
 
 export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
   const [showChat, setShowChat] = useState(false);
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const isLoggedIn = useAuthStore(s => s.isAuthed);
   const { joinedEventIds, refresh } = useJoinedEvents();
   const { isSaved, toggleSave } = useSavedItems();
   const eventSaved = isSaved('event', e.id);
 
   const handleSave = async () => {
+    if (!isLoggedIn) { setShowAuthGate(true); return; }
     const result = await toggleSave('event', e.id);
     toast.success(result ? 'Event saved!' : 'Event unsaved');
   };
@@ -39,6 +44,7 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
   const isPast = new Date(e.end_time) < new Date();
 
   const handleJoin = async () => {
+    if (!isLoggedIn) { setShowAuthGate(true); return; }
     if (joined || isFull || isPast) return;
     setJoining(true);
     try {
@@ -174,7 +180,7 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
 
           {/* Footer */}
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button onClick={() => setShowChat(true)} className="rounded-xl py-3 px-4 text-sm font-semibold cursor-pointer flex items-center gap-1.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
+            <button onClick={() => { if (!isLoggedIn) { setShowAuthGate(true); return; } setShowChat(true); }} className="rounded-xl py-3 px-4 text-sm font-semibold cursor-pointer flex items-center gap-1.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
               <MessageCircle size={14} />
             </button>
             <button onClick={handleJoin} disabled={joining || joined || isFull || isPast} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50" style={{ background: isPast ? '#4a5068' : isFull ? '#EF4444' : joined ? '#34d399' : '#00d4ff', color: isPast || isFull ? '#ffffff' : '#0a0b0f' }}>
@@ -191,6 +197,7 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
     {showChat && (
       <EventChat eventId={e.id} eventTitle={e.title} onClose={() => setShowChat(false)} />
     )}
+    <SignInGateSheet action="join" isOpen={showAuthGate} onClose={() => setShowAuthGate(false)} />
     </>
   );
 }

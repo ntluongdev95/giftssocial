@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { X, Send, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface Message {
   id: string;
@@ -33,6 +34,7 @@ export default function EventChat({ eventId, eventTitle, onClose }: Props) {
   );
 
   const messages = data?.data ?? [];
+  const myUserId = useAuthStore(s => s.user?.id);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -99,19 +101,33 @@ export default function EventChat({ eventId, eventTitle, onClose }: Props) {
               </div>
             )}
             {messages.map((msg) => {
-              const isMe = msg.sender_id === (typeof window !== 'undefined' ? localStorage.getItem('user_id') : '');
+              const isMe = msg.sender_id === myUserId;
+              const isAuto = msg.sender_id === 'system_auto';
+
+              // Auto-reply: centered, styled differently
+              if (isAuto) {
+                return (
+                  <div key={msg.id} className="flex justify-center">
+                    <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-xs text-center" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.15)', color: '#fbbf24' }}>
+                      <p className="text-[9px] font-semibold mb-1">{msg.sender_name}</p>
+                      {msg.body}
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div key={msg.id} className={`flex gap-2.5 ${isMe ? 'flex-row-reverse' : ''}`}>
                   <div className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0" style={{ background: isMe ? '#00d4ff' : '#3B82F6', color: 'white' }}>
                     {(msg.sender_name || '?').charAt(0).toUpperCase()}
                   </div>
-                  <div className={`max-w-[70%] ${isMe ? 'items-end' : 'items-start'}`}>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[10px] font-semibold text-[#a3adc3]">{msg.sender_name}</span>
+                  <div className={`max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                    <div className={`flex items-center gap-2 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                      <span className="text-[10px] font-semibold" style={{ color: isMe ? '#00d4ff' : '#a3adc3' }}>{isMe ? 'You' : msg.sender_name}</span>
                       <span className="text-[9px] text-[#4a5068]">{formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}</span>
                     </div>
                     <div
-                      className="rounded-2xl px-3.5 py-2 text-sm"
+                      className={`rounded-2xl px-3.5 py-2 text-sm ${isMe ? 'rounded-tr-md' : 'rounded-tl-md'}`}
                       style={{
                         background: isMe ? 'rgba(0,212,255,0.15)' : 'rgba(17,19,24,0.8)',
                         border: `1px solid ${isMe ? 'rgba(0,212,255,0.2)' : 'rgba(255,255,255,0.04)'}`,

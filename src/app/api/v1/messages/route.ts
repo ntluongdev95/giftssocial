@@ -56,6 +56,45 @@ export async function POST(req: NextRequest) {
       [room_type || 'event', room_id, userId, user?.display_name || 'User', user?.avatar_url || null, body.trim()]
     );
 
+    // Auto-reply if host hasn't responded yet
+    if (room_type === 'event' || !room_type) {
+      try {
+        // Get event host
+        const evtRes = await pgPool.query('SELECT host_user_id, title FROM events WHERE id = $1', [room_id]);
+        const evt = evtRes.rows[0];
+
+        if (evt && evt.host_user_id !== userId) {
+          // Check if host has ever replied in this room
+          const hostReply = await pgPool.query(
+            'SELECT id FROM messages WHERE room_type = $1 AND room_id = $2 AND sender_id = $3 LIMIT 1',
+            [room_type || 'event', room_id, evt.host_user_id]
+          );
+
+          if (hostReply.rows.length === 0) {
+            // Check if auto-reply already sent
+            const autoReply = await pgPool.query(
+              "SELECT id FROM messages WHERE room_type = $1 AND room_id = $2 AND sender_id = 'system_auto' LIMIT 1",
+              [room_type || 'event', room_id]
+            );
+
+            if (autoReply.rows.length === 0) {
+              // Send auto-reply after short delay
+              await pgPool.query(
+                `INSERT INTO messages (room_type, room_id, sender_id, sender_name, sender_avatar, body)
+                 VALUES ($1, $2, 'system_auto', $3, NULL, $4)`,
+                [
+                  room_type || 'event',
+                  room_id,
+                  evt.title || 'Event Host',
+                  `Thank you for your interest! 🎉 The event host will respond shortly. In the meantime, feel free to check the event details and invite your friends!`,
+                ]
+              );
+            }
+          }
+        }
+      } catch {}
+    }
+
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (err) {
     console.error('[Messages POST]', err);
