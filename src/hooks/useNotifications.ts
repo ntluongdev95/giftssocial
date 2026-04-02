@@ -24,5 +24,14 @@ export function useNotifications() {
     mutate();
   };
 
-  return { notifications, unreadCount, markAllRead, refresh: mutate };
+  const markRead = async (id: string) => {
+    await fetch('/api/v1/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      body: JSON.stringify({ id }),
+    });
+    mutate();
+  };
+
+  return { notifications, unreadCount, markAllRead, markRead, refresh: mutate };
 }

@@ -14,6 +14,7 @@ const TABS = [
   { href: '/nearby', label: 'Nearby', Icon: MapPin },
   { href: '/circles', label: 'Circles', Icon: Users },
   { href: '/actions', label: 'Actions', Icon: Zap },
+  { href: '/notifications', label: 'Noti', Icon: Bell },
 ] as const;
 
 export default function BottomNav() {
@@ -49,7 +50,14 @@ export default function BottomNav() {
                     boxShadow: active ? '0 0 6px rgba(0,212,255,0.6)' : 'none',
                   }}
                 />
-                <Icon size={24} strokeWidth={active ? 2.5 : 1.5} />
+                <div className={`relative ${href === '/notifications' && unreadCount > 0 ? 'animate-[bellShake_0.5s_ease-in-out_infinite_2s]' : ''}`}>
+                  <Icon size={24} strokeWidth={active ? 2.5 : 1.5} />
+                  {href === '/notifications' && unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-2.5 h-4 min-w-4 rounded-full flex items-center justify-center text-[8px] font-bold px-0.5" style={{ background: '#EF4444', color: 'white' }}>
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] font-medium">{label}</span>
               </motion.div>
             </Link>

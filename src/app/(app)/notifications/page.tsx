@@ -1,9 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Bell, CheckCircle, Calendar, Shield, Star, Users, Wallet, Loader2 } from 'lucide-react';
+import { ArrowLeft, Bell, CheckCircle, Calendar, Shield, Star, Users, Wallet, Loader2, MessageCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useState } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
+import PrivateChat from '@/components/chat/PrivateChat';
+import EventChat from '@/components/events/EventChat';
 
 const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   booking_confirmed: { icon: <Calendar size={16} />, color: '#00d4ff' },
@@ -19,12 +22,14 @@ const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   trust_upgraded: { icon: <Star size={16} />, color: '#fbbf24' },
   review_received: { icon: <Star size={16} />, color: '#fbbf24' },
   follow_new: { icon: <Users size={16} />, color: '#00d4ff' },
+  new_message: { icon: <MessageCircle size={16} />, color: '#3B82F6' },
   system: { icon: <Bell size={16} />, color: '#4a5068' },
 };
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const { notifications, unreadCount, markAllRead } = useNotifications();
+  const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
+  const [openChat, setOpenChat] = useState<{ type: string; id: string; title: string } | null>(null);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -48,7 +53,17 @@ export default function NotificationsPage() {
               const cfg = ICON_MAP[n.type as string] || ICON_MAP.system;
               const isUnread = !n.read;
               return (
-                <div key={n.id as string} className="flex items-start gap-3 rounded-xl px-4 py-3" style={{ background: isUnread ? 'rgba(0,212,255,0.03)' : 'transparent', borderLeft: isUnread ? '2px solid #00d4ff' : '2px solid transparent' }}>
+                <div
+                  key={n.id as string}
+                  className="flex items-start gap-3 rounded-xl px-4 py-3 cursor-pointer transition-colors hover:bg-white/[0.02]"
+                  style={{ background: isUnread ? 'rgba(0,212,255,0.03)' : 'transparent', borderLeft: isUnread ? '2px solid #00d4ff' : '2px solid transparent' }}
+                  onClick={() => {
+                    if (isUnread) markRead(n.id as string);
+                    if (n.type === 'new_message' && n.ref_id) {
+                      setOpenChat({ type: n.ref_type as string, id: n.ref_id as string, title: n.title as string });
+                    }
+                  }}
+                >
                   <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${cfg.color}12`, color: cfg.color }}>
                     {cfg.icon}
                   </div>
@@ -66,6 +81,13 @@ export default function NotificationsPage() {
           </div>
         )}
       </div>
+
+      {openChat && openChat.type === 'event' && (
+        <EventChat eventId={openChat.id} eventTitle={openChat.title} onClose={() => setOpenChat(null)} />
+      )}
+      {openChat && openChat.type === 'dm' && (
+        <PrivateChat roomId={openChat.id} title={openChat.title} onClose={() => setOpenChat(null)} />
+      )}
     </div>
   );
 }

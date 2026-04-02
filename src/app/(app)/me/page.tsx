@@ -32,6 +32,7 @@ export default function MePage() {
   const { data: bookingsData } = useSWR(isAuthed ? '/api/v1/bookings/me' : null, fetcher, swrOpts);
   const { data: followsData } = useSWR(isAuthed ? '/api/v1/follows?type=following' : null, fetcher, swrOpts);
   const { data: circlesData } = useSWR(isAuthed ? '/api/v1/circles/me' : null, fetcher, swrOpts);
+  const { data: notifsData } = useSWR(isAuthed ? '/api/v1/notifications?unread=true' : null, fetcher, { ...swrOpts, refreshInterval: 10000 });
   const signalsCount = signalsData?.data?.length || 0;
   const savedCount = savedData?.data?.length || 0;
   const bookingsCount = bookingsData?.data?.length || 0;
@@ -39,6 +40,7 @@ export default function MePage() {
   const upcomingEvents = (bookingsData?.data || []).filter((b: Record<string, unknown>) => b.event_id && (b.status === 'pending' || b.status === 'confirmed') && b.slot_time && new Date(b.slot_time as string) > new Date()).length;
   const followingCount = followsData?.data?.length || 0;
   const circlesCount = circlesData?.data?.length || 0;
+  const unreadNotifs = (notifsData?.data || []).filter((n: Record<string, unknown>) => !n.read).length;
 
   return (
     <div className="h-full overflow-y-auto relative">
@@ -127,7 +129,7 @@ export default function MePage() {
 
       {/* ══ DESKTOP ═══════════════════════════════════════ */}
       <div className="hidden lg:block relative max-w-5xl mx-auto px-8 pt-6 pb-24">
-        <div className="flex gap-8">
+        <div className="flex gap-8 mt-2">
 
           {/* Left: Profile card */}
           <div className="w-[320px] shrink-0 space-y-4">

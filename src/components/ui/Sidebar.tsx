@@ -4,9 +4,10 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut } from 'lucide-react';
+import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut, Bell } from 'lucide-react';
 import { DomainBadge } from '@/components/gao/DomainBadge';
 import { useAuthStore } from '@/stores/auth-store';
+import { useNotifications } from '@/hooks/useNotifications';
 import AuthPopup from '@/components/ui/AuthPopup';
 import { logoutApi } from '@/app/api/calls/apiAuth';
 import { clearLoginSessionStorage, deleteAccessTokenFromLocal, deleteRefreshTokenFromLocal } from '@/lib/clients/storage.helper';
@@ -22,6 +23,7 @@ export default function Sidebar() {
   const pathname = usePathname();
    const logoutStorage = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
+  const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
   
   const handleLogout = async () => {
@@ -79,8 +81,27 @@ export default function Sidebar() {
           })}
 
           {/* Profile or Login */}
-          {user  ? (
+          {user ? (
             <>
+            <Link
+              href="/notifications"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150"
+              style={{
+                color: pathname === '/notifications' ? '#00d4ff' : '#a3adc3',
+                background: pathname === '/notifications' ? 'rgba(0,212,255,0.08)' : 'transparent',
+                borderLeft: pathname === '/notifications' ? '3px solid #00d4ff' : '3px solid transparent',
+              }}
+            >
+              <div className={`relative shrink-0 ${unreadCount > 0 ? 'animate-[bellShake_0.5s_ease-in-out_infinite_2s]' : ''}`}>
+                <Bell size={18} strokeWidth={pathname === '/notifications' ? 2.2 : 1.5} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-2 h-4 min-w-4 rounded-full flex items-center justify-center text-[8px] font-bold px-0.5" style={{ background: '#EF4444', color: 'white' }}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </div>
+              Notifications
+            </Link>
             <Link
               href="/me"
               className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150"

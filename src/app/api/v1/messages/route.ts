@@ -95,6 +95,38 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
+    // Create notification for other participants in the room
+    try {
+      // Find all unique senders in this room (except current user)
+      const participants = await pgPool.query(
+        `SELECT DISTINCT sender_id FROM messages WHERE room_type = $1 AND room_id = $2 AND sender_id != $3 AND sender_id != 'system_auto'`,
+        [room_type || 'event', room_id, userId]
+      );
+
+      // Also notify signal/event owner if they're not the sender
+      let ownerId: string | null = null;
+      if (room_type === 'dm' || !room_type) {
+        const sigRes = await pgPool.query('SELECT author_id FROM signals WHERE id = $1', [room_id]);
+        ownerId = sigRes.rows[0]?.author_id || null;
+      } else if (room_type === 'event') {
+        const evtRes2 = await pgPool.query('SELECT host_user_id FROM events WHERE id = $1', [room_id]);
+        ownerId = evtRes2.rows[0]?.host_user_id || null;
+      }
+
+      const notifyIds = new Set(participants.rows.map((r: Record<string, unknown>) => r.sender_id as string));
+      if (ownerId && ownerId !== userId) notifyIds.add(ownerId);
+
+      console.log('[Messages] notify:', { userId, ownerId, participants: participants.rows.length, notifyIds: [...notifyIds] });
+
+      for (const targetId of notifyIds) {
+        await pgPool.query(
+          `INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id)
+           VALUES ($1, 'new_message', $2, $3, $4, $5)`,
+          [targetId, `New message from ${user?.display_name || 'Someone'}`, body.trim().slice(0, 100), room_type || 'event', room_id]
+        ).catch((err) => console.error('[Messages] notify error:', err));
+      }
+    } catch (err) { console.error('[Messages] notify block error:', err); }
+
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (err) {
     console.error('[Messages POST]', err);

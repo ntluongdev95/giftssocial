@@ -45,16 +45,32 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
+  const userName = useAuthStore(s => s.user?.fullName || s.user?.firstName || 'You');
+
   const handleSend = async () => {
     if (!text.trim() || sending) return;
+    const msgText = text.trim();
+    setText('');
+
+    // Optimistic update — show message instantly
+    const optimistic: Message = {
+      id: `temp_${Date.now()}`,
+      sender_id: myUserId || '',
+      sender_name: userName,
+      body: msgText,
+      created_at: new Date().toISOString(),
+    };
+    mutate((prev: { data: Message[] } | undefined) => ({
+      data: [...(prev?.data || []), optimistic],
+    }), { revalidate: false });
+
     setSending(true);
     try {
       await fetch('/api/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
-        body: JSON.stringify({ room_type: 'dm', room_id: roomId, body: text.trim() }),
+        body: JSON.stringify({ room_type: 'dm', room_id: roomId, body: msgText }),
       });
-      setText('');
       mutate();
       inputRef.current?.focus();
     } catch {}
@@ -143,7 +159,7 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
               ref={inputRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
               placeholder="Type a message..."
               className="flex-1 rounded-xl px-4 py-2.5 text-sm text-white outline-none placeholder:text-[#4a5068]"
               style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
