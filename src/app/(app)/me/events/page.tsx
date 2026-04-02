@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { mutate } from 'swr';
 import { useLocationStore } from '@/stores/locationStore';
@@ -41,21 +41,51 @@ export default function EventCreatePage() {
   const today = new Date().toISOString().split('T')[0];
 
   const [form, setForm] = useState<EventForm>({
-    title: 'AI Builders DFW — Monthly Meetup #12',
-    description: 'Join 50+ developers, founders, and AI enthusiasts for demos, lightning talks, and networking. This month: building production AI agents with Claude API, live-coding session, and pizza! Bring your laptop for the hands-on workshop.',
-    category: 'tech',
-    location_name: 'Gao Coffee & Workspace, Deep Ellum',
-    city: 'Dallas, TX',
-    start_date: '2026-04-15',
-    start_time: '18:30',
-    end_date: '2026-04-15',
-    end_time: '21:00',
-    capacity: '50',
+    title: '',
+    description: '',
+    category: '',
+    location_name: '',
+    city: '',
+    start_date: today,
+    start_time: '',
+    end_date: today,
+    end_time: '',
+    capacity: '',
     visibility: 'public',
     target_circle_id: '',
   });
 
   const { myCircles } = useJoinedCircles();
+  const [locationCoords, setLocationCoords] = useState<[number, number] | null>(null);
+  const [locationResults, setLocationResults] = useState<{ name: string; lat: number; lng: number }[]>([]);
+  const [locationSearching, setLocationSearching] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchLocation = useCallback((q: string) => {
+    setForm(f => ({ ...f, location_name: q }));
+    setLocationCoords(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (q.length < 3) { setLocationResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setLocationSearching(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+        const data = await res.json();
+        setLocationResults(data.map((r: Record<string, unknown>) => ({
+          name: r.display_name as string,
+          lat: parseFloat(r.lat as string),
+          lng: parseFloat(r.lon as string),
+        })));
+      } catch { setLocationResults([]); }
+      finally { setLocationSearching(false); }
+    }, 400);
+  }, []);
+
+  const selectLocation = (r: { name: string; lat: number; lng: number }) => {
+    setForm(f => ({ ...f, location_name: r.name.split(',')[0].trim(), city: r.name.split(',').slice(1, 3).join(',').trim() }));
+    setLocationCoords([r.lng, r.lat]);
+    setLocationResults([]);
+  };
 
   const updateField = <K extends keyof EventForm>(key: K, value: EventForm[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -73,7 +103,7 @@ export default function EventCreatePage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({
           title: form.title, description: form.description, category: form.category,
-          location: { type: 'Point', coordinates: [lng || -96.797, lat || 32.7767] },
+          location: { type: 'Point', coordinates: locationCoords || [lng || -96.797, lat || 32.7767] },
           location_name: form.location_name, city: form.city,
           start_time: startTime, end_time: endTime,
           capacity: form.capacity ? Number(form.capacity) : undefined,
@@ -136,9 +166,21 @@ export default function EventCreatePage() {
           </Section>
 
           <Section title="Location">
-            <div className="lg:grid lg:grid-cols-2 lg:gap-4 space-y-3 lg:space-y-0">
-              <Input label="Venue Name" placeholder="e.g. WeWork Uptown" value={form.location_name} onChange={v => updateField('location_name', v)} />
-              <Input label="City" placeholder="e.g. Dallas, TX" value={form.city} onChange={v => updateField('city', v)} icon={<MapPin size={14} />} />
+            <div className="relative lg:grid lg:grid-cols-2 lg:gap-4 space-y-3 lg:space-y-0">
+              <div className="relative lg:col-span-2">
+                <Input label="Search Venue" placeholder="Search venue or address..." value={form.location_name} onChange={v => searchLocation(v)} icon={locationCoords ? <CheckCircle size={14} className="text-[#34d399]" /> : locationSearching ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />} />
+                {locationResults.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+                    {locationResults.map((r, i) => (
+                      <button key={i} onClick={() => selectLocation(r)} className="w-full text-left px-3 py-2.5 text-xs text-[#a3adc3] hover:bg-[rgba(0,212,255,0.06)] cursor-pointer truncate" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                        📍 {r.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Input label="City" placeholder="Auto-filled from search" value={form.city} onChange={v => updateField('city', v)} icon={<MapPin size={14} />} />
+              {locationCoords && <p className="text-[10px] text-[#4a5068] lg:col-span-2">Coordinates: {locationCoords[1].toFixed(4)}, {locationCoords[0].toFixed(4)}</p>}
             </div>
           </Section>
 

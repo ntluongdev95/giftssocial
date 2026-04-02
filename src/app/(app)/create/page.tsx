@@ -12,7 +12,9 @@ import EventForm from '@/components/signals/forms/EventForm';
 import UpdateForm from '@/components/signals/forms/UpdateForm';
 import ProofForm from '@/components/signals/forms/ProofForm';
 import AuthPopup from '@/components/ui/AuthPopup';
+import { mutate } from 'swr';
 import { useAuthStore } from '@/stores/auth-store';
+import { useMapStore } from '@/stores/mapStore';
 import { useLocationStore } from '@/stores/locationStore';
 import { SIGNAL_LABELS, SIGNAL_ICONS } from '@/styles/tokens';
 import type { SignalType } from '@/types';
@@ -139,9 +141,13 @@ function CreateSignalPageInner() {
         metadata: formData,
         location: {
           type: 'Point' as const,
-          coordinates: [lng ?? -96.797, lat ?? 32.7767],
+          coordinates: (formData.location_coords as [number, number]) || [lng ?? -96.797, lat ?? 32.7767],
         },
       };
+
+      if (formData.city) {
+        payload.city = formData.city;
+      }
 
       if (formData.target_circle_id) {
         payload.target_circle_id = formData.target_circle_id;
@@ -180,6 +186,8 @@ function CreateSignalPageInner() {
         } catch {}
       }
 
+      // Invalidate SWR cache so map/nearby refetch
+      mutate((key: string) => typeof key === 'string' && (key.includes('/api/v1/signals') || key.includes('/api/v1/events') || key.includes('/api/v1/businesses')));
       setStep('success');
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'Network error — check your connection');
@@ -241,6 +249,13 @@ function CreateSignalPageInner() {
 
       {/* Content */}
       <div className="relative flex-1 px-4 lg:px-8 pt-4 max-w-2xl lg:mx-auto w-full">
+        {/* Form — rendered outside AnimatePresence to preserve state */}
+        {signalType && (
+          <div style={{ display: step === 'form' ? 'block' : 'none' }}>
+            {renderForm()}
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {/* Step 1: Type select */}
           {step === 'type_select' && (
@@ -256,20 +271,6 @@ function CreateSignalPageInner() {
                 What would you like to share?
               </p>
               <SignalTypeSelector onSelect={handleTypeSelect} selected={signalType ?? undefined} />
-            </motion.div>
-          )}
-
-          {/* Step 2: Form */}
-          {step === 'form' && (
-            <motion.div
-              key="form"
-              variants={pageVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.2 }}
-            >
-              {renderForm()}
             </motion.div>
           )}
 
@@ -390,7 +391,7 @@ function CreateSignalPageInner() {
               </p>
               <div className="flex gap-3 pt-4">
                 <button
-                  onClick={() => router.push('/world')}
+                  onClick={() => { useMapStore.getState().clearMarkers(); router.push('/world'); }}
                   className="rounded-xl bg-[#00d4ff] px-6 py-3 text-sm font-semibold text-[#0a0b0f] cursor-pointer"
                 >
                   View on Map

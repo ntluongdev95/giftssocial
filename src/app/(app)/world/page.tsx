@@ -177,7 +177,7 @@ export default function WorldPage() {
       params.set('lat', '32.7767');
       params.set('lng', '-96.7970');
     }
-    params.set('radius', viewMode === '3d' ? '0' : '5000');
+    params.set('radius', viewMode === '3d' ? '0' : '50000');
     params.set('time', timeFilter);
     return params.toString();
   }, [lat, lng, timeFilter, viewMode]);
@@ -229,7 +229,7 @@ export default function WorldPage() {
     const p = new URLSearchParams();
     p.set('lat', String(lat ?? 32.7767));
     p.set('lng', String(lng ?? -96.797));
-    p.set('radius', '5000');
+    p.set('radius', '50000');
     return p.toString();
   }, [lat, lng]);
 

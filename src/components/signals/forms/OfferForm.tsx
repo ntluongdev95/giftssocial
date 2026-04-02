@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { z } from 'zod';
 import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 
@@ -40,8 +40,42 @@ export default function OfferForm({ onSubmit }: OfferFormProps) {
   const [visibility, setVisibility] = useState<'public' | 'circle'>('public');
   const [targetCircleId, setTargetCircleId] = useState('');
   const { myCircles } = useJoinedCircles();
+  const [shopName, setShopName] = useState('');
+  const [locationName, setLocationName] = useState('');
+  const [locationCoords, setLocationCoords] = useState<[number, number] | null>(null);
+  const [locationCity, setLocationCity] = useState('');
+  const [locationResults, setLocationResults] = useState<{ name: string; lat: number; lng: number }[]>([]);
+  const [locationSearching, setLocationSearching] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const searchLocation = useCallback((q: string) => {
+    setLocationName(q);
+    setLocationCoords(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (q.length < 3) { setLocationResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setLocationSearching(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+        const data = await res.json();
+        setLocationResults(data.map((r: Record<string, unknown>) => ({
+          name: r.display_name as string,
+          lat: parseFloat(r.lat as string),
+          lng: parseFloat(r.lon as string),
+        })));
+      } catch { setLocationResults([]); }
+      finally { setLocationSearching(false); }
+    }, 400);
+  }, []);
+
+  const selectLocation = (r: { name: string; lat: number; lng: number }) => {
+    setLocationName(r.name.split(',')[0].trim());
+    setLocationCity(r.name.split(',').slice(1, 3).join(',').trim());
+    setLocationCoords([r.lng, r.lat]);
+    setLocationResults([]);
+  };
 
   const handleSubmit = async () => {
     const result = schema.safeParse({
@@ -69,7 +103,7 @@ export default function OfferForm({ onSubmit }: OfferFormProps) {
 
     setErrors({});
     setSubmitting(true);
-    await onSubmit({ ...result.data, target_circle_id: visibility === 'circle' ? targetCircleId : undefined } as OfferData & { target_circle_id?: string });
+    await onSubmit({ ...result.data, target_circle_id: visibility === 'circle' ? targetCircleId : undefined, shop_name: shopName, location_name: locationName, location_coords: locationCoords, city: locationCity } as OfferData & { target_circle_id?: string; shop_name?: string; location_name?: string; location_coords?: [number, number] | null; city?: string });
     setSubmitting(false);
   };
 
@@ -117,6 +151,46 @@ export default function OfferForm({ onSubmit }: OfferFormProps) {
         </div>
         {errors.category && (
           <p className="mt-1 text-[10px] text-[#EF4444]">{errors.category}</p>
+        )}
+      </div>
+
+      {/* Shop Name */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-[#4a5068]">Shop / Business Name</label>
+        <input
+          value={shopName}
+          onChange={(e) => setShopName(e.target.value)}
+          placeholder="e.g. Glow Nail Studio"
+          className="w-full rounded-lg border border-[#181c24]/30 bg-[#0a0b0f] px-3 py-2.5 text-sm text-[#f0f4ff] placeholder-[#4a5068] outline-none focus:border-[#00d4ff]"
+        />
+      </div>
+
+      {/* Location */}
+      <div className="relative">
+        <label className="mb-1 block text-xs font-medium text-[#4a5068]">Address</label>
+        <div className="flex gap-2">
+          <input
+            value={locationName}
+            onChange={(e) => searchLocation(e.target.value)}
+            onBlur={() => { setTimeout(() => { if (!locationCoords && locationResults.length > 0) selectLocation(locationResults[0]); setLocationResults([]); }, 200); }}
+            placeholder="Search address..."
+            className="w-full rounded-lg border border-[#181c24]/30 bg-[#0a0b0f] px-3 py-2.5 text-sm text-[#f0f4ff] placeholder-[#4a5068] outline-none focus:border-[#00d4ff] flex-1"
+          />
+          {locationCoords && <span className="shrink-0 flex items-center px-2 text-[10px] text-[#34d399]">✓</span>}
+          {locationSearching && <span className="shrink-0 flex items-center px-2 text-[10px] text-[#4a5068]">...</span>}
+        </div>
+        {locationResults.length > 0 && !locationCoords && (
+          <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+            <p className="px-3 py-1.5 text-[10px] text-[#4a5068]">Select a location:</p>
+            {locationResults.map((r, i) => (
+              <button key={i} onMouseDown={() => selectLocation(r)} className="w-full text-left px-3 py-2.5 text-xs text-[#a3adc3] hover:bg-[rgba(0,212,255,0.06)] cursor-pointer truncate" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                📍 {r.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {locationCoords && (
+          <p className="mt-1 text-[10px] text-[#4a5068]">{locationCity} · {locationCoords[1].toFixed(4)}, {locationCoords[0].toFixed(4)}</p>
         )}
       </div>
 

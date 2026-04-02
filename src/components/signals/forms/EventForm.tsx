@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { z } from 'zod';
 import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 
@@ -30,6 +30,39 @@ export default function EventForm({ onSubmit }: EventFormProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [locationName, setLocationName] = useState('');
+  const [locationCoords, setLocationCoords] = useState<[number, number] | null>(null);
+  const [locationCity, setLocationCity] = useState('');
+  const [locationResults, setLocationResults] = useState<{ name: string; lat: number; lng: number }[]>([]);
+  const [locationSearching, setLocationSearching] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchLocation = useCallback((q: string) => {
+    setLocationName(q);
+    setLocationCoords(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (q.length < 3) { setLocationResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setLocationSearching(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+        const data = await res.json();
+        setLocationResults(data.map((r: Record<string, unknown>) => ({
+          name: r.display_name as string,
+          lat: parseFloat(r.lat as string),
+          lng: parseFloat(r.lon as string),
+        })));
+      } catch { setLocationResults([]); }
+      finally { setLocationSearching(false); }
+    }, 400);
+  }, []);
+
+  const selectLocation = (r: { name: string; lat: number; lng: number }) => {
+    setLocationName(r.name.split(',')[0].trim());
+    setLocationCity(r.name.split(',').slice(1, 3).join(',').trim());
+    setLocationCoords([r.lng, r.lat]);
+    setLocationResults([]);
+  };
+
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [hostType, setHostType] = useState<'user' | 'circle'>('user');
@@ -68,7 +101,7 @@ export default function EventForm({ onSubmit }: EventFormProps) {
 
     setErrors({});
     setSubmitting(true);
-    await onSubmit({ ...result.data, target_circle_id: visibility === 'circle' ? targetCircleId : undefined } as EventData & { target_circle_id?: string });
+    await onSubmit({ ...result.data, target_circle_id: visibility === 'circle' ? targetCircleId : undefined, location_coords: locationCoords, city: locationCity } as EventData & { target_circle_id?: string; location_coords?: [number, number] | null; city?: string });
     setSubmitting(false);
   };
 
@@ -104,19 +137,39 @@ export default function EventForm({ onSubmit }: EventFormProps) {
       </div>
 
       {/* Location */}
-      <div>
+      <div className="relative">
         <label className="mb-1 block text-xs font-medium text-[#4a5068]">Location</label>
         <div className="flex gap-2">
           <input
             value={locationName}
-            onChange={(e) => setLocationName(e.target.value)}
-            placeholder="Venue name or address"
+            onChange={(e) => searchLocation(e.target.value)}
+            placeholder="Search venue or address..."
             className={`${inputCls} flex-1`}
           />
-          <button className="shrink-0 rounded-lg border border-[#181c24]/30 bg-[#0a0b0f] px-3 text-sm text-[#00d4ff]">
-            📍
-          </button>
+          {locationCoords && (
+            <span className="shrink-0 flex items-center px-2 text-[10px] text-[#34d399]">✓</span>
+          )}
+          {locationSearching && (
+            <span className="shrink-0 flex items-center px-2 text-[10px] text-[#4a5068]">...</span>
+          )}
         </div>
+        {locationResults.length > 0 && (
+          <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+            {locationResults.map((r, i) => (
+              <button
+                key={i}
+                onClick={() => selectLocation(r)}
+                className="w-full text-left px-3 py-2.5 text-xs text-[#a3adc3] hover:bg-[rgba(0,212,255,0.06)] cursor-pointer truncate"
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+              >
+                📍 {r.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {locationCoords && (
+          <p className="mt-1 text-[10px] text-[#4a5068]">{locationCity} · {locationCoords[1].toFixed(4)}, {locationCoords[0].toFixed(4)}</p>
+        )}
         {errors.location_name && (
           <p className="mt-0.5 text-[10px] text-[#EF4444]">{errors.location_name}</p>
         )}

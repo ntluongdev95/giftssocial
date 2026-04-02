@@ -42,14 +42,14 @@ export async function GET(req: NextRequest) {
 
       pgPool.query(
         `SELECT s.*, u.username AS author_username, u.display_name AS author_name, u.avatar_url AS author_avatar,
-                ${haversine(1, 2)} AS distance_km
+                (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians($2)) + sin(radians($1)) * sin(radians(s.location_lat))))) AS distance_km
          FROM signals s
          LEFT JOIN users u ON u.id = s.author_id
          WHERE s.status = 'active' AND s.expires_at > NOW() AND s.visibility = 'public'
-           AND ${haversine(1, 2)} < $3
+           AND (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians($2)) + sin(radians($1)) * sin(radians(s.location_lat))))) < $3
          ORDER BY s.created_at DESC LIMIT $4`,
         [lat, lng, radiusKm, limit]
-      ).then(r => r.rows).catch(() => []),
+      ).then(r => r.rows).catch(err => { console.error('[Nearby signals]', err); return []; }),
 
       pgPool.query(
         `SELECT *, ${haversine(1, 2)} AS distance_km

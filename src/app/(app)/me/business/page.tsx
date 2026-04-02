@@ -19,6 +19,12 @@ const CATEGORIES = [
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+interface Service {
+  name: string;
+  price: number;
+  duration: number;
+}
+
 interface BusinessForm {
   name: string;
   category: string;
@@ -29,7 +35,11 @@ interface BusinessForm {
   website: string;
   hours: Record<string, { open: string; close: string; closed: boolean }>;
   booking_enabled: boolean;
+  services: Service[];
+  social_links: { platform: string; url: string }[];
 }
+
+const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'TikTok', 'Twitter/X', 'YouTube', 'LinkedIn', 'Zalo', 'Other'];
 
 export default function BusinessEditPage() {
   const router = useRouter();
@@ -56,6 +66,8 @@ export default function BusinessEditPage() {
       Sun: { open: '09:00', close: '20:00', closed: false },
     },
     booking_enabled: true,
+    services: [],
+    social_links: [],
   });
 
   useEffect(() => {
@@ -78,6 +90,8 @@ export default function BusinessEditPage() {
               ? b.hours
               : Object.fromEntries(DAYS.map(d => [d, { open: '09:00', close: '18:00', closed: d === 'Sun' }])),
             booking_enabled: b.booking_enabled ?? false,
+            services: b.services || [],
+            social_links: b.social_links || [],
           });
         }
       })
@@ -107,6 +121,7 @@ export default function BusinessEditPage() {
           location: { type: 'Point', coordinates: [lng || -96.797, lat || 32.7767] },
           address: form.address, city: form.city, phone: form.phone || undefined,
           website: form.website || undefined, hours: form.hours, booking_enabled: form.booking_enabled,
+          services: form.services.filter(s => s.name), social_links: form.social_links.filter(l => l.url),
         }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'Failed to save'); }
@@ -187,6 +202,76 @@ export default function BusinessEditPage() {
             </div>
           </Section>
 
+          {/* Services */}
+          <Section title="Services">
+            <div className="space-y-2">
+              {form.services.map((svc, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <input
+                    value={svc.name}
+                    onChange={e => { const s = [...form.services]; s[i] = { ...s[i], name: e.target.value }; updateField('services', s); }}
+                    placeholder="Service name"
+                    className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[#2d3548]"
+                  />
+                  <input
+                    type="number"
+                    value={svc.price || ''}
+                    onChange={e => { const s = [...form.services]; s[i] = { ...s[i], price: Number(e.target.value) }; updateField('services', s); }}
+                    placeholder="$"
+                    className="w-16 bg-transparent text-sm text-[#00d4ff] text-right outline-none placeholder:text-[#2d3548]"
+                  />
+                  <input
+                    type="number"
+                    value={svc.duration || ''}
+                    onChange={e => { const s = [...form.services]; s[i] = { ...s[i], duration: Number(e.target.value) }; updateField('services', s); }}
+                    placeholder="min"
+                    className="w-14 bg-transparent text-sm text-[#a3adc3] text-right outline-none placeholder:text-[#2d3548]"
+                  />
+                  <button onClick={() => { const s = [...form.services]; s.splice(i, 1); updateField('services', s); }} className="text-[#f87171] cursor-pointer"><X size={14} /></button>
+                </div>
+              ))}
+              <button
+                onClick={() => updateField('services', [...form.services, { name: '', price: 0, duration: 30 }])}
+                className="flex items-center gap-2 w-full rounded-xl px-4 py-2.5 text-xs font-semibold cursor-pointer"
+                style={{ background: 'rgba(0,212,255,0.06)', border: '1px dashed rgba(0,212,255,0.2)', color: '#00d4ff' }}
+              >
+                <Plus size={14} /> Add Service
+              </button>
+            </div>
+          </Section>
+
+          {/* Social Links */}
+          <Section title="Social Links">
+            <div className="space-y-2">
+              {form.social_links.map((link, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-xl px-4 py-2.5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <select
+                    value={link.platform}
+                    onChange={e => { const l = [...form.social_links]; l[i] = { ...l[i], platform: e.target.value }; updateField('social_links', l); }}
+                    className="bg-transparent text-xs text-[#a3adc3] outline-none cursor-pointer"
+                  >
+                    <option value="">Platform</option>
+                    {SOCIAL_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <input
+                    value={link.url}
+                    onChange={e => { const l = [...form.social_links]; l[i] = { ...l[i], url: e.target.value }; updateField('social_links', l); }}
+                    placeholder="https://..."
+                    className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[#2d3548]"
+                  />
+                  <button onClick={() => { const l = [...form.social_links]; l.splice(i, 1); updateField('social_links', l); }} className="text-[#f87171] cursor-pointer"><X size={14} /></button>
+                </div>
+              ))}
+              <button
+                onClick={() => updateField('social_links', [...form.social_links, { platform: '', url: '' }])}
+                className="flex items-center gap-2 w-full rounded-xl px-4 py-2.5 text-xs font-semibold cursor-pointer"
+                style={{ background: 'rgba(0,212,255,0.06)', border: '1px dashed rgba(0,212,255,0.2)', color: '#00d4ff' }}
+              >
+                <Plus size={14} /> Add Link
+              </button>
+            </div>
+          </Section>
+
           {/* Settings */}
           <Section title="Settings">
             <Toggle label="Enable Booking" desc="Allow customers to book appointments" value={form.booking_enabled} onChange={v => updateField('booking_enabled', v)} />
@@ -233,11 +318,30 @@ export default function BusinessEditPage() {
                   })()}
                 </div>
 
+                {/* Services preview */}
+                {form.services.filter(s => s.name).length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1.5">Services</h4>
+                    <div className="space-y-1">
+                      {form.services.filter(s => s.name).slice(0, 3).map((s, i) => (
+                        <div key={i} className="flex items-center justify-between text-[10px]">
+                          <span className="text-[#a3adc3]">{s.name} · {s.duration}min</span>
+                          <span className="text-[#00d4ff] font-semibold">${s.price}</span>
+                        </div>
+                      ))}
+                      {form.services.filter(s => s.name).length > 3 && <p className="text-[9px] text-[#4a5068]">+{form.services.filter(s => s.name).length - 3} more</p>}
+                    </div>
+                  </div>
+                )}
+
                 {/* Contact */}
                 <div className="space-y-1.5">
                   {form.phone && <p className="flex items-center gap-1.5 text-[10px] text-[#a3adc3]"><Phone size={10} /> {form.phone}</p>}
                   {form.website && <p className="flex items-center gap-1.5 text-[10px] text-[#a3adc3] truncate"><Globe size={10} /> {form.website}</p>}
                   {form.address && <p className="flex items-center gap-1.5 text-[10px] text-[#a3adc3]"><MapPin size={10} /> {form.address}</p>}
+                  {form.social_links.filter(l => l.url).map((l, i) => (
+                    <p key={i} className="flex items-center gap-1.5 text-[10px] text-[#a3adc3] truncate"><Globe size={10} /> {l.platform}: {l.url}</p>
+                  ))}
                 </div>
               </div>
 

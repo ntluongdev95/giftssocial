@@ -184,7 +184,7 @@ export default function NearbyPage() {
     const p = new URLSearchParams();
     p.set('lat', String(lat ?? 32.7767));
     p.set('lng', String(lng ?? -96.797));
-    p.set('radius', '5000');
+    p.set('radius', '50000');
     return p.toString();
   }, [lat, lng]);
 
