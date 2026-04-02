@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
 
     if (type === 'followers') {
       const result = await pgPool.query(
-        `SELECT f.*, u.username, u.display_name, u.avatar_url, u.trust_level
+        `SELECT f.*, u.username, u.display_name, u.avatar_url, u.bio, u.photos, u.trust_level
          FROM follows f LEFT JOIN users u ON u.id = f.follower_id
          WHERE f.following_user_id = $1 ORDER BY f.created_at DESC LIMIT 100`,
         [userId]
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ data: result.rows });
     } else {
       const result = await pgPool.query(
-        `SELECT f.*, u.username AS user_username, u.display_name AS user_name, u.avatar_url AS user_avatar,
+        `SELECT f.*, u.username AS user_username, u.display_name AS user_name, u.avatar_url AS user_avatar, u.bio AS user_bio, u.photos AS user_photos,
                 b.name AS biz_name, b.category AS biz_category,
                 c.name AS circle_name, c.category AS circle_category
          FROM follows f

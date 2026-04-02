@@ -44,3 +44,19 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to update' } }, { status: 500 });
   }
 }
+
+// ─── DELETE /api/v1/notifications — Clear all notifications ─────────────
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const userId = await resolveUserId(req);
+    if (!userId) return NextResponse.json({ error: { code: 'unauthorized' } }, { status: 401 });
+
+    await pgPool.query('DELETE FROM notifications WHERE user_id = $1', [userId]);
+
+    return NextResponse.json({ data: { success: true } });
+  } catch (err) {
+    console.error('[Notifications DELETE]', err);
+    return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to clear' } }, { status: 500 });
+  }
+}

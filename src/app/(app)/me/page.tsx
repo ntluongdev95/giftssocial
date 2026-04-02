@@ -31,14 +31,18 @@ export default function MePage() {
   const { data: savedData } = useSWR(isAuthed ? '/api/v1/saved' : null, fetcher, swrOpts);
   const { data: bookingsData } = useSWR(isAuthed ? '/api/v1/bookings/me' : null, fetcher, swrOpts);
   const { data: followsData } = useSWR(isAuthed ? '/api/v1/follows?type=following' : null, fetcher, swrOpts);
+  const { data: followersData } = useSWR(isAuthed ? '/api/v1/follows?type=followers' : null, fetcher, swrOpts);
   const { data: circlesData } = useSWR(isAuthed ? '/api/v1/circles/me' : null, fetcher, swrOpts);
   const { data: notifsData } = useSWR(isAuthed ? '/api/v1/notifications?unread=true' : null, fetcher, { ...swrOpts, refreshInterval: 10000 });
+  const { data: meData } = useSWR(isAuthed ? '/api/v1/users/me' : null, fetcher, swrOpts);
+  const userPhotos: string[] = meData?.data?.photos || [];
   const signalsCount = signalsData?.data?.length || 0;
   const savedCount = savedData?.data?.length || 0;
   const bookingsCount = bookingsData?.data?.length || 0;
   const pendingBookings = (bookingsData?.data || []).filter((b: Record<string, unknown>) => b.status === 'pending' || b.status === 'confirmed').length;
   const upcomingEvents = (bookingsData?.data || []).filter((b: Record<string, unknown>) => b.event_id && (b.status === 'pending' || b.status === 'confirmed') && b.slot_time && new Date(b.slot_time as string) > new Date()).length;
   const followingCount = followsData?.data?.length || 0;
+  const followersCount = followersData?.data?.length || 0;
   const circlesCount = circlesData?.data?.length || 0;
   const unreadNotifs = (notifsData?.data || []).filter((n: Record<string, unknown>) => !n.read).length;
 
@@ -69,6 +73,29 @@ export default function MePage() {
           </div>
         </div>
 
+        {/* Edit Profile */}
+        <button
+          onClick={() => router.push('/me/edit')}
+          className="w-full rounded-xl py-2.5 text-xs font-semibold cursor-pointer mb-4"
+          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.15)', color: '#00d4ff' }}
+        >
+          Edit Profile
+        </button>
+
+        {/* Photos */}
+        {userPhotos.length > 0 && (
+          <div className="mb-4">
+            <SectionTitle>Photos</SectionTitle>
+            <div className="grid grid-cols-4 gap-1.5 rounded-2xl overflow-hidden">
+              {userPhotos.map((url, i) => (
+                <div key={i} className="aspect-square overflow-hidden">
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Trust + Stats */}
         <div className="rounded-2xl p-4 mb-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
           <div className="flex items-center justify-between mb-3">
@@ -84,9 +111,10 @@ export default function MePage() {
 
         {/* My Network */}
         <SectionTitle>My Network</SectionTitle>
-        <div className="grid grid-cols-3 gap-3 mb-5">
-          <NetworkMini icon={<Users size={16} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" onClick={() => router.push('/circles')} />
+        <div className="grid grid-cols-4 gap-2 mb-5">
+          <NetworkMini icon={<Users size={16} />} value={`${followersCount}`} label="Followers" color="#a78bfa" onClick={() => router.push('/me/followers')} />
           <NetworkMini icon={<UserCheck size={16} />} value={`${followingCount}`} label="Following" color="#34d399" onClick={() => router.push('/me/following')} />
+          <NetworkMini icon={<Users size={16} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" onClick={() => router.push('/circles')} />
           <NetworkMini icon={<Bookmark size={16} />} value={`${savedCount}`} label="Saved" color="#fbbf24" onClick={() => router.push('/me/saved')} />
         </div>
 
@@ -151,12 +179,36 @@ export default function MePage() {
               </div>
 
               {/* Network */}
-              <div className="grid grid-cols-3 gap-2">
-                <NetworkMini icon={<Users size={14} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" onClick={() => router.push('/circles')} />
+              <div className="grid grid-cols-4 gap-2">
+                <NetworkMini icon={<Users size={14} />} value={`${followersCount}`} label="Followers" color="#a78bfa" onClick={() => router.push('/me/followers')} />
                 <NetworkMini icon={<UserCheck size={14} />} value={`${followingCount}`} label="Following" color="#34d399" onClick={() => router.push('/me/following')} />
+                <NetworkMini icon={<Users size={14} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" onClick={() => router.push('/circles')} />
                 <NetworkMini icon={<Bookmark size={14} />} value={`${savedCount}`} label="Saved" color="#fbbf24" onClick={() => router.push('/me/saved')} />
               </div>
+
+              {/* Edit Profile */}
+              <button
+                onClick={() => router.push('/me/edit')}
+                className="w-full rounded-xl py-2.5 text-xs font-semibold cursor-pointer mt-3"
+                style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.15)', color: '#00d4ff' }}
+              >
+                Edit Profile
+              </button>
             </div>
+
+            {/* Photos */}
+            {userPhotos.length > 0 && (
+              <div className="rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Photos</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {userPhotos.map((url, i) => (
+                    <div key={i} className="aspect-square rounded-xl overflow-hidden">
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Shortcuts */}
             <div className="rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>

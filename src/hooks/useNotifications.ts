@@ -33,5 +33,13 @@ export function useNotifications() {
     mutate();
   };
 
-  return { notifications, unreadCount, markAllRead, markRead, refresh: mutate };
+  const clearAll = async () => {
+    await fetch('/api/v1/notifications', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+    });
+    mutate();
+  };
+
+  return { notifications, unreadCount, markAllRead, markRead, clearAll, refresh: mutate };
 }

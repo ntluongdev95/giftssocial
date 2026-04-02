@@ -167,6 +167,8 @@ const FALLBACK_CIRCLES: Circle[] = [
 export default function NearbyPage() {
   const { lat, lng, granted, requestLocation } = useLocationStore();
   const [activeTab, setActiveTab] = useState<Tab>('Businesses');
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // Always refresh location on mount — localStorage is just fallback while GPS loads
   useEffect(() => {
@@ -330,7 +332,11 @@ export default function NearbyPage() {
 
       {/* Card list — grid on desktop */}
       <div className="flex-1 overflow-y-auto px-4 lg:px-8 pb-20">
-        {!granted ? (
+        {!mounted ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <SkeletonCard /><SkeletonCard /><SkeletonCard />
+          </div>
+        ) : !granted ? (
           <div className="flex flex-col items-center gap-4 py-16 text-center">
             <div
               className="flex h-16 w-16 items-center justify-center rounded-full"

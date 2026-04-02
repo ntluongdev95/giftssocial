@@ -41,7 +41,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
       phoneNumber: src.phoneNumber ?? null,
       firstName: src.first_name ?? '',
       lastName: src.last_name ?? '',
-      fullName: src.full_name ?? '',
+      fullName: src.full_name || src.display_name || '',
       avatarUrl: src.avatar_url ?? '',
       avatarKey: src.avatar_key ?? '',
       backgroundUrl: src.background_url ?? '',

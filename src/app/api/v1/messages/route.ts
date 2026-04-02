@@ -103,11 +103,18 @@ export async function POST(req: NextRequest) {
         [room_type || 'event', room_id, userId]
       );
 
-      // Also notify signal/event owner if they're not the sender
+      // Also notify the other party
       let ownerId: string | null = null;
-      if (room_type === 'dm' || !room_type) {
-        const sigRes = await pgPool.query('SELECT author_id FROM signals WHERE id = $1', [room_id]);
-        ownerId = sigRes.rows[0]?.author_id || null;
+      console.log('[Messages] notify check:', { room_type, room_id, userId, participantCount: participants.rows.length });
+      if (room_type === 'dm') {
+        if (room_id.startsWith('dm_')) {
+          // User-to-user DM: room_id = dm_{targetUserId}
+          ownerId = room_id.replace('dm_', '');
+        } else {
+          // Signal DM: room_id = signal_id
+          const sigRes = await pgPool.query('SELECT author_id FROM signals WHERE id = $1', [room_id]);
+          ownerId = sigRes.rows[0]?.author_id || null;
+        }
       } else if (room_type === 'event') {
         const evtRes2 = await pgPool.query('SELECT host_user_id FROM events WHERE id = $1', [room_id]);
         ownerId = evtRes2.rows[0]?.host_user_id || null;

@@ -38,5 +38,19 @@ export function useFollow() {
     return res.ok;
   };
 
-  return { followingUserIds, followingBizIds, followingCircleIds, follow, unfollow, refresh: mutate };
+  // Friends = mutual follows (I follow them AND they follow me)
+  const { data: followersData } = useSWR('/api/v1/follows?type=followers', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 10000,
+  });
+  const followerUserIds = new Set(
+    ((followersData?.data || []) as Record<string, unknown>[])
+      .filter(f => f.follower_id)
+      .map(f => f.follower_id as string)
+  );
+  const friendIds = new Set([...followingUserIds].filter(id => followerUserIds.has(id)));
+
+  const isFriend = (userId: string) => friendIds.has(userId);
+
+  return { followingUserIds, followerUserIds, friendIds, followingBizIds, followingCircleIds, isFriend, follow, unfollow, refresh: mutate };
 }

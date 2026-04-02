@@ -36,6 +36,7 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
 
   const messages = data?.data ?? [];
   const myUserId = useAuthStore(s => s.user?.id);
+  const myAvatar = useAuthStore(s => s.user?.avatarUrl);
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -131,8 +132,13 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
               const isMe = msg.sender_id === myUserId;
               return (
                 <div key={msg.id} className={`flex gap-2.5 ${isMe ? 'flex-row-reverse' : ''}`}>
-                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0" style={{ background: isMe ? '#00d4ff' : '#3B82F6', color: 'white' }}>
-                    {(msg.sender_name || '?').charAt(0).toUpperCase()}
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden" style={{ background: isMe ? '#00d4ff' : '#3B82F6', color: 'white' }}>
+                    {(() => {
+                      const avatar = (msg as Record<string, unknown>).sender_avatar as string || (isMe ? myAvatar : '');
+                      return avatar && avatar.length > 1
+                        ? <img src={avatar} alt="" className="h-full w-full object-cover" />
+                        : (msg.sender_name || '?').charAt(0).toUpperCase();
+                    })()}
                   </div>
                   <div className={`max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
