@@ -2,9 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { ArrowLeft, Loader2, Users, LogOut, X } from 'lucide-react';
+import { ArrowLeft, Loader2, Users, LogOut, X, Check, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 
 const fetcher = (url: string) => fetch(url, {
   headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
@@ -15,6 +16,52 @@ export default function MyCirclesPage() {
   const { data, isLoading, mutate } = useSWR('/api/v1/circles/me', fetcher);
   const circles = (data?.data || []) as Record<string, unknown>[];
   const [leavingId, setLeavingId] = useState<string | null>(null);
+  const [pendingMap, setPendingMap] = useState<Record<string, Array<{ user_id: string; display_name: string; avatar_url?: string; joined_at: string }>>>({});
+  const [expandedCircle, setExpandedCircle] = useState<string | null>(null);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+
+  // Fetch pending members for circles I own
+  const ownedCircleIds = circles.filter(c => c.my_role === 'owner').map(c => c.id as string);
+  useEffect(() => {
+    if (ownedCircleIds.length === 0) return;
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    ownedCircleIds.forEach(async (cid) => {
+      try {
+        const res = await fetch(`/api/v1/circles/${cid}/members?status=pending`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await res.json();
+        setPendingMap(prev => ({ ...prev, [cid]: d.data || [] }));
+      } catch {}
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [circles.length]);
+
+  const handleMemberAction = async (circleId: string, memberUserId: string, action: 'approve' | 'reject') => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    setActioningId(memberUserId);
+    try {
+      const res = await fetch(`/api/v1/circles/${circleId}/members`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ member_user_id: memberUserId, action }),
+      });
+      if (res.ok) {
+        toast.success(action === 'approve' ? 'Member approved!' : 'Request rejected');
+        // Refresh pending list
+        const r2 = await fetch(`/api/v1/circles/${circleId}/members?status=pending`, { headers: { Authorization: `Bearer ${token}` } });
+        const d2 = await r2.json();
+        setPendingMap(prev => ({ ...prev, [circleId]: d2.data || [] }));
+        mutate();
+      } else {
+        const d = await res.json();
+        toast.error(d.error?.message || 'Failed');
+      }
+    } catch { toast.error('Network error'); }
+    finally { setActioningId(null); }
+  };
 
   const handleLeave = async (circleId: string, circleName: string, isPending: boolean) => {
     setLeavingId(circleId);
@@ -46,7 +93,7 @@ export default function MyCirclesPage() {
         ) : circles.length === 0 ? (
           <EmptyState onExplore={() => router.push('/circles')} />
         ) : (
-          circles.map((c) => <CircleListItem key={c.id as string} circle={c} onLeave={handleLeave} leavingId={leavingId} router={router} isPending={(c.member_status as string) === 'pending'} />)
+          circles.map((c) => <CircleListItem key={c.id as string} circle={c} onLeave={handleLeave} leavingId={leavingId} router={router} isPending={(c.member_status as string) === 'pending'} pendingMembers={pendingMap[c.id as string] || []} expandedCircle={expandedCircle} setExpandedCircle={setExpandedCircle} onMemberAction={handleMemberAction} actioningId={actioningId} />)
         )}
       </div>
 
@@ -136,7 +183,24 @@ function EmptyState({ onExplore }: { onExplore: () => void }) {
   );
 }
 
-function CircleListItem({ circle: c, onLeave, leavingId, router, isPending }: { circle: Record<string, unknown>; onLeave: (id: string, name: string, isPending: boolean) => void; leavingId: string | null; router: ReturnType<typeof useRouter>; isPending: boolean }) {
+type PendingMember = { user_id: string; display_name: string; avatar_url?: string; joined_at: string };
+
+function CircleListItem({ circle: c, onLeave, leavingId, router, isPending, pendingMembers, expandedCircle, setExpandedCircle, onMemberAction, actioningId }: {
+  circle: Record<string, unknown>;
+  onLeave: (id: string, name: string, isPending: boolean) => void;
+  leavingId: string | null;
+  router: ReturnType<typeof useRouter>;
+  isPending: boolean;
+  pendingMembers: PendingMember[];
+  expandedCircle: string | null;
+  setExpandedCircle: (id: string | null) => void;
+  onMemberAction: (circleId: string, memberUserId: string, action: 'approve' | 'reject') => void;
+  actioningId: string | null;
+}) {
+  const cid = c.id as string;
+  const isOwner = c.my_role === 'owner';
+  const isExpanded = expandedCircle === cid;
+
   return (
     <div className="rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
       <div className="flex items-start gap-3">
@@ -155,6 +219,15 @@ function CircleListItem({ circle: c, onLeave, leavingId, router, isPending }: { 
               <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>{c.my_role as string || 'member'}</span>
             )}
             {c.category ? <span className="text-[9px] text-[#4a5068] capitalize">{String(c.category)}</span> : null}
+            {isOwner && pendingMembers.length > 0 && (
+              <button
+                onClick={() => setExpandedCircle(isExpanded ? null : cid)}
+                className="text-[9px] font-semibold px-2 py-0.5 rounded-full cursor-pointer animate-pulse"
+                style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}
+              >
+                <UserPlus size={9} className="inline mr-0.5" /> {pendingMembers.length} request{pendingMembers.length > 1 ? 's' : ''}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-3">
             {!isPending && (
@@ -162,9 +235,9 @@ function CircleListItem({ circle: c, onLeave, leavingId, router, isPending }: { 
                 <Users size={10} className="inline mr-1" /> View
               </button>
             )}
-            {c.my_role !== 'owner' && (
+            {!isOwner && (
               <button
-                onClick={() => onLeave(c.id as string, c.name as string, isPending)}
+                onClick={() => onLeave(cid, c.name as string, isPending)}
                 disabled={leavingId === c.id}
                 className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
                 style={isPending ? { background: 'rgba(234,179,8,0.08)', color: '#EAB308' } : { background: 'rgba(239,68,68,0.08)', color: '#f87171' }}
@@ -173,6 +246,39 @@ function CircleListItem({ circle: c, onLeave, leavingId, router, isPending }: { 
               </button>
             )}
           </div>
+
+          {/* Pending requests expandable */}
+          {isOwner && isExpanded && pendingMembers.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {pendingMembers.map((m) => (
+                <div key={m.user_id} className="flex items-center gap-2.5 rounded-xl px-3 py-2.5" style={{ background: 'rgba(10,11,15,0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                    {(m.display_name || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-white truncate">{m.display_name || 'Unknown user'}</p>
+                    <p className="text-[9px] text-[#4a5068]">{formatDistanceToNow(new Date(m.joined_at), { addSuffix: true })}</p>
+                  </div>
+                  <button
+                    onClick={() => onMemberAction(cid, m.user_id, 'approve')}
+                    disabled={actioningId === m.user_id}
+                    className="rounded-lg px-2.5 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
+                    style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}
+                  >
+                    <Check size={10} className="inline mr-0.5" /> Accept
+                  </button>
+                  <button
+                    onClick={() => onMemberAction(cid, m.user_id, 'reject')}
+                    disabled={actioningId === m.user_id}
+                    className="rounded-lg px-2.5 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
+                    style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}
+                  >
+                    <X size={10} className="inline mr-0.5" /> Reject
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

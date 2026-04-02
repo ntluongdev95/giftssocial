@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Bell, CheckCircle, Calendar, Shield, Star, Users, Wallet, Loader2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Bell, CheckCircle, Calendar, Shield, Star, Users, Wallet, Loader2, MessageCircle, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -18,6 +18,7 @@ const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   signal_matched: { icon: <Bell size={16} />, color: '#00d4ff' },
   circle_invite: { icon: <Users size={16} />, color: '#00d4ff' },
   circle_activity: { icon: <Users size={16} />, color: '#34d399' },
+  circle_join_request: { icon: <UserPlus size={16} />, color: '#EAB308' },
   proof_earned: { icon: <Shield size={16} />, color: '#fbbf24' },
   trust_upgraded: { icon: <Star size={16} />, color: '#fbbf24' },
   review_received: { icon: <Star size={16} />, color: '#fbbf24' },
@@ -89,6 +90,9 @@ export default function NotificationsPage() {
                     if (n.type === 'new_message' && n.ref_id) {
                       setOpenChat({ type: n.ref_type as string, id: n.ref_id as string, title: n.title as string });
                     }
+                    if (n.type === 'circle_join_request') {
+                      router.push('/me/circles');
+                    }
                   }}
                 >
                   <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cfg.color}12`, color: cfg.color }}>
@@ -99,10 +103,11 @@ export default function NotificationsPage() {
                       <p className={`text-sm ${isUnread ? 'font-bold text-white' : 'font-medium text-[#a3adc3]'}`}>{n.title as string}</p>
                       {isUnread && <div className="h-2 w-2 rounded-full bg-[#00d4ff] shrink-0 animate-pulse" />}
                     </div>
-                    {n.body && <p className="text-xs text-[#4a5068] mt-1 line-clamp-2">{n.body as string}</p>}
+                    {n.body ? <p className="text-xs text-[#4a5068] mt-1 line-clamp-2">{String(n.body)}</p> : null}
                     <p className="text-[10px] text-[#2d3548] mt-1.5">
                       {n.created_at ? formatDistanceToNow(new Date(n.created_at as string), { addSuffix: true }) : ''}
                     </p>
+
                   </div>
                 </div>
               );
