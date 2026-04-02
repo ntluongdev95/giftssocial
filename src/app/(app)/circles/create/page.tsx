@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Loader2, Users, Globe, Lock, UserPlus } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Globe, Lock, UserPlus, MapPin, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CATEGORIES = [
@@ -32,6 +32,59 @@ export default function CreateCirclePage() {
   const [visibility, setVisibility] = useState('public');
   const [joinMode, setJoinMode] = useState('open');
 
+  // ── Address geocoding ──
+  const [addressQuery, setAddressQuery] = useState('');
+  const [addressResults, setAddressResults] = useState<Array<{ id: string; display_name: string; lat: number; lng: number }>>([]);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [locationLat, setLocationLat] = useState<number | null>(null);
+  const [locationLng, setLocationLng] = useState<number | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState('');
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchAddress = useCallback(async (q: string) => {
+    if (!q.trim() || q.length < 2) { setAddressResults([]); return; }
+    setAddressLoading(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`,
+        { headers: { 'User-Agent': 'GaoSocial/1.0' } }
+      );
+      const data = await res.json();
+      setAddressResults(data.map((r: any) => ({
+        id: r.place_id,
+        display_name: r.display_name,
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+      })));
+    } catch {
+      setAddressResults([]);
+    } finally {
+      setAddressLoading(false);
+    }
+  }, []);
+
+  const handleAddressInput = useCallback((val: string) => {
+    setAddressQuery(val);
+    setSelectedAddress('');
+    setLocationLat(null);
+    setLocationLng(null);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => searchAddress(val), 300);
+  }, [searchAddress]);
+
+  const handleSelectAddress = useCallback((result: typeof addressResults[0]) => {
+    setAddressQuery(result.display_name);
+    setSelectedAddress(result.display_name);
+    setLocationLat(result.lat);
+    setLocationLng(result.lng);
+    setAddressResults([]);
+    // Auto-fill city from address
+    const parts = result.display_name.split(',').map(s => s.trim());
+    if (parts.length >= 2 && !city) {
+      setCity(parts[parts.length - 3] || parts[parts.length - 2] || parts[0]);
+    }
+  }, [city]);
+
   const handleCreate = async () => {
     if (!name.trim()) { toast.error('Circle name is required'); return; }
     if (!category) { toast.error('Pick a category'); return; }
@@ -44,7 +97,16 @@ export default function CreateCirclePage() {
       const res = await fetch('/api/v1/circles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name, category: category.toLowerCase(), description, city, visibility, join_mode: joinMode }),
+        body: JSON.stringify({
+          name,
+          category: category.toLowerCase(),
+          description,
+          city,
+          visibility,
+          join_mode: joinMode,
+          location_lat: locationLat,
+          location_lng: locationLng,
+        }),
       });
       if (res.ok) {
         toast.success('Circle created!');
@@ -90,6 +152,64 @@ export default function CreateCirclePage() {
         <div>
           <label className="text-[11px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">Description</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What is this circle about?" maxLength={2000} rows={3} className="w-full rounded-xl px-4 py-2.5 text-sm text-white outline-none resize-none placeholder:text-[#2d3548]" style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }} />
+        </div>
+
+        {/* Address with geocoding */}
+        <div className="relative">
+          <label className="text-[11px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">Address / Location</label>
+          <div
+            className="flex items-center gap-2 rounded-xl px-4 py-2.5"
+            style={{
+              background: 'rgba(17,19,24,0.8)',
+              border: selectedAddress ? '1px solid rgba(0,212,255,0.3)' : '1px solid rgba(255,255,255,0.07)',
+            }}
+          >
+            {addressLoading ? (
+              <Loader2 size={14} className="shrink-0 animate-spin text-[#00d4ff]" />
+            ) : (
+              <Search size={14} className="shrink-0" style={{ color: selectedAddress ? '#00d4ff' : '#4a5068' }} />
+            )}
+            <input
+              value={addressQuery}
+              onChange={(e) => handleAddressInput(e.target.value)}
+              placeholder="Search address, city, or place…"
+              className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[#2d3548]"
+            />
+            {addressQuery && (
+              <button onClick={() => { setAddressQuery(''); setSelectedAddress(''); setLocationLat(null); setLocationLng(null); setAddressResults([]); }} className="shrink-0 cursor-pointer" style={{ color: '#4a5068' }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Selected address confirmation */}
+          {selectedAddress && locationLat !== null && (
+            <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-lg" style={{ background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.15)' }}>
+              <MapPin size={12} className="shrink-0" style={{ color: '#00d4ff' }} />
+              <span className="text-[11px] text-[#a3adc3] truncate flex-1">{selectedAddress}</span>
+              <span className="text-[9px] text-[#4a5068] shrink-0">{locationLat.toFixed(4)}, {locationLng!.toFixed(4)}</span>
+            </div>
+          )}
+
+          {/* Autocomplete results */}
+          {addressResults.length > 0 && !selectedAddress && (
+            <div
+              className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden"
+              style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
+            >
+              {addressResults.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => handleSelectAddress(r)}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-[rgba(0,212,255,0.06)] cursor-pointer"
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                >
+                  <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
+                  <span className="text-xs text-[#a3adc3] truncate">{r.display_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* City */}

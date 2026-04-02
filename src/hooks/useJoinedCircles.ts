@@ -13,7 +13,12 @@ export function useJoinedCircles() {
   });
 
   const myCircles = (data?.data || []) as Record<string, unknown>[];
-  const joinedCircleIds = new Set<string>(myCircles.map(c => c.id as string));
+  const joinedCircleIds = new Set<string>(
+    myCircles.filter(c => c.member_status === 'active').map(c => c.id as string)
+  );
+  const pendingCircleIds = new Set<string>(
+    myCircles.filter(c => c.member_status === 'pending').map(c => c.id as string)
+  );
 
-  return { joinedCircleIds, myCircles, refresh: mutate };
+  return { joinedCircleIds, pendingCircleIds, myCircles, refresh: mutate };
 }

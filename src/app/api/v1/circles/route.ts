@@ -42,6 +42,8 @@ const circleSchema = z.object({
   city: z.string().max(100).optional(),
   visibility: z.enum(['public', 'private', 'invite_only']).default('public'),
   join_mode: z.enum(['open', 'request', 'invite_only']).default('open'),
+  location_lat: z.number().min(-90).max(90).nullable().optional(),
+  location_lng: z.number().min(-180).max(180).nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -57,9 +59,9 @@ export async function POST(req: NextRequest) {
     const slug = d.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
     const result = await pgPool.query(
-      `INSERT INTO circles (owner_id, name, slug, category, description, city, visibility, join_mode, member_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1) RETURNING *`,
-      [userId, d.name, slug, d.category, d.description, d.city || '', d.visibility, d.join_mode]
+      `INSERT INTO circles (owner_id, name, slug, category, description, city, visibility, join_mode, location_lat, location_lng, member_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1) RETURNING *`,
+      [userId, d.name, slug, d.category, d.description, d.city || '', d.visibility, d.join_mode, d.location_lat ?? null, d.location_lng ?? null]
     );
 
     const circle = result.rows[0];

@@ -41,7 +41,7 @@ const EVENTS_THIS_WEEK = [
 
 // ─── Components ──────────────────────────────────────────────────────────
 
-function CircleRow({ circle, onClick, isJoined, onJoin, joining }: { circle: typeof SEED_CIRCLES[0]; onClick: () => void; isJoined: boolean; onJoin: () => void; joining: boolean }) {
+function CircleRow({ circle, onClick, isJoined, isPending, onJoin, joining }: { circle: typeof SEED_CIRCLES[0]; onClick: () => void; isJoined: boolean; isPending: boolean; onJoin: () => void; joining: boolean }) {
   return (
     <div
       onClick={onClick}
@@ -61,6 +61,8 @@ function CircleRow({ circle, onClick, isJoined, onJoin, joining }: { circle: typ
       </div>
       {isJoined ? (
         <span className="flex items-center gap-1 text-[10px] font-semibold text-[#34d399]"><Check size={10} /> Joined</span>
+      ) : isPending ? (
+        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>Pending</span>
       ) : circle.has_event ? (
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>Event</span>
       ) : (
@@ -91,7 +93,7 @@ export default function CirclesPage() {
   const [activeTab, setActiveTab] = useState<string>('For You');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
-  const { joinedCircleIds, refresh: refreshCircles } = useJoinedCircles();
+  const { joinedCircleIds, pendingCircleIds, refresh: refreshCircles } = useJoinedCircles();
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [showAuthGate, setShowAuthGate] = useState(false);
 
@@ -176,7 +178,7 @@ export default function CirclesPage() {
           <button onClick={() => router.push('/circles/create')} className="flex items-center gap-1 text-[11px] font-semibold text-[#00d4ff] cursor-pointer"><Plus size={12} /> Create Circle</button>
         </div>
         <div className="space-y-2 mb-6">
-          {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} joining={joiningId === c.id} />)}
+          {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} joining={joiningId === c.id} />)}
         </div>
 
         <div className="flex items-center justify-between mb-3">
@@ -294,6 +296,8 @@ export default function CirclesPage() {
                     </p>
                     {joinedCircleIds.has(circle.id) ? (
                       <span className="flex items-center gap-1 text-[10px] font-semibold text-[#34d399]"><Check size={10} /> Joined</span>
+                    ) : pendingCircleIds.has(circle.id) ? (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>Pending</span>
                     ) : circle.has_event ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>Event</span>
                     ) : (

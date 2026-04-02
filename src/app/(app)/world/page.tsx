@@ -89,12 +89,13 @@ function WorldMapInner({
 
 export default function WorldPage() {
   const { lat, lng, granted, requestLocation } = useLocationStore();
-  const { timeFilter, setTimeFilter, viewMode, setViewMode, selectedMarkerId, markers, setSelectedMarker, activeLayers, toggleLayer, mapCenter, mapZoom } =
+  const { timeFilter, setTimeFilter, viewMode, setViewMode, selectedMarkerId, markers, setSelectedMarker, activeLayers, toggleLayer, mapCenter } =
     useMapStore();
   const { developers } = useDeveloperStore();
   const [showLayers, setShowLayers] = useState(true);
   const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
+  const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
 
   // ── Search ──────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -188,19 +189,13 @@ export default function WorldPage() {
     });
   }, [granted, requestLocation]);
 
-  // Compute radius (meters) from zoom level — wider view = bigger radius
-  const radiusFromZoom = useCallback((zoom: number) => {
-    // ~40000km at zoom 0, halves per zoom level
-    return Math.round(Math.min(40_000_000 / Math.pow(2, zoom), 200_000));
-  }, []);
-
-  // Build query params — in 2D, follow map center; in 3D, fetch all
+  // Build query params — in 2D, follow map center (100km); in 3D, fetch all
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (viewMode === '2d' && mapCenter) {
       params.set('lat', String(mapCenter.lat));
       params.set('lng', String(mapCenter.lng));
-      params.set('radius', String(radiusFromZoom(mapZoom)));
+      params.set('radius', '100000');
     } else if (viewMode === '3d') {
       params.set('lat', '0');
       params.set('lng', '0');
@@ -209,11 +204,11 @@ export default function WorldPage() {
       // Fallback before map is ready
       params.set('lat', String(lat ?? 32.7767));
       params.set('lng', String(lng ?? -96.797));
-      params.set('radius', '50000');
+      params.set('radius', '100000');
     }
     params.set('time', timeFilter);
     return params.toString();
-  }, [viewMode, mapCenter, mapZoom, lat, lng, timeFilter, radiusFromZoom]);
+  }, [viewMode, mapCenter, lat, lng, timeFilter]);
 
   // Fetch signals
   const { data: signalsData } = useSWR<{ data: Signal[] }>(
@@ -323,24 +318,33 @@ export default function WorldPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle summary card click — enable layer + fly to nearest
+  // Handle summary card click — 1 item: fly + select, 2+: show list popup
   const handleSummaryClick = useCallback((type: 'signals' | 'events' | 'offers' | 'businesses') => {
     const layerMap: Record<string, string> = { signals: 'people', events: 'event', offers: 'offer', businesses: 'business' };
+    const colorMap: Record<string, string> = { signals: '#3B82F6', events: '#EF4444', offers: '#EAB308', businesses: '#22C55E' };
     const layer = layerMap[type];
 
-    // Get items with location
-    let items: { lng: number; lat: number; id: string }[] = [];
-    if (type === 'signals') {
-      items = signals.map(s => ({ lng: s.location.coordinates[0], lat: s.location.coordinates[1], id: s.id }));
+    // Build rich items with title/sub for list
+    let listItems: { id: string; title: string; sub: string; color: string; lng: number; lat: number }[] = [];
+    if (type === 'signals' || type === 'offers') {
+      const src = type === 'offers' ? signals.filter(s => s.type === 'offer') : signals;
+      listItems = src.map(s => ({
+        id: s.id, title: s.title, sub: s.category || s.type,
+        color: colorMap[type], lng: s.location.coordinates[0], lat: s.location.coordinates[1],
+      }));
     } else if (type === 'events') {
-      items = events.filter(e => e.location_lat && e.location_lng).map(e => ({ lng: e.location_lng, lat: e.location_lat, id: e.id }));
-    } else if (type === 'offers') {
-      items = signals.filter(s => s.type === 'offer').map(s => ({ lng: s.location.coordinates[0], lat: s.location.coordinates[1], id: s.id }));
+      listItems = events.filter(e => e.location_lat && e.location_lng).map(e => ({
+        id: e.id, title: e.title, sub: e.location_name || e.city || '',
+        color: colorMap[type], lng: e.location_lng!, lat: e.location_lat!,
+      }));
     } else if (type === 'businesses') {
-      items = businesses.filter(b => b.location_lat && b.location_lng).map(b => ({ lng: b.location_lng, lat: b.location_lat, id: b.id }));
+      listItems = businesses.filter(b => b.location_lat && b.location_lng).map(b => ({
+        id: b.id, title: b.name, sub: b.category + (b.city ? ` · ${b.city}` : ''),
+        color: colorMap[type], lng: b.location_lng, lat: b.location_lat,
+      }));
     }
 
-    if (items.length === 0) {
+    if (listItems.length === 0) {
       toast.info(`No ${type} nearby`);
       return;
     }
@@ -348,23 +352,16 @@ export default function WorldPage() {
     // Ensure layer is on
     if (!activeLayers.has(layer)) toggleLayer(layer);
 
-    // Fly to nearest item relative to current map center
-    const centerLat = mapCenter?.lat ?? lat ?? 32.7767;
-    const centerLng = mapCenter?.lng ?? lng ?? -96.797;
-    const nearest = items.reduce((best, item) => {
-      const dist = Math.hypot(item.lat - centerLat, item.lng - centerLng);
-      return dist < best.dist ? { ...item, dist } : best;
-    }, { ...items[0], dist: Infinity });
-
-    window.dispatchEvent(new CustomEvent('gao-fly-to', {
-      detail: { lng: nearest.lng, lat: nearest.lat, zoom: 15 }
-    }));
-
-    // If only 1 item, auto-select it
-    if (items.length === 1) {
-      setTimeout(() => setSelectedMarker(nearest.id), 500);
+    if (listItems.length === 1) {
+      // Single item — fly + select
+      const item = listItems[0];
+      window.dispatchEvent(new CustomEvent('gao-fly-to', { detail: { lng: item.lng, lat: item.lat, zoom: 15 } }));
+      setTimeout(() => setSelectedMarker(item.id), 500);
+    } else {
+      // Multiple items — show list popup
+      setNearbyList({ type, items: listItems });
     }
-  }, [signals, events, businesses, mapCenter, lat, lng, activeLayers, toggleLayer, setSelectedMarker]);
+  }, [signals, events, businesses, activeLayers, toggleLayer, setSelectedMarker]);
 
   return (
     <div className="relative h-full w-full">
@@ -592,6 +589,49 @@ export default function WorldPage() {
             </div>
           </div>
         </div>
+
+        {/* ── Nearby List Popup ─────────────────────── */}
+        {nearbyList && (
+          <div className="absolute inset-0 z-40 flex items-end justify-center pb-[calc(64px+env(safe-area-inset-bottom,0px)+12px)] lg:pb-4">
+            {/* Backdrop */}
+            <div className="absolute inset-0" onClick={() => setNearbyList(null)} />
+            {/* Panel */}
+            <div
+              className="relative mx-3 w-full max-w-sm rounded-2xl overflow-hidden"
+              style={{ background: 'rgba(10,11,15,0.95)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <span className="text-sm font-semibold text-[#f0f4ff] capitalize">{nearbyList.type} nearby</span>
+                <button onClick={() => setNearbyList(null)} className="text-[#4a5068] hover:text-white transition-colors cursor-pointer">
+                  <X size={16} />
+                </button>
+              </div>
+              {/* List */}
+              <div className="max-h-[40vh] overflow-y-auto">
+                {nearbyList.items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setNearbyList(null);
+                      window.dispatchEvent(new CustomEvent('gao-fly-to', { detail: { lng: item.lng, lat: item.lat, zoom: 15 } }));
+                      setTimeout(() => setSelectedMarker(item.id), 500);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                  >
+                    <span className="shrink-0 w-2 h-2 rounded-full" style={{ background: item.color }} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium text-[#f0f4ff] truncate">{item.title}</p>
+                      <p className="text-[10px] text-[#4a5068] truncate">{item.sub}</p>
+                    </div>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4a5068" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Marker Detail Sheet ─────────────────────── */}
         {selectedMarker && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && (

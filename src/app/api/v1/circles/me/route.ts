@@ -10,10 +10,10 @@ export async function GET(req: NextRequest) {
     if (!userId) return NextResponse.json({ data: [] });
 
     const result = await pgPool.query(
-      `SELECT c.*, cm.role AS my_role
+      `SELECT c.*, cm.role AS my_role, cm.status AS member_status
        FROM circle_members cm
        JOIN circles c ON c.id = cm.circle_id
-       WHERE cm.user_id = $1 AND cm.status = 'active'
+       WHERE cm.user_id = $1 AND cm.status IN ('active', 'pending')
        ORDER BY cm.joined_at DESC`,
       [userId]
     );
