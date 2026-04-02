@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Camera, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,6 +17,28 @@ export default function EditProfilePage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [photos, setPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [photoFiles, setPhotoFiles] = useState<(File | null)[]>([null, null, null, null]);
+
+  // Load existing data from DB
+  useEffect(() => {
+    fetch('/api/v1/users/me', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.data) {
+          const d = res.data;
+          if (d.display_name) setDisplayName(d.display_name);
+          if (d.bio) setBio(d.bio);
+          if (d.avatar_url) setAvatarPreview(d.avatar_url);
+          if (d.photos && d.photos.length > 0) {
+            const loaded: (string | null)[] = [null, null, null, null];
+            d.photos.forEach((url: string, i: number) => { if (i < 4) loaded[i] = url; });
+            setPhotos(loaded);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
