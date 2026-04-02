@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { X, MapPin, Calendar, Clock, Users, CheckCircle, Heart } from 'lucide-react';
+import { X, MapPin, Calendar, Clock, Users, CheckCircle, Heart, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useJoinedEvents } from '@/hooks/useJoinedEvents';
 import { useSavedItems } from '@/hooks/useSavedItems';
+import EventChat from '@/components/events/EventChat';
 import type { Event } from '@/types';
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
+  const [showChat, setShowChat] = useState(false);
   const { joinedEventIds, refresh } = useJoinedEvents();
   const { isSaved, toggleSave } = useSavedItems();
   const eventSaved = isSaved('event', e.id);
@@ -62,6 +64,7 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
   } catch { endLabel = ''; }
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -171,6 +174,9 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
 
           {/* Footer */}
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <button onClick={() => setShowChat(true)} className="rounded-xl py-3 px-4 text-sm font-semibold cursor-pointer flex items-center gap-1.5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
+              <MessageCircle size={14} />
+            </button>
             <button onClick={handleJoin} disabled={joining || joined || isFull || isPast} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50" style={{ background: isPast ? '#4a5068' : isFull ? '#EF4444' : joined ? '#34d399' : '#00d4ff', color: isPast || isFull ? '#ffffff' : '#0a0b0f' }}>
               {isPast ? 'Closed' : isFull ? 'Full' : joined ? <><CheckCircle size={15} /> Joined</> : joining ? 'Joining...' : <><Users size={15} /> Join</>}
             </button>
@@ -181,6 +187,11 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    {showChat && (
+      <EventChat eventId={e.id} eventTitle={e.title} onClose={() => setShowChat(false)} />
+    )}
+    </>
   );
 }
 

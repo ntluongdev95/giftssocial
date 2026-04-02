@@ -473,6 +473,20 @@ CREATE INDEX IF NOT EXISTS idx_evt_circle ON events(circle_id) WHERE circle_id I
 ALTER TABLE events DROP CONSTRAINT IF EXISTS events_visibility_check;
 ALTER TABLE events ADD CONSTRAINT events_visibility_check CHECK (visibility IN ('public', 'circle', 'private'));
 
+-- ── Messages (event/circle group chat) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY DEFAULT 'msg_' || gen_random_uuid()::text,
+  room_type VARCHAR(20) NOT NULL DEFAULT 'event',
+  room_id TEXT NOT NULL,
+  sender_id TEXT NOT NULL,
+  sender_name VARCHAR(100),
+  sender_avatar TEXT,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_type, room_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+
 -- ============================================================================
 -- HELPER FUNCTIONS
 -- ============================================================================

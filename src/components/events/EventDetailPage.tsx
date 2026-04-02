@@ -10,6 +10,7 @@ import { format, isToday, isTomorrow } from 'date-fns';
 import { toast } from 'sonner';
 import { useJoinedEvents } from '@/hooks/useJoinedEvents';
 import { useSavedItems } from '@/hooks/useSavedItems';
+import EventChat from '@/components/events/EventChat';
 import type { Event } from '@/types';
 
 interface Props {
@@ -36,6 +37,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
   const [joining, setJoining] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
   const [extraJoined, setExtraJoined] = useState(0);
+  const [showChat, setShowChat] = useState(false);
   const joined = alreadyJoined || justJoined;
 
   const [imgIdx, setImgIdx] = useState(0);
@@ -171,7 +173,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
 
       {/* Quick actions */}
       <div className="flex gap-2">
-        <ActionBtn icon={<MessageCircle size={15} />} label="Chat" />
+        <ActionBtn icon={<MessageCircle size={15} />} label="Chat" onClick={() => setShowChat(true)} />
         <ActionBtn icon={joined ? <CheckCircle size={15} /> : <Bookmark size={15} />} label={isPast ? 'Closed' : isFull ? 'Full' : joined ? 'Joined' : joining ? 'Joining...' : 'Join Event'} primary onClick={handleJoin} disabled={joining || joined || isFull || isPast} />
         <ActionBtn icon={<Heart size={15} fill={eventSaved ? '#f87171' : 'none'} />} label={eventSaved ? 'Saved' : 'Save'} onClick={handleSave} />
       </div>
@@ -330,6 +332,10 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
           </div>
         </motion.div>
       </div>
+
+      {showChat && (
+        <EventChat eventId={e.id} eventTitle={e.title} onClose={() => setShowChat(false)} />
+      )}
     </>
   );
 }
