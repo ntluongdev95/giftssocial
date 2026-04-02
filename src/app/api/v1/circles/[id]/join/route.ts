@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import { notify } from '@/lib/notify';
 
 // ─── POST /api/v1/circles/:id/join ───────────────────────────────────────
 
@@ -28,6 +29,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
        ON CONFLICT (circle_id, user_id) DO UPDATE SET status = $3, joined_at = NOW()`,
       [id, userId, status]
     );
+
+    if (status === 'pending') {
+      // Notify circle owner about the join request
+      const ownerId = circle.rows[0].owner_id;
+      const userName = await pgPool.query('SELECT display_name FROM users WHERE id = $1', [userId]);
+      const displayName = userName.rows[0]?.display_name || 'Someone';
+      const circleName = circle.rows[0].name;
+      notify(ownerId, 'circle_join_request', `${displayName} wants to join ${circleName}`, `Approve or decline in your circle settings.`, 'circle', id);
+    }
 
     if (status === 'active') {
       await pgPool.query('UPDATE circles SET member_count = member_count + 1 WHERE id = $1', [id]);

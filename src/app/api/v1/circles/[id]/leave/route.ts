@@ -12,13 +12,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
 
     const result = await pgPool.query(
-      "UPDATE circle_members SET status = 'left' WHERE circle_id = $1 AND user_id = $2 AND status = 'active' RETURNING id",
+      "UPDATE circle_members SET status = 'left' WHERE circle_id = $1 AND user_id = $2 AND status IN ('active', 'pending') RETURNING id, status",
       [id, userId]
     );
 
     if (result.rows.length > 0) {
-      await pgPool.query('UPDATE circles SET member_count = GREATEST(member_count - 1, 0) WHERE id = $1', [id]);
-      await pgPool.query('UPDATE users SET circles_count = GREATEST(circles_count - 1, 0) WHERE id = $1', [userId]).catch(() => {});
+      // Only decrement counts if was an active member (not pending)
+      const prevStatus = result.rows[0].status;
+      if (prevStatus === 'active') {
+        await pgPool.query('UPDATE circles SET member_count = GREATEST(member_count - 1, 0) WHERE id = $1', [id]);
+        await pgPool.query('UPDATE users SET circles_count = GREATEST(circles_count - 1, 0) WHERE id = $1', [userId]).catch(() => {});
+      }
     }
 
     return NextResponse.json({ data: { circle_id: id, left: true } });

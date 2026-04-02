@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { ArrowLeft, Loader2, Users, LogOut } from 'lucide-react';
+import { ArrowLeft, Loader2, Users, LogOut, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 
@@ -16,16 +16,15 @@ export default function MyCirclesPage() {
   const circles = (data?.data || []) as Record<string, unknown>[];
   const [leavingId, setLeavingId] = useState<string | null>(null);
 
-  const handleLeave = async (circleId: string, circleName: string) => {
-    if (!confirm(`Leave "${circleName}"?`)) return;
+  const handleLeave = async (circleId: string, circleName: string, isPending: boolean) => {
     setLeavingId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/leave`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
       });
-      if (res.ok) { toast.success(`Left ${circleName}`); mutate(); }
-      else toast.error('Failed to leave');
+      if (res.ok) { toast.success(isPending ? 'Request cancelled' : `Left ${circleName}`); mutate(); }
+      else toast.error('Failed');
     } catch { toast.error('Network error'); }
     finally { setLeavingId(null); }
   };
@@ -47,7 +46,7 @@ export default function MyCirclesPage() {
         ) : circles.length === 0 ? (
           <EmptyState onExplore={() => router.push('/circles')} />
         ) : (
-          circles.map((c) => <CircleListItem key={c.id as string} circle={c} onLeave={handleLeave} leavingId={leavingId} router={router} />)
+          circles.map((c) => <CircleListItem key={c.id as string} circle={c} onLeave={handleLeave} leavingId={leavingId} router={router} isPending={(c.member_status as string) === 'pending'} />)
         )}
       </div>
 
@@ -83,9 +82,13 @@ export default function MyCirclesPage() {
                   </p>
 
                   <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-                      {c.my_role as string || 'member'}
-                    </span>
+                    {(c.member_status as string) === 'pending' ? (
+                      <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.1)', color: '#EAB308' }}>Pending</span>
+                    ) : (
+                      <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                        {c.my_role as string || 'member'}
+                      </span>
+                    )}
                     <span className="text-[9px] text-[#4a5068] capitalize">{c.category as string}</span>
                   </div>
 
@@ -97,16 +100,19 @@ export default function MyCirclesPage() {
                     >
                       <Users size={10} className="inline mr-1" /> View
                     </button>
-                    {c.my_role !== 'owner' && (
-                      <button
-                        onClick={(ev) => { ev.stopPropagation(); handleLeave(c.id as string, c.name as string); }}
-                        disabled={leavingId === c.id as string}
-                        className="rounded-lg py-2 px-3 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
-                        style={{ background: 'rgba(239,68,68,0.08)', color: '#f87171' }}
-                      >
-                        <LogOut size={10} className="inline mr-1" /> Leave
-                      </button>
-                    )}
+                    {c.my_role !== 'owner' && (() => {
+                      const pending = (c.member_status as string) === 'pending';
+                      return (
+                        <button
+                          onClick={(ev) => { ev.stopPropagation(); handleLeave(c.id as string, c.name as string, pending); }}
+                          disabled={leavingId === c.id as string}
+                          className="rounded-lg py-2 px-3 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
+                          style={pending ? { background: 'rgba(234,179,8,0.08)', color: '#EAB308' } : { background: 'rgba(239,68,68,0.08)', color: '#f87171' }}
+                        >
+                          {pending ? <><X size={10} className="inline mr-1" /> Cancel</> : <><LogOut size={10} className="inline mr-1" /> Leave</>}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -130,7 +136,7 @@ function EmptyState({ onExplore }: { onExplore: () => void }) {
   );
 }
 
-function CircleListItem({ circle: c, onLeave, leavingId, router }: { circle: Record<string, unknown>; onLeave: (id: string, name: string) => void; leavingId: string | null; router: ReturnType<typeof useRouter> }) {
+function CircleListItem({ circle: c, onLeave, leavingId, router, isPending }: { circle: Record<string, unknown>; onLeave: (id: string, name: string, isPending: boolean) => void; leavingId: string | null; router: ReturnType<typeof useRouter>; isPending: boolean }) {
   return (
     <div className="rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
       <div className="flex items-start gap-3">
@@ -140,19 +146,30 @@ function CircleListItem({ circle: c, onLeave, leavingId, router }: { circle: Rec
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-white truncate">{c.name as string}</h3>
           <p className="text-[10px] text-[#4a5068]">
-            {(c.member_count as number || 0).toLocaleString()} members{c.city ? ` · ${c.city}` : ''}
+            {(c.member_count as number || 0).toLocaleString()} members{c.city ? ` · ${c.city as string}` : ''}
           </p>
           <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>{c.my_role as string || 'member'}</span>
-            {c.category && <span className="text-[9px] text-[#4a5068] capitalize">{c.category as string}</span>}
+            {isPending ? (
+              <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.1)', color: '#EAB308' }}>Pending</span>
+            ) : (
+              <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>{c.my_role as string || 'member'}</span>
+            )}
+            {c.category ? <span className="text-[9px] text-[#4a5068] capitalize">{String(c.category)}</span> : null}
           </div>
           <div className="flex items-center gap-2 mt-3">
-            <button onClick={() => router.push('/circles')} className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-              <Users size={10} className="inline mr-1" /> View
-            </button>
+            {!isPending && (
+              <button onClick={() => router.push('/circles')} className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                <Users size={10} className="inline mr-1" /> View
+              </button>
+            )}
             {c.my_role !== 'owner' && (
-              <button onClick={() => onLeave(c.id as string, c.name as string)} disabled={leavingId === c.id} className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer disabled:opacity-50" style={{ background: 'rgba(239,68,68,0.08)', color: '#f87171' }}>
-                <LogOut size={10} className="inline mr-1" /> Leave
+              <button
+                onClick={() => onLeave(c.id as string, c.name as string, isPending)}
+                disabled={leavingId === c.id}
+                className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
+                style={isPending ? { background: 'rgba(234,179,8,0.08)', color: '#EAB308' } : { background: 'rgba(239,68,68,0.08)', color: '#f87171' }}
+              >
+                {isPending ? <><X size={10} className="inline mr-1" /> Cancel</> : <><LogOut size={10} className="inline mr-1" /> Leave</>}
               </button>
             )}
           </div>

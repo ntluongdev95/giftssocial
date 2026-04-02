@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Check } from 'lucide-react';
+import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Check, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import SignInGateSheet from '@/components/auth/SignInGateSheet';
@@ -41,7 +41,7 @@ const EVENTS_THIS_WEEK = [
 
 // ─── Components ──────────────────────────────────────────────────────────
 
-function CircleRow({ circle, onClick, isJoined, isPending, onJoin, joining }: { circle: typeof SEED_CIRCLES[0]; onClick: () => void; isJoined: boolean; isPending: boolean; onJoin: () => void; joining: boolean }) {
+function CircleRow({ circle, onClick, isJoined, isPending, onJoin, onLeave, joining, leaving }: { circle: typeof SEED_CIRCLES[0]; onClick: () => void; isJoined: boolean; isPending: boolean; onJoin: () => void; onLeave: () => void; joining: boolean; leaving: boolean }) {
   return (
     <div
       onClick={onClick}
@@ -60,9 +60,13 @@ function CircleRow({ circle, onClick, isJoined, isPending, onJoin, joining }: { 
         </p>
       </div>
       {isJoined ? (
-        <span className="flex items-center gap-1 text-[10px] font-semibold text-[#34d399]"><Check size={10} /> Joined</span>
+        <button onClick={(ev) => { ev.stopPropagation(); onLeave(); }} disabled={leaving} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-red-500/10" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+          {leaving ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Joined
+        </button>
       ) : isPending ? (
-        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>Pending</span>
+        <button onClick={(ev) => { ev.stopPropagation(); onLeave(); }} disabled={leaving} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-red-500/10" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>
+          {leaving ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />} Pending
+        </button>
       ) : circle.has_event ? (
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>Event</span>
       ) : (
@@ -95,6 +99,7 @@ export default function CirclesPage() {
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
   const { joinedCircleIds, pendingCircleIds, refresh: refreshCircles } = useJoinedCircles();
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [leavingId, setLeavingId] = useState<string | null>(null);
   const [showAuthGate, setShowAuthGate] = useState(false);
 
   // Fetch circles from API
@@ -119,6 +124,26 @@ export default function CirclesPage() {
       }
     } catch { toast.error('Network error'); }
     finally { setJoiningId(null); }
+  };
+
+  const handleLeaveCircle = async (circleId: string, isPending: boolean) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    setLeavingId(circleId);
+    try {
+      const res = await fetch(`/api/v1/circles/${circleId}/leave`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        refreshCircles();
+        toast.success(isPending ? 'Request cancelled' : 'Left circle');
+      } else {
+        const data = await res.json();
+        toast.error(data.error?.message || 'Failed');
+      }
+    } catch { toast.error('Network error'); }
+    finally { setLeavingId(null); }
   };
 
   const allCircles = apiCircles.length > 0 ? apiCircles : SEED_CIRCLES;
@@ -178,7 +203,7 @@ export default function CirclesPage() {
           <button onClick={() => router.push('/circles/create')} className="flex items-center gap-1 text-[11px] font-semibold text-[#00d4ff] cursor-pointer"><Plus size={12} /> Create Circle</button>
         </div>
         <div className="space-y-2 mb-6">
-          {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} joining={joiningId === c.id} />)}
+          {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} onLeave={() => handleLeaveCircle(c.id, pendingCircleIds.has(c.id))} joining={joiningId === c.id} leaving={leavingId === c.id} />)}
         </div>
 
         <div className="flex items-center justify-between mb-3">
@@ -295,9 +320,13 @@ export default function CirclesPage() {
                       {circle.online ? <span className="text-[#00d4ff]"> · {circle.online} online</span> : ''}
                     </p>
                     {joinedCircleIds.has(circle.id) ? (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold text-[#34d399]"><Check size={10} /> Joined</span>
+                      <button onClick={(ev) => { ev.stopPropagation(); handleLeaveCircle(circle.id, false); }} disabled={leavingId === circle.id} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-red-500/10" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+                        {leavingId === circle.id ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Joined
+                      </button>
                     ) : pendingCircleIds.has(circle.id) ? (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>Pending</span>
+                      <button onClick={(ev) => { ev.stopPropagation(); handleLeaveCircle(circle.id, true); }} disabled={leavingId === circle.id} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-red-500/10" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>
+                        {leavingId === circle.id ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />} Pending
+                      </button>
                     ) : circle.has_event ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>Event</span>
                     ) : (
