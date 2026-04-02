@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { X, MapPin, Calendar, Clock, Users, CheckCircle } from 'lucide-react';
+import { X, MapPin, Calendar, Clock, Users, CheckCircle, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useJoinedEvents } from '@/hooks/useJoinedEvents';
+import { useSavedItems } from '@/hooks/useSavedItems';
 import type { Event } from '@/types';
 
 interface Props {
@@ -16,6 +17,13 @@ interface Props {
 
 export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
   const { joinedEventIds, refresh } = useJoinedEvents();
+  const { isSaved, toggleSave } = useSavedItems();
+  const eventSaved = isSaved('event', e.id);
+
+  const handleSave = async () => {
+    const result = await toggleSave('event', e.id);
+    toast.success(result ? 'Event saved!' : 'Event unsaved');
+  };
   const alreadyJoined = joinedEventIds.has(e.id);
   const [joining, setJoining] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
@@ -166,8 +174,8 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
             <button onClick={handleJoin} disabled={joining || joined || isFull || isPast} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50" style={{ background: isPast ? '#4a5068' : isFull ? '#EF4444' : joined ? '#34d399' : '#00d4ff', color: isPast || isFull ? '#ffffff' : '#0a0b0f' }}>
               {isPast ? 'Closed' : isFull ? 'Full' : joined ? <><CheckCircle size={15} /> Joined</> : joining ? 'Joining...' : <><Users size={15} /> Join</>}
             </button>
-            <button className="rounded-xl py-3 px-5 text-sm font-semibold transition-colors cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
-              Save
+            <button onClick={handleSave} className="rounded-xl py-3 px-5 text-sm font-semibold transition-colors cursor-pointer flex items-center gap-1.5" style={{ background: eventSaved ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: eventSaved ? '#f87171' : '#a3adc3' }}>
+              <Heart size={14} fill={eventSaved ? '#f87171' : 'none'} /> {eventSaved ? 'Saved' : 'Save'}
             </button>
           </div>
         </motion.div>

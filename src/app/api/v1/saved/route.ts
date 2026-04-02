@@ -44,17 +44,25 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const itemType = searchParams.get('type');
 
-    let query = 'SELECT * FROM saved_items WHERE user_id = $1';
+    let conditions = 'WHERE s.user_id = $1';
     const values: unknown[] = [userId];
 
     if (itemType) {
-      query += ' AND item_type = $2';
+      conditions += ' AND s.item_type = $2';
       values.push(itemType);
     }
 
-    query += ' ORDER BY created_at DESC LIMIT 50';
-
-    const result = await pgPool.query(query, values);
+    const result = await pgPool.query(
+      `SELECT s.*,
+        e.title AS event_title, e.start_time AS event_start_time, e.city AS event_city,
+        b.name AS business_name, b.category AS business_category, b.city AS business_city
+       FROM saved_items s
+       LEFT JOIN events e ON s.item_type = 'event' AND s.item_id = e.id
+       LEFT JOIN businesses b ON s.item_type = 'business' AND s.item_id = b.id
+       ${conditions}
+       ORDER BY s.created_at DESC LIMIT 50`,
+      values
+    );
     return NextResponse.json({ data: result.rows });
   } catch (err) {
     console.error('[Saved GET]', err);

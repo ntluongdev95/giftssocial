@@ -9,6 +9,7 @@ import {
 import { format, isToday, isTomorrow } from 'date-fns';
 import { toast } from 'sonner';
 import { useJoinedEvents } from '@/hooks/useJoinedEvents';
+import { useSavedItems } from '@/hooks/useSavedItems';
 import type { Event } from '@/types';
 
 interface Props {
@@ -24,6 +25,13 @@ const EVENT_PLACEHOLDERS = [
 
 export default function EventDetailPage({ event: e, onClose }: Props) {
   const { joinedEventIds, refresh } = useJoinedEvents();
+  const { isSaved, toggleSave } = useSavedItems();
+  const eventSaved = isSaved('event', e.id);
+
+  const handleSave = async () => {
+    const result = await toggleSave('event', e.id);
+    toast.success(result ? 'Event saved!' : 'Event unsaved');
+  };
   const alreadyJoined = joinedEventIds.has(e.id);
   const [joining, setJoining] = useState(false);
   const [justJoined, setJustJoined] = useState(false);
@@ -165,7 +173,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
       <div className="flex gap-2">
         <ActionBtn icon={<MessageCircle size={15} />} label="Chat" />
         <ActionBtn icon={joined ? <CheckCircle size={15} /> : <Bookmark size={15} />} label={isPast ? 'Closed' : isFull ? 'Full' : joined ? 'Joined' : joining ? 'Joining...' : 'Join Event'} primary onClick={handleJoin} disabled={joining || joined || isFull || isPast} />
-        <ActionBtn icon={<Heart size={15} />} label="Save" />
+        <ActionBtn icon={<Heart size={15} fill={eventSaved ? '#f87171' : 'none'} />} label={eventSaved ? 'Saved' : 'Save'} onClick={handleSave} />
       </div>
 
       {/* Schedule */}
@@ -240,6 +248,13 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
         style={{ background: isPast ? '#4a5068' : isFull ? '#EF4444' : joined ? '#34d399' : '#00d4ff', color: isPast || isFull ? '#ffffff' : '#0a0b0f' }}
       >
         {isPast ? 'Closed' : isFull ? 'Full' : joined ? '✓ Joined' : joining ? '...' : 'Join'}
+      </button>
+      <button
+        onClick={handleSave}
+        className="rounded-xl px-4 py-3 text-sm font-semibold cursor-pointer"
+        style={{ background: eventSaved ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: eventSaved ? '#f87171' : '#a3adc3' }}
+      >
+        <Heart size={16} fill={eventSaved ? '#f87171' : 'none'} />
       </button>
     </div>
   );

@@ -83,9 +83,9 @@ export default function MePage() {
         {/* My Network */}
         <SectionTitle>My Network</SectionTitle>
         <div className="grid grid-cols-3 gap-3 mb-5">
-          <NetworkMini icon={<Users size={16} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" />
-          <NetworkMini icon={<UserCheck size={16} />} value={`${followingCount}`} label="Following" color="#34d399" />
-          <NetworkMini icon={<Bookmark size={16} />} value={`${savedCount}`} label="Saved" color="#fbbf24" />
+          <NetworkMini icon={<Users size={16} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" onClick={() => router.push('/circles')} />
+          <NetworkMini icon={<UserCheck size={16} />} value={`${followingCount}`} label="Following" color="#34d399" onClick={() => router.push('/me/following')} />
+          <NetworkMini icon={<Bookmark size={16} />} value={`${savedCount}`} label="Saved" color="#fbbf24" onClick={() => router.push('/me/saved')} />
         </div>
 
         {/* My Activities */}
@@ -150,9 +150,9 @@ export default function MePage() {
 
               {/* Network */}
               <div className="grid grid-cols-3 gap-2">
-                <NetworkMini icon={<Users size={14} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" />
-                <NetworkMini icon={<UserCheck size={14} />} value={`${followingCount}`} label="Following" color="#34d399" />
-                <NetworkMini icon={<Bookmark size={14} />} value={`${savedCount}`} label="Saved" color="#fbbf24" />
+                <NetworkMini icon={<Users size={14} />} value={`${circlesCount}`} label="Circles" color="#00d4ff" onClick={() => router.push('/circles')} />
+                <NetworkMini icon={<UserCheck size={14} />} value={`${followingCount}`} label="Following" color="#34d399" onClick={() => router.push('/me/following')} />
+                <NetworkMini icon={<Bookmark size={14} />} value={`${savedCount}`} label="Saved" color="#fbbf24" onClick={() => router.push('/me/saved')} />
               </div>
             </div>
 
@@ -213,13 +213,13 @@ function StatMini({ value, label }: { value: string; label: string }) {
   );
 }
 
-function NetworkMini({ icon, value, label, color }: { icon: React.ReactNode; value: string; label: string; color: string }) {
+function NetworkMini({ icon, value, label, color, onClick }: { icon: React.ReactNode; value: string; label: string; color: string; onClick?: () => void }) {
   return (
-    <div className="flex flex-col items-center gap-1 rounded-xl py-2.5" style={{ background: `${color}08` }}>
+    <button onClick={onClick} className="flex flex-col items-center gap-1 rounded-xl py-2.5 cursor-pointer transition-colors hover:bg-white/[0.03] w-full" style={{ background: `${color}08` }}>
       <span style={{ color }}>{icon}</span>
       <p className="text-sm font-bold text-white">{value}</p>
       <p className="text-[9px] text-[#4a5068]">{label}</p>
-    </div>
+    </button>
   );
 }
 
