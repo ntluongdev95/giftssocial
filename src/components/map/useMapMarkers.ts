@@ -768,8 +768,8 @@ export function useMapMarkers(
 
   // ── 3D Globe: GeoJSON layers ─────────────────────────────────────────────
   const GLOBE_SRC = 'gao-globe-src';
-  const GLOBE_TYPES = ['business', 'event', 'people', 'offer', 'profile'] as const;
-  const GLOBE_COLORS: Record<string, string> = { business: '#22C55E', event: '#EF4444', people: '#3B82F6', offer: '#EAB308', profile: '#818CF8' };
+  const GLOBE_TYPES = ['business', 'event', 'people', 'offer', 'profile', 'landmark'] as const;
+  const GLOBE_COLORS: Record<string, string> = { business: '#22C55E', event: '#EF4444', people: '#3B82F6', offer: '#EAB308', profile: '#818CF8', landmark: '#fbbf24' };
   const GLOBE_ICONS: Record<string, { src: string; size: number }> = {
     business: { src: '/icons/business.png', size: 0.12 },
     event: { src: '/icons/event.png', size: 0.03 },
@@ -802,6 +802,9 @@ export function useMapMarkers(
     for (const p of profiles) {
       if (p.location) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: p.location.coordinates as [number, number] }, properties: { id: p._id, entityType: 'profile' } });
     }
+    for (const lm of landmarks) {
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lm.lng, lm.lat] }, properties: { id: lm.id, entityType: 'landmark', name: lm.name, icon: lm.icon } });
+    }
 
     const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
 
@@ -819,14 +822,52 @@ export function useMapMarkers(
         const visible = activeLayers.has(t);
 
         if (!map.getLayer(id)) {
-          const iconCfg = GLOBE_ICONS[t];
-          if (iconCfg && map.hasImage(`globe-icon-${t}`)) {
-            map.addLayer({ id, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], layout: { 'icon-image': `globe-icon-${t}`, 'icon-size': iconCfg.size, 'icon-allow-overlap': true, visibility: visible ? 'visible' : 'none' } });
+          if (t === 'landmark') {
+            // Generate emoji images for each unique landmark icon
+            const uniqueIcons = new Set(landmarks.map(lm => lm.icon));
+            for (const emoji of uniqueIcons) {
+              const imgName = `lm-${emoji}`;
+              if (!map.hasImage(imgName)) {
+                const size = 64;
+                const canvas = document.createElement('canvas');
+                canvas.width = size; canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  // Gold circle background
+                  ctx.beginPath();
+                  ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+                  ctx.fillStyle = 'rgba(251,191,36,0.95)';
+                  ctx.fill();
+                  ctx.strokeStyle = '#ffffff';
+                  ctx.lineWidth = 3;
+                  ctx.stroke();
+                  // Emoji
+                  ctx.font = '30px serif';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(emoji, size / 2, size / 2 + 2);
+                  const imgData = ctx.getImageData(0, 0, size, size);
+                  map.addImage(imgName, imgData, { pixelRatio: 2 });
+                }
+              }
+            }
+            // Icon layer
+            map.addLayer({ id, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'landmark'], layout: { 'icon-image': ['concat', 'lm-', ['get', 'icon']], 'icon-size': 0.6, 'icon-allow-overlap': true, visibility: visible ? 'visible' : 'none' } });
+            // Name label below
+            map.addLayer({ id: `${id}-label`, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'landmark'], layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 2], 'text-anchor': 'top', 'text-allow-overlap': false, visibility: visible ? 'visible' : 'none' }, paint: { 'text-color': '#fbbf24', 'text-halo-color': '#000000', 'text-halo-width': 1.5 } });
           } else {
-            map.addLayer({ id, type: 'circle', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], paint: { 'circle-radius': 7, 'circle-color': GLOBE_COLORS[t] || '#fff', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }, layout: { visibility: visible ? 'visible' : 'none' } });
+            const iconCfg = GLOBE_ICONS[t];
+            if (iconCfg && map.hasImage(`globe-icon-${t}`)) {
+              map.addLayer({ id, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], layout: { 'icon-image': `globe-icon-${t}`, 'icon-size': iconCfg.size, 'icon-allow-overlap': true, visibility: visible ? 'visible' : 'none' } });
+            } else {
+              map.addLayer({ id, type: 'circle', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], paint: { 'circle-radius': 7, 'circle-color': GLOBE_COLORS[t] || '#fff', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }, layout: { visibility: visible ? 'visible' : 'none' } });
+            }
           }
         } else {
           map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+          if (t === 'landmark') {
+            if (map.getLayer(`${id}-label`)) map.setLayoutProperty(`${id}-label`, 'visibility', visible ? 'visible' : 'none');
+          }
         }
       }
       globeReady.current = true;
@@ -834,7 +875,7 @@ export function useMapMarkers(
       console.warn('[GLOBE] build error', err);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, activeLayers, signals, businesses, events, profiles]);
+  }, [map, activeLayers, signals, businesses, events, profiles, landmarks]);
 
   // Toggle between 2D DOM markers and 3D globe layers
   useEffect(() => {
@@ -847,8 +888,12 @@ export function useMapMarkers(
     }
 
     if (!isGlobe) {
-      // Clean globe layers
-      for (const t of GLOBE_TYPES) { try { if (map.getLayer(`gao-globe-${t}`)) map.removeLayer(`gao-globe-${t}`); } catch {} }
+      // Clean globe layers + label layers
+      for (const t of GLOBE_TYPES) {
+        try { if (map.getLayer(`gao-globe-${t}-label`)) map.removeLayer(`gao-globe-${t}-label`); } catch {}
+        try { if (map.getLayer(`gao-globe-${t}-bg`)) map.removeLayer(`gao-globe-${t}-bg`); } catch {}
+        try { if (map.getLayer(`gao-globe-${t}`)) map.removeLayer(`gao-globe-${t}`); } catch {}
+      }
       try { if (map.getSource(GLOBE_SRC)) map.removeSource(GLOBE_SRC); } catch {}
       globeReady.current = false;
       return;

@@ -40,6 +40,7 @@ export default function LayerFilterPanel() {
       {/* Entity layers */}
       {ENTITY_LAYERS.map(({ key, icon }) => {
         const config = ENTITY_MARKER_CONFIG[key];
+        if (!config) return null;
         const active = activeLayers.has(key);
         return (
           <button
@@ -62,6 +63,30 @@ export default function LayerFilterPanel() {
           </button>
         );
       })}
+
+      {/* Landmarks — 3D only */}
+      {viewMode === '3d' && (() => {
+        const active = activeLayers.has('landmark');
+        return (
+          <button
+            onClick={() => toggleLayer('landmark')}
+            className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium transition-all duration-200 cursor-pointer"
+            style={active ? {
+              background: 'rgba(255,255,255,0.95)',
+              border: '1px solid #fbbf24',
+              color: '#0a0b0f',
+              boxShadow: '0 0 12px rgba(251,191,36,0.5), 0 2px 8px rgba(0,0,0,0.3)',
+            } : {
+              background: 'rgba(10,11,15,0.6)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: 'rgba(255,255,255,0.4)',
+            }}
+          >
+            <span style={{ fontSize: '10px' }}>🏛</span>
+            <span style={{ fontWeight: active ? 700 : 500 }}>Landmarks</span>
+          </button>
+        );
+      })()}
 
       {/* Separator */}
       <div className="shrink-0 w-px my-0.5" style={{ background: 'rgba(255,255,255,0.08)' }} />
