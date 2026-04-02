@@ -2,6 +2,7 @@
 
 import { MapPin, Clock, User, MessageCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuthStore } from '@/stores/auth-store';
 
 const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string }> = {
   presence: { emoji: '📍', color: '#3B82F6', label: "I'm Here" },
@@ -18,6 +19,8 @@ interface SignalCardProps {
 }
 
 export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
+  const myUserId = useAuthStore(st => st.user?.id);
+  const isOwner = myUserId && (s.author_id === myUserId || s.owner_id === myUserId);
   const cfg = TYPE_CONFIG[s.type as string] || TYPE_CONFIG.presence;
   const timeAgo = s.created_at ? formatDistanceToNow(new Date(s.created_at as string), { addSuffix: true }) : '';
   const isLive = s.created_at ? new Date(s.created_at as string).getTime() > Date.now() - 30 * 60 * 1000 : false;
@@ -75,14 +78,16 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
           </div>
         </div>
 
-        {/* Chat CTA */}
-        <button
-          onClick={(e) => { e.stopPropagation(); }}
-          className="shrink-0 h-9 w-9 rounded-lg flex items-center justify-center cursor-pointer"
-          style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
-        >
-          <MessageCircle size={16} />
-        </button>
+        {/* Chat CTA — hide for signal owner */}
+        {!isOwner && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClick?.(); }}
+            className="shrink-0 h-9 w-9 rounded-lg flex items-center justify-center cursor-pointer"
+            style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
+          >
+            <MessageCircle size={16} />
+          </button>
+        )}
       </div>
     </div>
   );

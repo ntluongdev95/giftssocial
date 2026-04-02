@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/auth-store';
+import PrivateChat from '@/components/chat/PrivateChat';
+import SignInGateSheet from '@/components/auth/SignInGateSheet';
 
 interface SignalData {
   id: string;
@@ -12,6 +15,8 @@ interface SignalData {
   type: string;
   description?: string;
   category?: string;
+  owner_id?: string;
+  author_id?: string;
   author_name?: string;
   author_username?: string;
   author_avatar?: string;
@@ -41,9 +46,15 @@ export default function SignalSheet({ signal, onClose }: Props) {
   const expiresIn = signal.expires_at ? formatDistanceToNow(new Date(signal.expires_at), { addSuffix: true }) : '';
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const myUserId = useAuthStore(s => s.user?.id);
+  const isLoggedIn = useAuthStore(s => s.isAuthed);
+  const isOwner = myUserId && (myUserId === signal.owner_id || myUserId === signal.author_id);
 
   const handleChat = () => {
-    toast.info(`Chat with ${signal.author_name || 'author'} coming soon!`);
+    if (!isLoggedIn) { setShowAuthGate(true); return; }
+    setShowChat(true);
   };
 
   const handleShare = async () => {
@@ -79,6 +90,7 @@ export default function SignalSheet({ signal, onClose }: Props) {
   };
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -160,9 +172,11 @@ export default function SignalSheet({ signal, onClose }: Props) {
 
           {/* Actions — fixed at bottom, never scrolls away */}
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button onClick={handleChat} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
-              <MessageCircle size={15} /> Chat
-            </button>
+            {!isOwner && (
+              <button onClick={handleChat} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
+                <MessageCircle size={15} /> Chat
+              </button>
+            )}
             <button onClick={handleShare} className="rounded-xl py-3 px-4 cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
               <Share2 size={15} />
             </button>
@@ -173,5 +187,16 @@ export default function SignalSheet({ signal, onClose }: Props) {
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    {showChat && (
+      <PrivateChat
+        roomId={signal.id}
+        title={signal.title}
+        subtitle={signal.author_name ? `by ${signal.author_name}` : undefined}
+        onClose={() => setShowChat(false)}
+      />
+    )}
+    <SignInGateSheet action="default" isOpen={showAuthGate} onClose={() => setShowAuthGate(false)} />
+    </>
   );
 }

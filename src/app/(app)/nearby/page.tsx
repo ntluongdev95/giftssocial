@@ -397,6 +397,8 @@ export default function NearbyPage() {
             type: selectedSignal.type as string,
             description: selectedSignal.description as string,
             category: selectedSignal.category as string,
+            owner_id: selectedSignal.author_id as string,
+            author_id: selectedSignal.author_id as string,
             author_name: selectedSignal.author_name as string,
             author_username: selectedSignal.author_username as string,
             author_avatar: selectedSignal.author_avatar as string,

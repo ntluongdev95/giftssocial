@@ -2,9 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { ArrowLeft, Loader2, MapPin, Clock, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, MapPin, Clock, Pencil, Trash2, MessageCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import { useState } from 'react';
+import PrivateChat from '@/components/chat/PrivateChat';
 
 const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string }> = {
   presence: { emoji: '📍', color: '#3B82F6', label: "I'm Here" },
@@ -23,6 +25,16 @@ export default function MySignalsPage() {
   const router = useRouter();
   const { data, isLoading, mutate } = useSWR('/api/v1/signals/me', fetcher);
   const signals = (data?.data || []) as Record<string, unknown>[];
+  const [inboxSignal, setInboxSignal] = useState<{ id: string; title: string } | null>(null);
+
+  // Fetch message counts for each signal
+  const signalIds = signals.map(s => s.id as string);
+  const { data: msgCountsData } = useSWR(
+    signalIds.length > 0 ? `/api/v1/messages/counts?room_ids=${signalIds.join(',')}` : null,
+    fetcher,
+    { refreshInterval: 10000 }
+  );
+  const msgCounts: Record<string, number> = msgCountsData?.data || {};
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this signal?')) return;
@@ -99,6 +111,18 @@ export default function MySignalsPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                    <button
+                      onClick={() => setInboxSignal({ id: s.id as string, title: s.title as string })}
+                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold cursor-pointer relative"
+                      style={{ background: 'rgba(59,130,246,0.1)', color: '#3B82F6' }}
+                    >
+                      <MessageCircle size={12} /> Inbox
+                      {(msgCounts[s.id as string] || 0) > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 h-5 min-w-5 rounded-full flex items-center justify-center text-[9px] font-bold px-1" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
+                          {msgCounts[s.id as string]}
+                        </span>
+                      )}
+                    </button>
                     {isActive && (
                       <button
                         onClick={() => router.push(`/me/signals/${s.id}/edit`)}
@@ -123,6 +147,15 @@ export default function MySignalsPage() {
           </div>
         )}
       </div>
+
+      {inboxSignal && (
+        <PrivateChat
+          roomId={inboxSignal.id}
+          title={inboxSignal.title}
+          subtitle="Signal Chat"
+          onClose={() => setInboxSignal(null)}
+        />
+      )}
     </div>
   );
 }

@@ -292,6 +292,7 @@ export default function WorldPage() {
   const selectedSignal = selectedMarkerId
     ? signals.find((s) => s.id === selectedMarkerId)
     : null;
+  if (selectedSignal) console.log('[World] selectedSignal keys:', Object.keys(selectedSignal), 'author_id:', (selectedSignal as unknown as Record<string, unknown>).author_id);
 
   const handleMapReady = useCallback(() => {
     // Map ready — could subscribe to WebSocket here
@@ -618,10 +619,12 @@ export default function WorldPage() {
               type: selectedSignal.type,
               description: selectedSignal.description,
               category: selectedSignal.category,
-              author_name: (selectedSignal as Record<string, unknown>).author_name as string,
-              author_username: (selectedSignal as Record<string, unknown>).author_username as string,
-              author_avatar: (selectedSignal as Record<string, unknown>).author_avatar as string,
-              author_trust_level: (selectedSignal as Record<string, unknown>).author_trust_level as string,
+              owner_id: (selectedSignal as unknown as Record<string, unknown>).author_id as string,
+              author_id: (selectedSignal as unknown as Record<string, unknown>).author_id as string,
+              author_name: (selectedSignal as unknown as Record<string, unknown>).author_name as string,
+              author_username: (selectedSignal as unknown as Record<string, unknown>).author_username as string,
+              author_avatar: (selectedSignal as unknown as Record<string, unknown>).author_avatar as string,
+              author_trust_level: (selectedSignal as unknown as Record<string, unknown>).author_trust_level as string,
               created_at: selectedSignal.created_at,
               expires_at: selectedSignal.expires_at,
               metadata: selectedSignal.metadata as Record<string, unknown>,
