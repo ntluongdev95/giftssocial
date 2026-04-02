@@ -141,7 +141,7 @@ export default function EventChat({ eventId, eventTitle, onClose }: Props) {
                 <div key={msg.id} className={`flex gap-2.5 ${isMe ? 'flex-row-reverse' : ''}`}>
                   <div className="h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden" style={{ background: isMe ? '#00d4ff' : '#3B82F6', color: 'white' }}>
                     {(() => {
-                      const avatar = msg.sender_avatar || (isMe ? myAvatar : '');
+                      const avatar = isMe ? (myAvatar || msg.sender_avatar) : (msg.sender_avatar || '');
                       return avatar && avatar.length > 1
                         ? <img src={avatar} alt="" className="h-full w-full object-cover" />
                         : (msg.sender_name || '?').charAt(0).toUpperCase();
