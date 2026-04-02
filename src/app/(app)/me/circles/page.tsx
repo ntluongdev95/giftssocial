@@ -2,10 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { ArrowLeft, Loader2, Users, LogOut, X, Check, UserPlus } from 'lucide-react';
+import { ArrowLeft, Loader2, Users, LogOut, X, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
-import { formatDistanceToNow } from 'date-fns';
 
 const fetcher = (url: string) => fetch(url, {
   headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
@@ -16,11 +15,9 @@ export default function MyCirclesPage() {
   const { data, isLoading, mutate } = useSWR('/api/v1/circles/me', fetcher);
   const circles = (data?.data || []) as Record<string, unknown>[];
   const [leavingId, setLeavingId] = useState<string | null>(null);
-  const [pendingMap, setPendingMap] = useState<Record<string, Array<{ user_id: string; display_name: string; avatar_url?: string; joined_at: string }>>>({});
-  const [expandedCircle, setExpandedCircle] = useState<string | null>(null);
-  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [pendingMap, setPendingMap] = useState<Record<string, number>>({});
 
-  // Fetch pending members for circles I own
+  // Fetch pending counts for circles I own
   const ownedCircleIds = circles.filter(c => c.my_role === 'owner').map(c => c.id as string);
   useEffect(() => {
     if (ownedCircleIds.length === 0) return;
@@ -32,36 +29,11 @@ export default function MyCirclesPage() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const d = await res.json();
-        setPendingMap(prev => ({ ...prev, [cid]: d.data || [] }));
+        setPendingMap(prev => ({ ...prev, [cid]: (d.data || []).length }));
       } catch {}
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circles.length]);
-
-  const handleMemberAction = async (circleId: string, memberUserId: string, action: 'approve' | 'reject') => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    setActioningId(memberUserId);
-    try {
-      const res = await fetch(`/api/v1/circles/${circleId}/members`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ member_user_id: memberUserId, action }),
-      });
-      if (res.ok) {
-        toast.success(action === 'approve' ? 'Member approved!' : 'Request rejected');
-        // Refresh pending list
-        const r2 = await fetch(`/api/v1/circles/${circleId}/members?status=pending`, { headers: { Authorization: `Bearer ${token}` } });
-        const d2 = await r2.json();
-        setPendingMap(prev => ({ ...prev, [circleId]: d2.data || [] }));
-        mutate();
-      } else {
-        const d = await res.json();
-        toast.error(d.error?.message || 'Failed');
-      }
-    } catch { toast.error('Network error'); }
-    finally { setActioningId(null); }
-  };
 
   const handleLeave = async (circleId: string, circleName: string, isPending: boolean) => {
     setLeavingId(circleId);
@@ -93,7 +65,7 @@ export default function MyCirclesPage() {
         ) : circles.length === 0 ? (
           <EmptyState onExplore={() => router.push('/circles')} />
         ) : (
-          circles.map((c) => <CircleListItem key={c.id as string} circle={c} onLeave={handleLeave} leavingId={leavingId} router={router} isPending={(c.member_status as string) === 'pending'} pendingMembers={pendingMap[c.id as string] || []} expandedCircle={expandedCircle} setExpandedCircle={setExpandedCircle} onMemberAction={handleMemberAction} actioningId={actioningId} />)
+          circles.map((c) => <CircleListItem key={c.id as string} circle={c} onLeave={handleLeave} leavingId={leavingId} router={router} isPending={(c.member_status as string) === 'pending'} pendingCount={pendingMap[c.id as string] || 0} />)
         )}
       </div>
 
@@ -105,65 +77,78 @@ export default function MyCirclesPage() {
           <EmptyState onExplore={() => router.push('/circles')} />
         ) : (
           <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-            {circles.map((c) => (
-              <div
-                key={c.id as string}
-                className="rounded-2xl overflow-hidden cursor-pointer transition-transform hover:scale-[1.01]"
-                style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
-                onClick={() => router.push('/circles')}
-              >
-                {/* Header gradient */}
-                <div className="h-20 relative" style={{ background: `linear-gradient(135deg, rgba(0,212,255,0.15), rgba(167,139,250,0.1))` }}>
-                  <div className="absolute -bottom-5 left-4">
-                    <div className="h-12 w-12 rounded-xl flex items-center justify-center text-lg font-bold" style={{ background: '#111318', border: '2px solid rgba(0,212,255,0.2)', color: '#00d4ff' }}>
-                      {(c.name as string).charAt(0)}
+            {circles.map((c) => {
+              const cid = c.id as string;
+              const isOwner = c.my_role === 'owner';
+              const pm = pendingMap[cid] ?? 0;
+              return (
+                <div
+                  key={cid}
+                  className="rounded-2xl overflow-hidden transition-transform hover:scale-[1.01]"
+                  style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
+                >
+                  {/* Header gradient */}
+                  <div className="h-20 relative cursor-pointer" style={{ background: `linear-gradient(135deg, rgba(0,212,255,0.15), rgba(167,139,250,0.1))` }} onClick={() => router.push(`/circles/${cid}`)}>
+                    <div className="absolute -bottom-5 left-4">
+                      <div className="h-12 w-12 rounded-xl flex items-center justify-center text-lg font-bold" style={{ background: '#111318', border: '2px solid rgba(0,212,255,0.2)', color: '#00d4ff' }}>
+                        {(c.name as string).charAt(0)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-7 px-4 pb-4">
+                    <h3 className="text-sm font-bold text-white truncate">{c.name as string}</h3>
+                    <p className="text-[10px] text-[#4a5068] mt-0.5">
+                      {(c.member_count as number || 0).toLocaleString()} members
+                      {c.city ? ` · ${String(c.city)}` : ''}
+                    </p>
+
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {(c.member_status as string) === 'pending' ? (
+                        <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.1)', color: '#EAB308' }}>Pending</span>
+                      ) : (
+                        <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                          {c.my_role as string || 'member'}
+                        </span>
+                      )}
+                      <span className="text-[9px] text-[#4a5068] capitalize">{String(c.category)}</span>
+                      {isOwner && pm > 0 && (
+                        <button
+                          onClick={() => router.push(`/circles/${cid}`)}
+                          className="text-[9px] font-semibold px-2 py-0.5 rounded-full cursor-pointer animate-pulse"
+                          style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}
+                        >
+                          <UserPlus size={9} className="inline mr-0.5" /> {pm} request{pm > 1 ? 's' : ''}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        onClick={() => router.push(`/circles/${cid}`)}
+                        className="flex-1 rounded-lg py-2 text-[10px] font-semibold text-center cursor-pointer"
+                        style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
+                      >
+                        <Users size={10} className="inline mr-1" /> View
+                      </button>
+                      {!isOwner && (() => {
+                        const pending = (c.member_status as string) === 'pending';
+                        return (
+                          <button
+                            onClick={() => handleLeave(cid, c.name as string, pending)}
+                            disabled={leavingId === cid}
+                            className="rounded-lg py-2 px-3 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
+                            style={pending ? { background: 'rgba(234,179,8,0.08)', color: '#EAB308' } : { background: 'rgba(239,68,68,0.08)', color: '#f87171' }}
+                          >
+                            {pending ? <><X size={10} className="inline mr-1" /> Cancel</> : <><LogOut size={10} className="inline mr-1" /> Leave</>}
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
-
-                <div className="pt-7 px-4 pb-4">
-                  <h3 className="text-sm font-bold text-white truncate">{c.name as string}</h3>
-                  <p className="text-[10px] text-[#4a5068] mt-0.5">
-                    {(c.member_count as number || 0).toLocaleString()} members
-                    {c.city ? ` · ${c.city}` : ''}
-                  </p>
-
-                  <div className="flex items-center gap-2 mt-2">
-                    {(c.member_status as string) === 'pending' ? (
-                      <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.1)', color: '#EAB308' }}>Pending</span>
-                    ) : (
-                      <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-                        {c.my_role as string || 'member'}
-                      </span>
-                    )}
-                    <span className="text-[9px] text-[#4a5068] capitalize">{c.category as string}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2 mt-3">
-                    <button
-                      onClick={(ev) => { ev.stopPropagation(); router.push('/circles'); }}
-                      className="flex-1 rounded-lg py-2 text-[10px] font-semibold text-center cursor-pointer"
-                      style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
-                    >
-                      <Users size={10} className="inline mr-1" /> View
-                    </button>
-                    {c.my_role !== 'owner' && (() => {
-                      const pending = (c.member_status as string) === 'pending';
-                      return (
-                        <button
-                          onClick={(ev) => { ev.stopPropagation(); handleLeave(c.id as string, c.name as string, pending); }}
-                          disabled={leavingId === c.id as string}
-                          className="rounded-lg py-2 px-3 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
-                          style={pending ? { background: 'rgba(234,179,8,0.08)', color: '#EAB308' } : { background: 'rgba(239,68,68,0.08)', color: '#f87171' }}
-                        >
-                          {pending ? <><X size={10} className="inline mr-1" /> Cancel</> : <><LogOut size={10} className="inline mr-1" /> Leave</>}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -183,23 +168,16 @@ function EmptyState({ onExplore }: { onExplore: () => void }) {
   );
 }
 
-type PendingMember = { user_id: string; display_name: string; avatar_url?: string; joined_at: string };
-
-function CircleListItem({ circle: c, onLeave, leavingId, router, isPending, pendingMembers, expandedCircle, setExpandedCircle, onMemberAction, actioningId }: {
+function CircleListItem({ circle: c, onLeave, leavingId, router, isPending, pendingCount }: {
   circle: Record<string, unknown>;
   onLeave: (id: string, name: string, isPending: boolean) => void;
   leavingId: string | null;
   router: ReturnType<typeof useRouter>;
   isPending: boolean;
-  pendingMembers: PendingMember[];
-  expandedCircle: string | null;
-  setExpandedCircle: (id: string | null) => void;
-  onMemberAction: (circleId: string, memberUserId: string, action: 'approve' | 'reject') => void;
-  actioningId: string | null;
+  pendingCount: number;
 }) {
   const cid = c.id as string;
   const isOwner = c.my_role === 'owner';
-  const isExpanded = expandedCircle === cid;
 
   return (
     <div className="rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
@@ -219,19 +197,19 @@ function CircleListItem({ circle: c, onLeave, leavingId, router, isPending, pend
               <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>{c.my_role as string || 'member'}</span>
             )}
             {c.category ? <span className="text-[9px] text-[#4a5068] capitalize">{String(c.category)}</span> : null}
-            {isOwner && pendingMembers.length > 0 && (
+            {isOwner && pendingCount > 0 && (
               <button
-                onClick={() => setExpandedCircle(isExpanded ? null : cid)}
+                onClick={() => router.push(`/circles/${cid}`)}
                 className="text-[9px] font-semibold px-2 py-0.5 rounded-full cursor-pointer animate-pulse"
                 style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}
               >
-                <UserPlus size={9} className="inline mr-0.5" /> {pendingMembers.length} request{pendingMembers.length > 1 ? 's' : ''}
+                <UserPlus size={9} className="inline mr-0.5" /> {pendingCount} request{pendingCount > 1 ? 's' : ''}
               </button>
             )}
           </div>
           <div className="flex items-center gap-2 mt-3">
             {!isPending && (
-              <button onClick={() => router.push('/circles')} className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+              <button onClick={() => router.push(`/circles/${cid}`)} className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
                 <Users size={10} className="inline mr-1" /> View
               </button>
             )}
@@ -246,39 +224,6 @@ function CircleListItem({ circle: c, onLeave, leavingId, router, isPending, pend
               </button>
             )}
           </div>
-
-          {/* Pending requests expandable */}
-          {isOwner && isExpanded && pendingMembers.length > 0 && (
-            <div className="mt-3 space-y-2">
-              {pendingMembers.map((m) => (
-                <div key={m.user_id} className="flex items-center gap-2.5 rounded-xl px-3 py-2.5" style={{ background: 'rgba(10,11,15,0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-                    {(m.display_name || '?').charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-semibold text-white truncate">{m.display_name || 'Unknown user'}</p>
-                    <p className="text-[9px] text-[#4a5068]">{formatDistanceToNow(new Date(m.joined_at), { addSuffix: true })}</p>
-                  </div>
-                  <button
-                    onClick={() => onMemberAction(cid, m.user_id, 'approve')}
-                    disabled={actioningId === m.user_id}
-                    className="rounded-lg px-2.5 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
-                    style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}
-                  >
-                    <Check size={10} className="inline mr-0.5" /> Accept
-                  </button>
-                  <button
-                    onClick={() => onMemberAction(cid, m.user_id, 'reject')}
-                    disabled={actioningId === m.user_id}
-                    className="rounded-lg px-2.5 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50"
-                    style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}
-                  >
-                    <X size={10} className="inline mr-0.5" /> Reject
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>

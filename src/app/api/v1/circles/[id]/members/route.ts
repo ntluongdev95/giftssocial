@@ -10,7 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const status = req.nextUrl.searchParams.get('status') || 'active';
     const result = await pgPool.query(
-      `SELECT cm.*, u.username, u.display_name, u.avatar_url, u.trust_level, u.trust_score
+      `SELECT cm.*, u.username, u.display_name, u.avatar_url, u.bio, u.trust_level, u.trust_score
        FROM circle_members cm
        LEFT JOIN users u ON u.id = cm.user_id
        WHERE cm.circle_id = $1 AND cm.status = $2

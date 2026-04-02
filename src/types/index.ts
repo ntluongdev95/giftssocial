@@ -143,6 +143,8 @@ export interface Circle {
   location_lng?: number;
   description?: string;
   owner_id: string;
+  avatar_url?: string;
+  cover_image?: string;
   visibility: 'public' | 'private';
   verification_level: number;
   trust_score: number;
