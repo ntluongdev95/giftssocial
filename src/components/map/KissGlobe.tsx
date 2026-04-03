@@ -158,7 +158,9 @@ function SendKissModal({ onClose, onSent }: { onClose: () => void; onSent: () =>
 }
 
 // ── Kiss Reveal Popup ──
-function KissRevealPopup({ kiss, onClose }: { kiss: Kiss; onClose: () => void }) {
+function KissRevealPopup({ kiss, onClose, currentUserId }: { kiss: Kiss; onClose: () => void; currentUserId?: string }) {
+  const senderDisplay = currentUserId === kiss.sender_id ? 'You' : kiss.sender_name;
+  const receiverDisplay = currentUserId === kiss.receiver_id ? 'You' : kiss.receiver_name;
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70" />
@@ -178,11 +180,11 @@ function KissRevealPopup({ kiss, onClose }: { kiss: Kiss; onClose: () => void })
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
           <p className="text-lg font-bold text-white text-center">
-            From <span style={{ color: '#f87171' }}>{kiss.sender_name}</span>
+            From <span style={{ color: '#f87171' }}>{senderDisplay}</span>
           </p>
           {kiss.message && <p className="text-sm text-[#a3adc3] text-center mt-2 max-w-xs">{kiss.message}</p>}
           <p className="text-[10px] text-[#4a5068] text-center mt-3">
-            {kiss.sender_name} → {kiss.receiver_name}
+            {senderDisplay} → {receiverDisplay}
           </p>
         </motion.div>
         {/* Floating hearts animation */}
@@ -264,101 +266,207 @@ export default function KissGlobe() {
   const { data, mutate } = useSWR<{ data: Kiss[] }>('/api/v1/kisses?limit=30', fetcher, { refreshInterval: 30000 });
   const kisses = data?.data ?? [];
 
-  // Animate airplane along arc + place gift at destination
-  const animateKiss = useCallback((kiss: Kiss, forceReplay = false) => {
-    if (!map) return;
+  // ── Place static gift marker (no animation) ──
+  const placeGiftMarker = useCallback((kiss: Kiss) => {
+    if (!map || markersRef.current.has(kiss.id)) return;
 
-    // If replaying, clean up existing markers first
-    if (forceReplay) {
-      const existing = markersRef.current.get(kiss.id);
-      if (existing) { existing.remove(); markersRef.current.delete(kiss.id); }
-      const plane = markersRef.current.get(`plane_${kiss.id}`);
-      if (plane) { plane.remove(); markersRef.current.delete(`plane_${kiss.id}`); }
-      const frame = animFrameRef.current.get(kiss.id);
-      if (frame) cancelAnimationFrame(frame);
-      // Clean up map layers
-      try {
-        if (map.getLayer(`kiss-arc-${kiss.id}`)) map.removeLayer(`kiss-arc-${kiss.id}`);
-        if (map.getSource(`kiss-arc-${kiss.id}`)) map.removeSource(`kiss-arc-${kiss.id}`);
-        if (map.getLayer(`kiss-trail-${kiss.id}`)) map.removeLayer(`kiss-trail-${kiss.id}`);
-        if (map.getSource(`kiss-trail-${kiss.id}`)) map.removeSource(`kiss-trail-${kiss.id}`);
-      } catch {}
+    const isReceiver = currentUserId === kiss.receiver_id;
+    const isSender = currentUserId === kiss.sender_id;
+    const to: [number, number] = [kiss.receiver_lng, kiss.receiver_lat];
+    const displayName = isReceiver ? 'You' : (kiss.receiver_name || '?');
+    const receiverInitial = displayName.charAt(0).toUpperCase();
+    const hasOpened = kiss.opened;
+
+    const el = document.createElement('div');
+    el.style.cssText = 'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;';
+
+    if (!hasOpened) {
+      // Unopened: receiver avatar with "waiting" animation
+      el.innerHTML = `
+        <div style="position:relative;">
+          <div style="
+            width:44px;height:44px;border-radius:50%;
+            display:flex;align-items:center;justify-content:center;
+            background:rgba(236,72,153,0.15);
+            border:2.5px solid #ec4899;
+            box-shadow:0 0 16px rgba(236,72,153,0.3);
+            font-size:16px;font-weight:700;color:#ec4899;
+            overflow:hidden;
+            animation:kiss-receiver-pulse 2s ease-in-out infinite;
+          ">
+            ${kiss.receiver_avatar
+              ? `<img src="${kiss.receiver_avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+              : receiverInitial
+            }
+          </div>
+          <span style="
+            position:absolute;-top:6px;right:-6px;
+            font-size:18px;
+            animation:kiss-wave 1.5s ease-in-out infinite;
+          ">🙌</span>
+        </div>
+        <span style="
+          font-size:9px;font-weight:600;color:#ec4899;
+          background:rgba(10,11,15,0.8);backdrop-filter:blur(4px);
+          padding:1px 6px;border-radius:8px;
+          white-space:nowrap;max-width:70px;overflow:hidden;text-overflow:ellipsis;
+        ">${displayName}</span>
+        <style>
+          @keyframes kiss-receiver-pulse {
+            0%,100% { box-shadow:0 0 16px rgba(236,72,153,0.3); }
+            50% { box-shadow:0 0 24px rgba(236,72,153,0.6); }
+          }
+          @keyframes kiss-wave {
+            0%,100% { transform:rotate(0deg); }
+            25% { transform:rotate(15deg); }
+            75% { transform:rotate(-15deg); }
+          }
+        </style>
+      `;
+    } else {
+      // Opened: show the emoji with a happy glow
+      el.innerHTML = `
+        <div style="
+          width:40px;height:40px;border-radius:50%;
+          display:flex;align-items:center;justify-content:center;
+          background:rgba(236,72,153,0.1);
+          border:2px solid rgba(236,72,153,0.3);
+          font-size:22px;
+        ">${kiss.emoji}</div>
+        <span style="
+          font-size:8px;font-weight:600;color:#a3adc3;
+          background:rgba(10,11,15,0.7);
+          padding:1px 5px;border-radius:6px;
+          white-space:nowrap;
+        ">${displayName}</span>
+      `;
     }
 
-    if (!forceReplay && markersRef.current.has(kiss.id)) return;
+    el.onclick = () => {
+      if (isReceiver && !hasOpened) {
+        setRevealKiss(kiss);
+        fetch('/api/v1/kisses', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+          body: JSON.stringify({ id: kiss.id }),
+        }).then(() => {
+          mutate();
+          // Update marker to opened state
+          el.querySelector('div')!.innerHTML = `<span style="font-size:22px">${kiss.emoji}</span>`;
+        });
+      } else if (isReceiver || isSender) {
+        setRevealKiss(kiss);
+      }
+    };
 
-    // City labels for HUD
-    const senderCity = `${kiss.sender_lat.toFixed(1)}°, ${kiss.sender_lng.toFixed(1)}°`;
-    const receiverCity = `${kiss.receiver_lat.toFixed(1)}°, ${kiss.receiver_lng.toFixed(1)}°`;
-    // Async reverse geocode for nicer names
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(to).addTo(map);
+    markersRef.current.set(kiss.id, marker);
+  }, [map, currentUserId, mutate]);
+
+  // ── Play flight animation (only when explicitly triggered) ──
+  const playFlightAnimation = useCallback((kiss: Kiss) => {
+    if (!map) return;
+
+    // Clean up any existing animation for this kiss
+    const existingPlane = markersRef.current.get(`plane_${kiss.id}`);
+    if (existingPlane) { existingPlane.remove(); markersRef.current.delete(`plane_${kiss.id}`); }
+    const existingFrame = animFrameRef.current.get(kiss.id);
+    if (existingFrame) { clearTimeout(existingFrame); cancelAnimationFrame(existingFrame); }
+    ['kiss-arc-', 'kiss-trail-'].forEach(prefix => {
+      try {
+        if (map.getLayer(`${prefix}${kiss.id}`)) map.removeLayer(`${prefix}${kiss.id}`);
+        if (map.getSource(`${prefix}${kiss.id}`)) map.removeSource(`${prefix}${kiss.id}`);
+      } catch {}
+    });
+
+    // Set this as the active followed kiss
+    activeFollowRef.current = kiss.id;
+
+    const from: [number, number] = [kiss.sender_lng, kiss.sender_lat];
+    const to: [number, number] = [kiss.receiver_lng, kiss.receiver_lat];
+
+    // Distance check
+    const R = 6371;
+    const dLat = (kiss.receiver_lat - kiss.sender_lat) * Math.PI / 180;
+    const dLng = (kiss.receiver_lng - kiss.sender_lng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(kiss.sender_lat * Math.PI / 180) * Math.cos(kiss.receiver_lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const isSameCity = distKm < 50;
+
+    const arcPoints = interpolateGreatCircle(from, to, isSameCity ? 80 : 500);
+
+    // Reverse geocode for HUD city names
+    let senderCity = `${kiss.sender_lat.toFixed(1)}°`;
+    let receiverCity = `${kiss.receiver_lat.toFixed(1)}°`;
     (async () => {
       try {
         const [sRes, rRes] = await Promise.all([
           fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.sender_lat}&lon=${kiss.sender_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
           fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.receiver_lat}&lon=${kiss.receiver_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
         ]);
-        if (sRes?.address) Object.assign(kiss, { _senderCity: sRes.address.city || sRes.address.state || sRes.address.country || senderCity });
-        if (rRes?.address) Object.assign(kiss, { _receiverCity: rRes.address.city || rRes.address.state || rRes.address.country || receiverCity });
+        if (sRes?.address) senderCity = sRes.address.city || sRes.address.state || sRes.address.country || senderCity;
+        if (rRes?.address) receiverCity = rRes.address.city || rRes.address.state || rRes.address.country || receiverCity;
       } catch {}
     })();
 
-    const from: [number, number] = [kiss.sender_lng, kiss.sender_lat];
-    const to: [number, number] = [kiss.receiver_lng, kiss.receiver_lat];
-    const arcPoints = interpolateGreatCircle(from, to, 300);
+    // Remove existing gift marker — will re-place when plane arrives
+    const existingGift = markersRef.current.get(kiss.id);
+    if (existingGift) { existingGift.remove(); markersRef.current.delete(kiss.id); }
 
-    // Gift marker at destination
-    const isReceiver = currentUserId === kiss.receiver_id;
-    const isSender = currentUserId === kiss.sender_id;
-    const showAsGift = isReceiver && !kiss.opened; // Only receiver sees unopened gift
-
-    const giftEl = document.createElement('div');
-    giftEl.style.cssText = 'font-size:28px;cursor:pointer;filter:drop-shadow(0 0 8px rgba(236,72,153,0.5));transition:transform 0.2s;';
-    giftEl.textContent = showAsGift ? '🎁' : kiss.emoji;
-    giftEl.onmouseenter = () => { giftEl.style.opacity = '0.85'; };
-    giftEl.onmouseleave = () => { giftEl.style.opacity = '1'; };
-    giftEl.onclick = () => {
-      if (isReceiver && !kiss.opened) {
-        // Receiver opens the gift
-        setRevealKiss(kiss);
-        fetch('/api/v1/kisses', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
-          body: JSON.stringify({ id: kiss.id }),
-        }).then(() => mutate());
-        giftEl.textContent = kiss.emoji;
-      } else if (isReceiver || isSender) {
-        // Sender or receiver who already opened — show reveal again
-        setRevealKiss(kiss);
-      }
-      // Others can't open — just see the emoji on globe
-    };
-
-    const giftMarker = new maplibregl.Marker({ element: giftEl, anchor: 'center' })
-      .setLngLat(to)
-      .addTo(map);
-    markersRef.current.set(kiss.id, giftMarker);
-
-    // Airplane + gift animation — larger, more visible
+    // Animation element — airplane (long distance) or thrown gift (same city)
     const planeEl = document.createElement('div');
-    planeEl.style.cssText = `
-      pointer-events:none;
-      display:flex;align-items:center;gap:4px;
-      filter:drop-shadow(0 4px 12px rgba(0,0,0,0.7)) drop-shadow(0 0 8px rgba(236,72,153,0.4));
-      font-size:28px;
-    `;
-    planeEl.innerHTML = `<span style="font-size:32px">✈️</span><span style="font-size:18px;animation:pulse 1.5s ease-in-out infinite">🎁</span>
-      <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}</style>`;
-    const planeMarker = new maplibregl.Marker({ element: planeEl, anchor: 'center', rotationAlignment: 'map' })
+    if (isSameCity) {
+      planeEl.style.cssText = `
+        pointer-events:none;
+        filter:drop-shadow(0 4px 12px rgba(0,0,0,0.7)) drop-shadow(0 0 12px rgba(236,72,153,0.5));
+        font-size:36px;
+        transition:transform 0.05s linear;
+      `;
+      planeEl.textContent = '🎁';
+    } else {
+      planeEl.style.cssText = `pointer-events:none;width:48px;height:48px;`;
+      // SVG airplane pointing UP (North = 0°) — rotation will align with bearing
+      planeEl.innerHTML = `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="glow-${kiss.id}" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g filter="url(#glow-${kiss.id})">
+          <!-- Fuselage -->
+          <ellipse cx="24" cy="24" rx="4" ry="16" fill="#e0e8f0" stroke="#94a3b8" stroke-width="0.5"/>
+          <!-- Wings -->
+          <path d="M24 18 L6 28 L10 30 L24 24 L38 30 L42 28 Z" fill="#3b82f6" stroke="#2563eb" stroke-width="0.5"/>
+          <!-- Tail -->
+          <path d="M24 38 L18 44 L24 42 L30 44 Z" fill="#3b82f6" stroke="#2563eb" stroke-width="0.5"/>
+          <!-- Cockpit -->
+          <ellipse cx="24" cy="10" rx="2.5" ry="3" fill="#0ea5e9" opacity="0.8"/>
+          <!-- Engine glow -->
+          <circle cx="24" cy="40" r="2" fill="#f97316" opacity="0.6">
+            <animate attributeName="opacity" values="0.4;0.8;0.4" dur="0.8s" repeatCount="indefinite"/>
+          </circle>
+        </g>
+      </svg>`;
+    }
+    // rotation=0 means pointing up (North). setRotation(bearing) points it in travel direction.
+    const planeMarker = new maplibregl.Marker({ element: planeEl, anchor: 'center', rotationAlignment: 'viewport' })
       .setLngLat(from)
       .addTo(map);
     markersRef.current.set(`plane_${kiss.id}`, planeMarker);
 
-    // Draw flight path (dashed pink line)
+    // Draw flight path
     const lineId = `kiss-arc-${kiss.id}`;
     try {
       if (!map.getSource(lineId)) {
         map.addSource(lineId, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: arcPoints }, properties: {} } });
-        map.addLayer({ id: lineId, type: 'line', source: lineId, paint: { 'line-color': '#ec4899', 'line-width': 2, 'line-opacity': 0.5, 'line-dasharray': [2, 3] } });
+        if (isSameCity) {
+          // Same city: subtle dotted arc
+          map.addLayer({ id: lineId, type: 'line', source: lineId, paint: { 'line-color': '#ec4899', 'line-width': 1.5, 'line-opacity': 0.3, 'line-dasharray': [1, 2] } });
+        } else {
+          // Long distance: dashed flight path
+          map.addLayer({ id: lineId, type: 'line', source: lineId, paint: { 'line-color': '#ec4899', 'line-width': 2, 'line-opacity': 0.5, 'line-dasharray': [2, 3] } });
+        }
       }
     } catch {}
 
@@ -376,141 +484,138 @@ export default function KissGlobe() {
     let step = 0;
     const isFollowing = () => activeFollowRef.current === kiss.id;
 
-    function fly() {
-      if (step >= arcPoints.length) {
-        // Arrived — remove plane, zoom to gift, clear HUD
+    // ── Buttery smooth flight — direct camera control each frame ──
+    const flightMs = isSameCity ? 3000 : 30000;
+    let t0 = 0;
+    // Camera state — lerped every frame for zero jitter
+    let camLng = from[0], camLat = from[1], camZoom = 9, camPitch = 0, camBearing = 0;
+    let planeLng = from[0], planeLat = from[1], planeBrg = 0;
+
+    function fly(ts: number) {
+      if (!t0) t0 = ts;
+      const elapsed = ts - t0;
+      // Ease-in-out-cubic for natural motion
+      const lin = Math.min(elapsed / flightMs, 1);
+      const t = lin < 0.5 ? 4 * lin * lin * lin : 1 - Math.pow(-2 * lin + 2, 3) / 2;
+
+      if (t >= 1) {
+        // Arrived — remove plane, place gift marker
         planeMarker.remove();
         markersRef.current.delete(`plane_${kiss.id}`);
+        placeGiftMarker(kiss);
         if (isFollowing()) {
           setFlightHUD(null);
           activeFollowRef.current = null;
-          // Ease camera to destination
-          map?.easeTo({ center: to, zoom: 12, pitch: 0, bearing: 0, duration: 1500, easing: (t: number) => 1 - Math.pow(1 - t, 3) });
+          map?.flyTo({ center: to, zoom: 14, pitch: 0, bearing: 0, duration: 2000 });
         }
-        // Clean up lines after delay
         setTimeout(() => {
           try {
-            if (map.getLayer(trailId)) map.removeLayer(trailId);
-            if (map.getSource(trailId)) map.removeSource(trailId);
-            if (map.getLayer(lineId)) map.removeLayer(lineId);
-            if (map.getSource(lineId)) map.removeSource(lineId);
+            [trailId, lineId].forEach(lid => { try { map?.getLayer(lid) && map.removeLayer(lid); } catch {} try { map?.getSource(lid) && map.removeSource(lid); } catch {} });
           } catch {}
         }, 5000);
         return;
       }
 
-      const pos = arcPoints[step];
-      planeMarker.setLngLat(pos);
+      // ── Plane position: smooth sub-pixel interpolation ──
+      const exactIdx = t * (arcPoints.length - 1);
+      const i = Math.floor(exactIdx);
+      const f = exactIdx - i;
+      const a = arcPoints[i];
+      const b = arcPoints[Math.min(i + 1, arcPoints.length - 1)];
+      const tgtLng = a[0] + (b[0] - a[0]) * f;
+      const tgtLat = a[1] + (b[1] - a[1]) * f;
 
-      // Calculate bearing to next point
-      let bearing = 0;
-      if (step < arcPoints.length - 1) {
-        const next = arcPoints[step + 1];
-        bearing = Math.atan2(next[0] - pos[0], next[1] - pos[1]) * 180 / Math.PI;
-        planeEl.style.transform = `rotate(${90 - bearing}deg)`;
-      }
+      // Lerp plane position (silk smooth)
+      planeLng += (tgtLng - planeLng) * 0.12;
+      planeLat += (tgtLat - planeLat) * 0.12;
+      planeMarker.setLngLat([planeLng, planeLat]);
 
-      // Camera follows the plane — cinematic in-flight experience
-      if (isFollowing()) {
-        const progress = step / arcPoints.length;
+      // ── Plane bearing: look far ahead + heavy smoothing ──
+      const lookIdx = Math.min(i + Math.max(15, Math.floor(arcPoints.length * 0.03)), arcPoints.length - 1);
+      const lk = arcPoints[lookIdx];
+      const dLn = (lk[0] - planeLng) * Math.PI / 180;
+      const la1 = planeLat * Math.PI / 180;
+      const la2 = lk[1] * Math.PI / 180;
+      const rawBrg = Math.atan2(Math.sin(dLn) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLn)) * 180 / Math.PI;
+      planeBrg += (rawBrg - planeBrg) * 0.03; // ultra smooth
+      planeMarker.setRotation(planeBrg);
 
-        // Update HUD
+      // ── Camera: lerp ALL properties every frame → zero jitter ──
+      if (isFollowing() && !isSameCity) {
+        // Target camera values based on flight progress
+        const cruiseZ = 7;
+        let tgtZoom: number, tgtPitch: number;
+        if (t < 0.12) { tgtZoom = 9 - (9 - cruiseZ) * (t / 0.12); tgtPitch = t / 0.12 * 50; }
+        else if (t > 0.85) { tgtZoom = cruiseZ + (10.5 - cruiseZ) * ((t - 0.85) / 0.15); tgtPitch = ((1 - t) / 0.15) * 50; }
+        else { tgtZoom = cruiseZ; tgtPitch = 50; }
+
+        // Camera looks slightly ahead of plane
+        const camLookIdx = Math.min(i + 25, arcPoints.length - 1);
+        const cl = arcPoints[camLookIdx];
+
+        // Lerp camera smoothly (0.04 = very gentle, no jitter)
+        camLng += (cl[0] - camLng) * 0.04;
+        camLat += (cl[1] - camLat) * 0.04;
+        camZoom += (tgtZoom - camZoom) * 0.04;
+        camPitch += (tgtPitch - camPitch) * 0.04;
+        camBearing += (planeBrg - camBearing) * 0.03;
+
+        // Direct set — no easeTo, no animation conflicts
+        map?.jumpTo({ center: [camLng, camLat], zoom: camZoom, pitch: camPitch, bearing: camBearing });
+
+        // HUD
         setFlightHUD({
-          from: (kiss as unknown as Record<string, string>)._senderCity || senderCity,
-          to: (kiss as unknown as Record<string, string>)._receiverCity || receiverCity,
-          progress,
+          from: senderCity, to: receiverCity, progress: t,
           senderName: kiss.sender_name || 'Sender',
-          receiverName: kiss.receiver_name || 'Receiver',
+          receiverName: currentUserId === kiss.receiver_id ? 'You' : (kiss.receiver_name || 'Receiver'),
           emoji: kiss.emoji,
         });
-
-        // Dynamic zoom: close takeoff → pull back cruise → close landing
-        const startZoom = 9.5;
-        const cruiseZoom = 7;
-        const endZoom = 10.5;
-        let targetZoom: number;
-        if (progress < 0.15) {
-          // Takeoff — zoom out smoothly
-          const t = progress / 0.15;
-          targetZoom = startZoom + (cruiseZoom - startZoom) * (t * t); // ease-in
-        } else if (progress > 0.85) {
-          // Landing — zoom in smoothly
-          const t = (progress - 0.85) / 0.15;
-          targetZoom = cruiseZoom + (endZoom - cruiseZoom) * (1 - Math.pow(1 - t, 2)); // ease-out
-        } else {
-          targetZoom = cruiseZoom;
+      } else if (isFollowing() && isSameCity) {
+        if (elapsed < 50) {
+          const mx = (from[0] + to[0]) / 2, my = (from[1] + to[1]) / 2;
+          map?.jumpTo({ center: [mx, my], zoom: 14, pitch: 30, bearing: 0 });
         }
-
-        // Pitch: smooth takeoff → cruise → landing
-        let pitch: number;
-        if (progress < 0.12) {
-          pitch = (progress / 0.12) * 55; // climb
-        } else if (progress > 0.88) {
-          pitch = ((1 - progress) / 0.12) * 55; // descend
-        } else {
-          pitch = 55; // cruise altitude view
-        }
-
-        // Slight camera offset ahead of plane for "looking forward" feel
-        const lookAhead = Math.min(step + 8, arcPoints.length - 1);
-        const aheadPos = arcPoints[lookAhead];
-
-        map.easeTo({
-          center: aheadPos as [number, number],
-          zoom: targetZoom,
-          bearing: 90 - bearing,
-          pitch: Math.min(pitch, 55),
-          duration: 60,
-          easing: (t: number) => t,
-        });
+        planeEl.style.marginTop = `${-Math.sin(t * Math.PI) * 60}px`;
       }
 
-      // Update trail
-      trailCoords.push(pos);
-      try {
-        const src = map.getSource(trailId) as maplibregl.GeoJSONSource;
-        if (src) src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: trailCoords }, properties: {} });
-      } catch {}
+      // Trail
+      if (i % 10 === 0) {
+        trailCoords.push([planeLng, planeLat]);
+        try {
+          const src = map?.getSource(trailId) as maplibregl.GeoJSONSource;
+          if (src) src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: trailCoords }, properties: {} });
+        } catch {}
+      }
 
-      step++;
-      // Smooth flight: 25ms per step = 300 steps × 25ms ≈ 7.5 seconds
-      const timer = setTimeout(fly, 25) as unknown as number;
-      animFrameRef.current.set(kiss.id, timer);
+      const frame = requestAnimationFrame(fly);
+      animFrameRef.current.set(kiss.id, frame);
     }
 
-    // Only animate recent kisses (last 1 hour)
-    const age = Date.now() - new Date(kiss.created_at).getTime();
-    if (age < 3600_000 || forceReplay) {
-      // Only follow camera if no other kiss is being followed
-      if (!activeFollowRef.current || forceReplay) {
-        activeFollowRef.current = kiss.id;
-        map.flyTo({ center: from, zoom: 10, pitch: 45, bearing: 0, duration: 1500 });
-        setTimeout(() => fly(), 1800);
-      } else {
-        // Other kisses just animate plane silently, no camera
-        fly();
-      }
+    // Start
+    if (isSameCity) {
+      const mx = (from[0] + to[0]) / 2, my = (from[1] + to[1]) / 2;
+      map?.flyTo({ center: [mx, my], zoom: 14, pitch: 30, bearing: 0, duration: 800 });
+      setTimeout(() => requestAnimationFrame(fly), 1000);
     } else {
-      // Old kiss — just show gift, no plane or lines
-      planeMarker.remove();
-      markersRef.current.delete(`plane_${kiss.id}`);
-      try {
-        if (map.getLayer(lineId)) map.removeLayer(lineId);
-        if (map.getSource(lineId)) map.removeSource(lineId);
-        if (map.getLayer(trailId)) map.removeLayer(trailId);
-        if (map.getSource(trailId)) map.removeSource(trailId);
-      } catch {}
+      // Smooth zoom to departure point
+      map?.flyTo({ center: from, zoom: 9, pitch: 40, bearing: 0, duration: 2500, easing: (x: number) => 1 - Math.pow(1 - x, 3) });
+      setTimeout(() => {
+        // Init camera state to current map view
+        camLng = from[0]; camLat = from[1]; camZoom = 9; camPitch = 40; camBearing = 0;
+        requestAnimationFrame(fly);
+      }, 2800);
     }
-  }, [map, mutate, currentUserId]);
+  }, [map, mutate, currentUserId, placeGiftMarker]);
 
-  // Render kisses on map
+  // Place static gift markers (skip kisses currently in-flight)
   useEffect(() => {
     if (!map) return;
-    kisses.forEach(k => animateKiss(k));
-    return () => {
-      animFrameRef.current.forEach(f => { clearTimeout(f); cancelAnimationFrame(f); });
-    };
-  }, [map, kisses, animateKiss]);
+    kisses.forEach(k => {
+      // Don't place gift if plane is currently flying for this kiss
+      if (markersRef.current.has(`plane_${k.id}`)) return;
+      placeGiftMarker(k);
+    });
+  }, [map, kisses, placeGiftMarker]);
 
   // Listen for ?kiss=<id> URL param — replay that kiss animation
   useEffect(() => {
@@ -525,9 +630,9 @@ export default function KissGlobe() {
       // Clean URL
       window.history.replaceState(null, '', '/world');
       // Small delay to let map settle, then replay
-      setTimeout(() => animateKiss(kiss, true), 1000);
+      setTimeout(() => playFlightAnimation(kiss), 1000);
     }
-  }, [map, kisses, animateKiss]);
+  }, [map, kisses, playFlightAnimation]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -561,12 +666,16 @@ export default function KissGlobe() {
 
       {/* Send Modal */}
       <AnimatePresence>
-        {showSendModal && <SendKissModal onClose={() => setShowSendModal(false)} onSent={() => mutate()} />}
+        {showSendModal && <SendKissModal onClose={() => setShowSendModal(false)} onSent={async () => {
+          const fresh = await mutate();
+          const newest = (fresh as { data: Kiss[] } | undefined)?.data?.[0];
+          if (newest) setTimeout(() => playFlightAnimation(newest), 500);
+        }} />}
       </AnimatePresence>
 
       {/* Kiss Reveal */}
       <AnimatePresence>
-        {revealKiss && <KissRevealPopup kiss={revealKiss} onClose={() => setRevealKiss(null)} />}
+        {revealKiss && <KissRevealPopup kiss={revealKiss} onClose={() => setRevealKiss(null)} currentUserId={currentUserId} />}
       </AnimatePresence>
     </>
   );

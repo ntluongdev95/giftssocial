@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
 
     // Notify receiver
     const senderName = sender.rows[0].display_name || 'Someone';
-    notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, d.message || 'Open it on the map!', 'kiss', result.rows[0].id);
+    notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Nội dung vô cùng bí mật! Hãy nhanh đi nhận quà trên bản đồ 🎁✨', 'kiss', result.rows[0].id);
 
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (err) {
