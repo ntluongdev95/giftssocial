@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const lat = parseFloat(searchParams.get('lat') || '32.7767');
     const lng = parseFloat(searchParams.get('lng') || '-96.797');
-    const radiusKm = Math.min(parseInt(searchParams.get('radius') || '5000'), 50000) / 1000;
+    const radiusKm = Math.min(parseInt(searchParams.get('radius') || '50000'), 500000) / 1000;
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
     const [businesses, events, profiles, signals, circles] = await Promise.all([

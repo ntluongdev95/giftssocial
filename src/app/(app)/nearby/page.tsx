@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { MapPin, Navigation } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLocationStore } from '@/stores/locationStore';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import BusinessCard from '@/components/cards/BusinessCard';
@@ -49,44 +50,29 @@ function SkeletonCard() {
 
 // ─── Empty State ──────────────────────────────────────────────────────────
 
-function EmptyState({ onSelectCircle }: { onSelectCircle?: (c: Circle) => void }) {
+const RADIUS_OPTIONS = [
+  { label: '10 km', value: 10000 },
+  { label: '50 km', value: 50000 },
+  { label: '100 km', value: 100000 },
+  { label: '200 km', value: 200000 },
+  { label: '500 km', value: 500000 },
+];
+
+function EmptyState({ onSelectCircle, onExpandRadius, onSwitchCategory, radius }: { onSelectCircle?: (c: Circle) => void; onExpandRadius?: () => void; onSwitchCategory?: () => void; radius?: number }) {
   return (
     <div className="col-span-full flex flex-col items-center gap-5 py-12 text-center">
-      {/* Empty icon */}
-      <div
-        className="h-14 w-14 rounded-2xl flex items-center justify-center"
-        style={{
-          background: 'linear-gradient(135deg, rgba(0,212,255,0.1), rgba(99,102,241,0.08))',
-          border: '1px solid rgba(0,212,255,0.12)',
-        }}
-      >
+      <div className="h-14 w-14 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.1), rgba(99,102,241,0.08))', border: '1px solid rgba(0,212,255,0.12)' }}>
         <MapPin size={22} style={{ color: '#00d4ff' }} />
       </div>
-
       <div>
         <p className="text-sm font-medium text-white">Nothing found nearby</p>
-        <p className="mt-1 text-xs" style={{ color: '#4a5068' }}>Try expanding your radius or switch categories</p>
+        <p className="mt-1 text-xs" style={{ color: '#4a5068' }}>Current radius: {radius && radius >= 1000 ? `${(radius / 1000).toFixed(0)}km` : '50km'}</p>
       </div>
-
       <div className="flex gap-2">
-        <button
-          className="rounded-xl px-4 py-2 text-xs font-medium transition-all active:scale-95"
-          style={{
-            background: 'rgba(0,212,255,0.1)',
-            border: '1px solid rgba(0,212,255,0.2)',
-            color: '#00d4ff',
-          }}
-        >
-          Expand radius
+        <button onClick={onExpandRadius} className="rounded-xl px-4 py-2 text-xs font-medium transition-all active:scale-95 cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.2)', color: '#00d4ff' }}>
+          Change radius
         </button>
-        <button
-          className="rounded-xl px-4 py-2 text-xs font-medium transition-all active:scale-95"
-          style={{
-            background: 'rgba(24,28,36,0.5)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            color: '#a3adc3',
-          }}
-        >
+        <button onClick={onSwitchCategory} className="rounded-xl px-4 py-2 text-xs font-medium transition-all active:scale-95 cursor-pointer" style={{ background: 'rgba(24,28,36,0.5)', border: '1px solid rgba(255,255,255,0.05)', color: '#a3adc3' }}>
           Try different category
         </button>
       </div>
@@ -168,6 +154,8 @@ const FALLBACK_CIRCLES: Circle[] = [
 export default function NearbyPage() {
   const { lat, lng, granted, requestLocation } = useLocationStore();
   const [activeTab, setActiveTab] = useState<Tab>('Businesses');
+  const [radius, setRadius] = useState(50000);
+  const [showRadiusPicker, setShowRadiusPicker] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
@@ -188,9 +176,20 @@ export default function NearbyPage() {
     const p = new URLSearchParams();
     p.set('lat', String(lat ?? 32.7767));
     p.set('lng', String(lng ?? -96.797));
-    p.set('radius', '50000');
+    p.set('radius', String(radius));
     return p.toString();
-  }, [lat, lng]);
+  }, [lat, lng, radius]);
+
+  const handleExpandRadius = () => {
+    setShowRadiusPicker(true);
+  };
+
+  const handleSwitchCategory = () => {
+    const currentIdx = TABS.indexOf(activeTab);
+    const nextIdx = (currentIdx + 1) % TABS.length;
+    setActiveTab(TABS[nextIdx]);
+    toast.info(`Switched to ${TABS[nextIdx]}`);
+  };
 
   // Matched people nearby — only fetch when location granted
   const { data: matchedPeople } = useSWR(
@@ -239,7 +238,7 @@ export default function NearbyPage() {
       case 'Businesses': {
         const sorted = sortItems(nearby.businesses) as Business[];
         return sorted.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
+          <EmptyState onSelectCircle={setSelectedCircle} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
           sorted.map((b) => <BusinessCard key={b.id} business={b} onClick={() => setSelectedBusiness(b)} />)
         );
@@ -248,7 +247,7 @@ export default function NearbyPage() {
       case 'Events': {
         const evts = nearby.events || [];
         return evts.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
+          <EmptyState onSelectCircle={setSelectedCircle} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
           evts.map((e) => <EventCard key={e.id} event={e} onClick={() => setSelectedEvent(e)} />)
         );
@@ -257,7 +256,7 @@ export default function NearbyPage() {
       case 'Circles': {
         const cirs = nearby.circles || [];
         return cirs.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
+          <EmptyState onSelectCircle={setSelectedCircle} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
           cirs.map((c) => <CircleCard key={c.id} circle={c} isMember={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onClick={() => setSelectedCircle(c)} />)
         );
@@ -266,7 +265,7 @@ export default function NearbyPage() {
       case 'Signals': {
         const sigs = ((nearby as unknown as Record<string, unknown>).signals as Record<string, unknown>[]) || [];
         return sigs.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
+          <EmptyState onSelectCircle={setSelectedCircle} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
           sigs.map((s) => <SignalCard key={s.id as string} signal={s} onClick={() => setSelectedSignal(s)} />)
         );
@@ -275,7 +274,7 @@ export default function NearbyPage() {
       case 'Offers': {
         const offers = nearby.offers;
         return offers.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
+          <EmptyState onSelectCircle={setSelectedCircle} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
           offers.map((s) => <OfferCard key={s.id} signal={s} />)
         );
@@ -285,7 +284,7 @@ export default function NearbyPage() {
         const matched = (matchedPeople?.data || []) as Profile[];
         const profs = matched.length > 0 ? matched : (nearby.profiles || []);
         return profs.length === 0 ? (
-          <EmptyState onSelectCircle={setSelectedCircle} />
+          <EmptyState onSelectCircle={setSelectedCircle} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
           profs.map((p) => <ProfileCard key={p._id} profile={p} />)
         );
@@ -416,6 +415,39 @@ export default function NearbyPage() {
           }}
           onClose={() => setSelectedSignal(null)}
         />
+      )}
+
+      {/* Radius picker popup */}
+      {showRadiusPicker && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setShowRadiusPicker(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative w-full max-w-xs rounded-2xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(0,212,255,0.15)' }} onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-2">
+              <h3 className="text-sm font-bold text-white">Search Radius</h3>
+              <p className="text-[10px] text-[#4a5068] mt-0.5">Select how far to search</p>
+            </div>
+            <div className="px-5 pb-5 space-y-2">
+              {RADIUS_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setRadius(opt.value);
+                    setShowRadiusPicker(false);
+                    toast.success(`Searching within ${opt.label}...`);
+                  }}
+                  className="w-full flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium cursor-pointer transition-all"
+                  style={radius === opt.value
+                    ? { background: 'rgba(0,212,255,0.12)', border: '1px solid rgba(0,212,255,0.3)', color: '#00d4ff' }
+                    : { background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)', color: '#a3adc3' }
+                  }
+                >
+                  <span>{opt.label}</span>
+                  {radius === opt.value && <span className="text-[10px] font-semibold text-[#00d4ff]">Current</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
