@@ -225,8 +225,8 @@ function generateFlightCode(senderName: string, receiverName: string): string {
   return `${s}${r}${num}`;
 }
 
-function FlightHUD({ from, to, progress, senderName, receiverName, emoji }: {
-  from: string; to: string; progress: number; senderName: string; receiverName: string; emoji: string;
+function FlightHUD({ from, to, progress, senderName, receiverName, emoji, turbulence }: {
+  from: string; to: string; progress: number; senderName: string; receiverName: string; emoji: string; turbulence?: boolean;
 }) {
   const pct = Math.round(progress * 100);
   const remaining = Math.max(0, Math.round((1 - progress) * 25));
@@ -267,6 +267,14 @@ function FlightHUD({ from, to, progress, senderName, receiverName, emoji }: {
           </div>
         </div>
 
+        {/* Turbulence warning */}
+        {turbulence && (
+          <div className="flex items-center gap-1.5 w-full rounded-lg px-2 py-1" style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.25)' }}>
+            <span className="text-sm">⚠️</span>
+            <span className="text-[9px] font-semibold" style={{ color: '#EAB308' }}>TURBULENCE — Fasten seatbelt</span>
+          </div>
+        )}
+
         {/* Stats */}
         <div className="flex items-center justify-between w-full text-[9px] text-[#4a5068]">
           <span>{from}</span>
@@ -286,7 +294,7 @@ export default function KissGlobe() {
   const [sendBackTo, setSendBackTo] = useState<string | null>(null);
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [revealKiss, setRevealKiss] = useState<Kiss | null>(null);
-  const [flightHUD, setFlightHUD] = useState<{ from: string; to: string; progress: number; senderName: string; receiverName: string; emoji: string } | null>(null);
+  const [flightHUD, setFlightHUD] = useState<{ from: string; to: string; progress: number; senderName: string; receiverName: string; emoji: string; turbulence?: boolean } | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const animFrameRef = useRef<Map<string, number>>(new Map());
   const replayedRef = useRef<Set<string>>(new Set());
@@ -598,6 +606,14 @@ export default function KissGlobe() {
     let camLng = from[0], camLat = from[1], camZoom = 9, camPitch = 0, camBearing = 0;
     let planeLng = from[0], planeLat = from[1], planeBrg = 0;
 
+    // Turbulence zones — 2-3 random zones along the route
+    const turbZones = isSameCity ? [] : Array.from({ length: 2 + Math.floor(Math.random() * 2) }, () => {
+      const center = 0.15 + Math.random() * 0.6; // between 15%-75% of flight
+      const width = 0.03 + Math.random() * 0.04; // 3-7% wide
+      return { start: center - width, end: center + width };
+    });
+    let turbulenceActive = false;
+
     function fly(ts: number) {
       if (!t0) t0 = ts;
       const elapsed = ts - t0;
@@ -645,6 +661,17 @@ export default function KissGlobe() {
       if (dLng < -180) dLng += 360;
       planeLng += dLng * 0.12;
       planeLat += (tgtLat - planeLat) * 0.12;
+
+      // ── Turbulence: shake when in bad weather zone ──
+      turbulenceActive = turbZones.some(z => t >= z.start && t <= z.end);
+      if (turbulenceActive) {
+        // Gentle up/down bob
+        const bob = Math.sin(elapsed * 0.008) * 6 + Math.sin(elapsed * 0.013) * 3;
+        planeEl.style.marginTop = `${bob}px`;
+      } else {
+        planeEl.style.marginTop = '';
+      }
+
       planeMarker.setLngLat([planeLng, planeLat]);
 
       // ── Plane bearing: look far ahead + heavy smoothing ──
@@ -706,6 +733,7 @@ export default function KissGlobe() {
           senderName: kiss.sender_name || 'Sender',
           receiverName: currentUserId === kiss.receiver_id ? 'You' : (kiss.receiver_name || 'Receiver'),
           emoji: kiss.emoji,
+          turbulence: turbulenceActive,
         });
       } else if (isFollowing() && isSameCity) {
         // Street-level motorbike follow
