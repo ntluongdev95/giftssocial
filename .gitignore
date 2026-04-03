@@ -33,6 +33,12 @@ yarn-error.log*
 # env files — NEVER commit secrets
 .env*
 !.env.example
+.env.local
+.env.dev
+.env.development.local
+.env.test.local
+.env.production.local
+
 
 # vercel
 .vercel
@@ -44,3 +50,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+public/sw.js
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+.claude

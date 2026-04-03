@@ -1,38 +1,38 @@
 export const ENV = process.env.NEXT_PUBLIC_ENV;
 
 // Stablecoin name based on environment
-export const STABLECOIN_PAY_SYMBOL = ENV !== 'development' ? 'PAY' : 'SBC';
-export const STABLECOIN_PAY_NAME = ENV !== 'development' ? 'PAYUSD' : 'SBC';
-export const STABLECOIN_USDC_SYMBOL = 'USDC';
+// export const STABLECOIN_PAY_SYMBOL = ENV !== 'development' ? 'PAY' : 'SBC';
+// export const STABLECOIN_PAY_NAME = ENV !== 'development' ? 'PAYUSD' : 'SBC';
+// export const STABLECOIN_USDC_SYMBOL = 'USDC';
 
-export const NETWORK_BASE_SYMBOL = ENV !== 'development' ? 'base' : 'base_sepolia';
+// export const NETWORK_BASE_SYMBOL = ENV !== 'development' ? 'base' : 'base_sepolia';
 
 export const APP_TYPE_GAO_DOMAINS = 'gao-domains';
 
-// export const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL;
-export const AUTH_API_URL = 'https://api-dev.toii.social/auth';
+ export const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL;
+// export const AUTH_API_URL = 'https://api-dev.toii.social/auth';
 export const PAYII_API_URL = process.env.NEXT_PUBLIC_PAYII_API_URL;
 //Domains
 export const DOMAINS_API_URL = process.env.NEXT_PUBLIC_DOMAIN_API_URL;
-// export const USER_API_URL = process.env.NEXT_PUBLIC_USER_API_URL;
-export const USER_API_URL = 'https://api-dev.toii.social/user';
+ export const USER_API_URL = process.env.NEXT_PUBLIC_USER_API_URL;
+// export const USER_API_URL = 'https://api-dev.toii.social/user';
 export const NOTI_API_URL = process.env.NEXT_PUBLIC_NOTI_API_URL;
 
-export const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+// export const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 
-export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true' || false;
+// export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true' || false;
 
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL;
 
-export const KYC_ENABLED = process.env.NEXT_PUBLIC_KYC_ENABLED === 'true' || false;
+// export const KYC_ENABLED = process.env.NEXT_PUBLIC_KYC_ENABLED === 'true' || false;
 
-export const KYB_ENABLED = process.env.NEXT_PUBLIC_KYB_ENABLED === 'true' || false;
+// export const KYB_ENABLED = process.env.NEXT_PUBLIC_KYB_ENABLED === 'true' || false;
 
 export const IS_DEV = ENV === 'development';
 
-// GAO internal merchant ID — used for domain registration checkout
-export const GAO_MERCHANT_ID =
-  process.env.NEXT_PUBLIC_GAO_MERCHANT_ID || '11111111-1111-1111-1111-111111111111';
+// // GAO internal merchant ID — used for domain registration checkout
+// export const GAO_MERCHANT_ID =
+//   process.env.NEXT_PUBLIC_GAO_MERCHANT_ID || '11111111-1111-1111-1111-111111111111';
 
 // Firebase Cloud Messaging (FCM)
 export const FIREBASE_CONFIG = {
