@@ -123,7 +123,7 @@ function CreateSignalPageInner() {
     try {
       // Map form data to API payload — each form type has different fields
       const titleMap: Record<string, string> = {
-        presence: formData.note as string || "I'm here",
+        presence: ((formData.title as string) || (formData.note as string) || "I'm here").slice(0, 200),
         intent: formData.title as string || formData.what as string || 'Looking for something',
         offer: formData.title as string || 'New offer',
         event: formData.title as string || 'New event',
@@ -188,6 +188,13 @@ function CreateSignalPageInner() {
 
       // Invalidate SWR cache so map/nearby refetch
       mutate((key: string) => typeof key === 'string' && (key.includes('/api/v1/signals') || key.includes('/api/v1/events') || key.includes('/api/v1/businesses')));
+
+      // Enable layer for this signal type
+      const layerMap: Record<string, string> = { presence: 'people', intent: 'people', offer: 'offer', event: 'event', update: 'people', proof: 'people' };
+      const layer = layerMap[signalType!];
+      const { activeLayers, toggleLayer } = useMapStore.getState();
+      if (layer && !activeLayers.has(layer)) toggleLayer(layer);
+
       setStep('success');
     } catch (err) {
       setApiError(err instanceof Error ? err.message : 'Network error — check your connection');
@@ -391,7 +398,12 @@ function CreateSignalPageInner() {
               </p>
               <div className="flex gap-3 pt-4">
                 <button
-                  onClick={() => { useMapStore.getState().clearMarkers(); router.push('/world'); }}
+                  onClick={() => {
+                    useMapStore.getState().clearMarkers();
+                    const coords = formData?.location_coords as [number, number] | undefined;
+                    const flyParam = coords ? `?flyTo=${coords[0]},${coords[1]},15` : '';
+                    router.push(`/world${flyParam}`);
+                  }}
                   className="rounded-xl bg-[#00d4ff] px-6 py-3 text-sm font-semibold text-[#0a0b0f] cursor-pointer"
                 >
                   View on Map

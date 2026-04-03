@@ -378,8 +378,8 @@ function createSignalMarkerElement(signal: Signal): HTMLDivElement {
   `;
   el.textContent = cfg.emoji;
 
-  el.onmouseenter = () => { el.style.transform = 'scale(1.15)'; };
-  el.onmouseleave = () => { el.style.transform = 'scale(1)'; };
+  el.onmouseenter = () => { el.style.filter = `drop-shadow(0 0 8px ${cfg.color}80)`; };
+  el.onmouseleave = () => { el.style.filter = 'none'; };
 
   return el;
 }

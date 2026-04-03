@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await pgPool.query(
-      `SELECT * FROM signals WHERE author_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      `SELECT * FROM signals WHERE author_id = $1 AND status != 'hidden' ORDER BY created_at DESC LIMIT 50`,
       [userId]
     );
 

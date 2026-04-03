@@ -37,7 +37,6 @@ export default function MySignalsPage() {
   const msgCounts: Record<string, number> = msgCountsData?.data || {};
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this signal?')) return;
     try {
       const res = await fetch(`/api/v1/signals/${id}`, {
         method: 'DELETE',
