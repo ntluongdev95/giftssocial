@@ -33,11 +33,6 @@ const CATEGORIES = [
   { icon: <Plane size={18} />, label: 'Travel', color: '#fbbf24' },
 ];
 
-const EVENTS_THIS_WEEK = [
-  { title: 'Pitch Night', time: 'Fri 7:00 PM', circle: 'Startup Builders' },
-  { title: 'Morning Run', time: 'Sun 6:00 AM', circle: 'Health & Wellness' },
-  { title: 'Coffee Tasting', time: 'Sat 3:00 PM', circle: 'Coffee Lovers' },
-];
 
 // ─── Components ──────────────────────────────────────────────────────────
 
@@ -76,19 +71,6 @@ function CircleRow({ circle, onClick, isJoined, isPending, onJoin, onLeave, join
   );
 }
 
-function EventMiniCard({ title, time }: { title: string; time: string }) {
-  return (
-    <div className="shrink-0 w-40 lg:w-auto lg:flex-1 rounded-xl overflow-hidden cursor-pointer" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
-      <div className="h-20 w-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.08), rgba(167,139,250,0.06))' }}>
-        <Calendar size={20} className="text-[#4a5068]" />
-      </div>
-      <div className="p-3">
-        <p className="text-xs font-semibold text-white truncate">{title}</p>
-        <p className="text-[10px] text-[#4a5068]">{time}</p>
-      </div>
-    </div>
-  );
-}
 
 // ─── Page ────────────────────────────────────────────────────────────────
 
@@ -111,6 +93,12 @@ export default function CirclesPage() {
   // Fetch circles from API
   const { data: circlesData } = useSWR('/api/v1/circles?limit=30', fetcher);
   const apiCircles = (circlesData?.data || []) as (Circle & { online?: number; posts_per_day?: number; has_event?: boolean })[];
+
+  // Events from API for Events tab
+  const { data: eventsData } = useSWR<{ data: Record<string, unknown>[] }>(
+    activeTab === 'Events' ? '/api/v1/events?limit=20' : null, fetcher
+  );
+  const apiEvents = eventsData?.data || [];
 
   const handleJoinCircle = async (circleId: string) => {
     const token = localStorage.getItem('access_token');
@@ -152,9 +140,11 @@ export default function CirclesPage() {
     finally { setLeavingId(null); }
   };
 
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const allCircles = apiCircles.length > 0 ? apiCircles : SEED_CIRCLES;
   const filtered = allCircles.filter((c) => {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (selectedCategory && c.category.toLowerCase() !== selectedCategory.toLowerCase()) return false;
     return true;
   });
 
@@ -182,43 +172,89 @@ export default function CirclesPage() {
           ))}
         </div>
 
-        {/* Featured */}
-        <div className="rounded-2xl p-4 mb-5 cursor-pointer" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(0,212,255,0.08)' }} onClick={() => setSelectedCircle(SEED_CIRCLES[0])}>
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(167,139,250,0.15))' }}><Users size={22} className="text-[#00d4ff]" /></div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-bold text-white truncate">{SEED_CIRCLES[0].name}</h3>
-              <p className="text-[10px] text-[#4a5068]">{SEED_CIRCLES[0].member_count.toLocaleString()} members · <span className="text-[#00d4ff]">● Online</span></p>
+        {/* ── For You tab ── */}
+        {activeTab === 'For You' && (<>
+          <div className="rounded-2xl p-4 mb-5 cursor-pointer" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(0,212,255,0.08)' }} onClick={() => setSelectedCircle(SEED_CIRCLES[0])}>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(167,139,250,0.15))' }}><Users size={22} className="text-[#00d4ff]" /></div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-white truncate">{SEED_CIRCLES[0].name}</h3>
+                <p className="text-[10px] text-[#4a5068]">{SEED_CIRCLES[0].member_count.toLocaleString()} members · <span className="text-[#00d4ff]">● Online</span></p>
+              </div>
+              <button className="rounded-lg px-4 py-1.5 text-[11px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.15)', color: '#00d4ff' }}>Join</button>
             </div>
-            <button className="rounded-lg px-4 py-1.5 text-[11px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.15)', color: '#00d4ff' }}>Join</button>
           </div>
-        </div>
+          <div className="space-y-2 mb-6">
+            {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} onLeave={() => handleLeaveCircle(c.id, pendingCircleIds.has(c.id))} joining={joiningId === c.id} leaving={leavingId === c.id} />)}
+          </div>
+        </>)}
 
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Categories</h2>
-        <div className="flex gap-3 mb-6 overflow-x-auto pb-1">
-          {CATEGORIES.map(({ icon, label, color }) => (
-            <div key={label} className="flex flex-col items-center gap-1.5 shrink-0 w-16 cursor-pointer">
-              <div className="h-12 w-12 rounded-2xl flex items-center justify-center" style={{ background: `${color}12`, color, border: `1px solid ${color}20` }}>{icon}</div>
-              <span className="text-[10px] font-medium text-[#a3adc3]">{label}</span>
+        {/* ── Discover tab ── */}
+        {activeTab === 'Discover' && (<>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Categories</h2>
+          <div className="flex gap-3 mb-5 overflow-x-auto pb-1">
+            {CATEGORIES.map(({ icon, label, color }) => {
+              const catKey = label === 'AI & Tech' ? 'tech' : label.toLowerCase();
+              const isActive = selectedCategory === catKey;
+              return (
+                <div key={label} onClick={() => setSelectedCategory(isActive ? null : catKey)} className="flex flex-col items-center gap-1.5 shrink-0 w-16 cursor-pointer transition-transform active:scale-95">
+                  <div className="h-12 w-12 rounded-2xl flex items-center justify-center transition-all" style={isActive ? { background: `${color}25`, color, border: `2px solid ${color}`, boxShadow: `0 0 12px ${color}40` } : { background: `${color}12`, color, border: `1px solid ${color}20` }}>{icon}</div>
+                  <span className="text-[10px] font-medium" style={{ color: isActive ? color : '#a3adc3' }}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">All Circles{selectedCategory ? ` · ${selectedCategory}` : ''}</h2>
+            <span className="text-[10px] text-[#4a5068]">{filtered.length} found</span>
+          </div>
+          <div className="space-y-2 mb-6">
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <span className="text-3xl">🔍</span>
+                <p className="text-sm text-[#4a5068]">No circles found{selectedCategory ? ` in "${selectedCategory}"` : ''}</p>
+                <button onClick={() => handleCreateCircle()} className="text-xs font-semibold text-[#00d4ff] cursor-pointer">Be the first to create one!</button>
+              </div>
+            ) : (
+              filtered.map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} onLeave={() => handleLeaveCircle(c.id, pendingCircleIds.has(c.id))} joining={joiningId === c.id} leaving={leavingId === c.id} />)
+            )}
+          </div>
+        </>)}
+
+        {/* ── Events tab ── */}
+        {activeTab === 'Events' && (<>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Upcoming Events</h2>
+          {apiEvents.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              <span className="text-4xl">📅</span>
+              <p className="text-sm text-[#4a5068]">No upcoming events</p>
+              <p className="text-[10px] text-[#2d3548]">Join circles to see their events here</p>
             </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">Active Circles</h2>
-          <button onClick={() => handleCreateCircle()} className="flex items-center gap-1 text-[11px] font-semibold text-[#00d4ff] cursor-pointer"><Plus size={12} /> Create Circle</button>
-        </div>
-        <div className="space-y-2 mb-6">
-          {filtered.slice(1).map(c => <CircleRow key={c.id} circle={c} onClick={() => setSelectedCircle(c)} isJoined={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onJoin={() => handleJoinCircle(c.id)} onLeave={() => handleLeaveCircle(c.id, pendingCircleIds.has(c.id))} joining={joiningId === c.id} leaving={leavingId === c.id} />)}
-        </div>
-
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">Events This Week</h2>
-          <button className="text-[11px] font-semibold text-[#00d4ff] cursor-pointer">See All</button>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-4">
-          {EVENTS_THIS_WEEK.map(evt => <EventMiniCard key={evt.title} {...evt} />)}
-        </div>
+          ) : (
+            <div className="space-y-3">
+              {apiEvents.map((evt) => (
+                <div key={evt.id as string} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div className="flex items-start gap-3">
+                    <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.1)' }}>
+                      <Calendar size={16} className="text-[#f87171]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-semibold text-white truncate">{evt.title as string}</h3>
+                      <p className="text-[10px] text-[#4a5068] mt-0.5">
+                        {evt.location_name ? `${evt.location_name}` : ''}{evt.city ? ` · ${evt.city}` : ''}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1.5 text-[10px] text-[#4a5068]">
+                        <span><Calendar size={9} className="inline mr-0.5" />{evt.start_time ? new Date(evt.start_time as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                        <span><Users size={9} className="inline mr-0.5" />{evt.joined_count as number || 0} joined</span>
+                        {evt.status === 'live' && <span className="text-[#f87171] font-semibold animate-pulse">● LIVE</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>)}
       </div>
 
       {/* ══ DESKTOP ═══════════════════════════════════════ */}
@@ -244,104 +280,122 @@ export default function CirclesPage() {
           ))}
         </div>
 
-        {/* 3-column layout */}
+        {/* Desktop layout */}
         <div className="flex gap-6">
-          {/* Left: Featured + Categories */}
+          {/* Left sidebar — show on For You & Discover */}
+          {(activeTab === 'For You' || activeTab === 'Discover') && (
           <div className="w-[300px] shrink-0 space-y-5">
-            {/* Featured */}
-            <div className="rounded-2xl p-5 cursor-pointer" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(0,212,255,0.08)' }} onClick={() => setSelectedCircle(SEED_CIRCLES[0])}>
-              <div className="flex flex-col items-center text-center gap-3">
-                <div className="h-16 w-16 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(167,139,250,0.15))', boxShadow: '0 0 20px rgba(0,212,255,0.15)' }}>
-                  <Users size={28} className="text-[#00d4ff]" />
+            {activeTab === 'For You' && (
+              <div className="rounded-2xl p-5 cursor-pointer" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(0,212,255,0.08)' }} onClick={() => setSelectedCircle(SEED_CIRCLES[0])}>
+                <div className="flex flex-col items-center text-center gap-3">
+                  <div className="h-16 w-16 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(167,139,250,0.15))' }}><Users size={28} className="text-[#00d4ff]" /></div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">{SEED_CIRCLES[0].name}</h3>
+                    <p className="text-[10px] text-[#4a5068] mt-0.5">{SEED_CIRCLES[0].member_count.toLocaleString()} members</p>
+                  </div>
+                  <button className="w-full rounded-xl py-2.5 text-xs font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.15)', color: '#00d4ff' }}>Join Circle</button>
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">{SEED_CIRCLES[0].name}</h3>
-                  <p className="text-[10px] text-[#4a5068] mt-0.5">{SEED_CIRCLES[0].member_count.toLocaleString()} members · <span className="text-[#00d4ff]">● {SEED_CIRCLES[0].online} Online</span></p>
-                </div>
-                <button className="w-full rounded-xl py-2.5 text-xs font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.15)', color: '#00d4ff' }}>Join Circle</button>
               </div>
-            </div>
-
-            {/* Categories */}
+            )}
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Categories</h2>
               <div className="grid grid-cols-2 gap-2">
-                {CATEGORIES.map(({ icon, label, color }) => (
-                  <div key={label} className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
-                    <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: `${color}12`, color }}>{icon}</div>
-                    <span className="text-xs font-medium text-[#a3adc3]">{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Events This Week */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">Events This Week</h2>
-                <button className="text-[10px] font-semibold text-[#00d4ff] cursor-pointer">See All</button>
-              </div>
-              <div className="space-y-2">
-                {EVENTS_THIS_WEEK.map(evt => (
-                  <div key={evt.title} className="flex items-center gap-3 rounded-xl px-3 py-2.5 cursor-pointer" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
-                    <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.1)' }}>
-                      <Calendar size={15} className="text-[#f87171]" />
+                {CATEGORIES.map(({ icon, label, color }) => {
+                  const catKey = label === 'AI & Tech' ? 'tech' : label.toLowerCase();
+                  const isActive = selectedCategory === catKey;
+                  return (
+                    <div key={label} onClick={() => setSelectedCategory(isActive ? null : catKey)} className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer transition-all" style={isActive ? { background: `${color}15`, border: `1px solid ${color}40`, boxShadow: `0 0 10px ${color}20` } : { background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                      <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: `${color}12`, color }}>{icon}</div>
+                      <span className="text-xs font-medium" style={{ color: isActive ? color : '#a3adc3' }}>{label}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-white truncate">{evt.title}</p>
-                      <p className="text-[10px] text-[#4a5068]">{evt.time}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
+          )}
 
-          {/* Right: Active Circles grid */}
+          {/* Right: Content based on tab */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">Active Circles</h2>
-              <span className="text-[10px] text-[#4a5068]">{filtered.length} circles</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {filtered.slice(1).map(circle => (
-                <div
-                  key={circle.id}
-                  onClick={() => setSelectedCircle(circle)}
-                  className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]"
-                  style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="h-11 w-11 rounded-xl flex items-center justify-center text-sm font-bold overflow-hidden" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-                      {circle.avatar_url ? <img src={circle.avatar_url} alt={circle.name} className="w-full h-full object-cover" /> : circle.name.charAt(0)}
+            {/* For You + Discover: Circles grid */}
+            {(activeTab === 'For You' || activeTab === 'Discover') && (<>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">{activeTab === 'Discover' ? 'All Circles' : 'Active Circles'}{selectedCategory ? ` · ${selectedCategory}` : ''}</h2>
+                <span className="text-[10px] text-[#4a5068]">{filtered.length} circles</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {(activeTab === 'For You' ? filtered.slice(1) : filtered).length === 0 && (
+                  <div className="col-span-2 flex flex-col items-center gap-3 py-12 text-center">
+                    <span className="text-4xl">🔍</span>
+                    <p className="text-sm text-[#4a5068]">No circles found{selectedCategory ? ` in "${selectedCategory}"` : ''}</p>
+                    <button onClick={() => handleCreateCircle()} className="text-xs font-semibold text-[#00d4ff] cursor-pointer">Be the first to create one!</button>
+                  </div>
+                )}
+                {(activeTab === 'For You' ? filtered.slice(1) : filtered).map(circle => (
+                  <div key={circle.id} onClick={() => setSelectedCircle(circle)} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-11 w-11 rounded-xl flex items-center justify-center text-sm font-bold overflow-hidden" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                        {circle.avatar_url ? <img src={circle.avatar_url} alt={circle.name} className="w-full h-full object-cover" /> : circle.name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{circle.name}</p>
+                        <p className="text-[10px] text-[#4a5068]">{circle.city}</p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{circle.name}</p>
-                      <p className="text-[10px] text-[#4a5068]">{circle.city}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] text-[#4a5068]">{circle.member_count.toLocaleString()} members</p>
+                      {joinedCircleIds.has(circle.id) ? (
+                        <button onClick={(ev) => { ev.stopPropagation(); handleLeaveCircle(circle.id, false); }} disabled={leavingId === circle.id} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+                          {leavingId === circle.id ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Joined
+                        </button>
+                      ) : pendingCircleIds.has(circle.id) ? (
+                        <button onClick={(ev) => { ev.stopPropagation(); handleLeaveCircle(circle.id, true); }} disabled={leavingId === circle.id} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>
+                          {leavingId === circle.id ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />} Pending
+                        </button>
+                      ) : (
+                        <button onClick={(ev) => { ev.stopPropagation(); handleJoinCircle(circle.id); }} disabled={joiningId === circle.id} className="rounded-lg px-3 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}>Join</button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-[#4a5068]">
-                      {circle.member_count.toLocaleString()} members
-                      {circle.online ? <span className="text-[#00d4ff]"> · {circle.online} online</span> : ''}
-                    </p>
-                    {joinedCircleIds.has(circle.id) ? (
-                      <button onClick={(ev) => { ev.stopPropagation(); handleLeaveCircle(circle.id, false); }} disabled={leavingId === circle.id} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-red-500/10" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
-                        {leavingId === circle.id ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Joined
-                      </button>
-                    ) : pendingCircleIds.has(circle.id) ? (
-                      <button onClick={(ev) => { ev.stopPropagation(); handleLeaveCircle(circle.id, true); }} disabled={leavingId === circle.id} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-red-500/10" style={{ background: 'rgba(234,179,8,0.12)', color: '#EAB308' }}>
-                        {leavingId === circle.id ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />} Pending
-                      </button>
-                    ) : circle.has_event ? (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}>Event</span>
-                    ) : (
-                      <button onClick={(ev) => { ev.stopPropagation(); handleJoinCircle(circle.id); }} disabled={joiningId === circle.id} className="rounded-lg px-3 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-50" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}>Join</button>
-                    )}
-                  </div>
+                ))}
+              </div>
+            </>)}
+
+            {/* Events tab */}
+            {activeTab === 'Events' && (<>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068]">Upcoming Events</h2>
+                <span className="text-[10px] text-[#4a5068]">{apiEvents.length} events</span>
+              </div>
+              {apiEvents.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-16 text-center">
+                  <span className="text-5xl">📅</span>
+                  <p className="text-sm text-[#4a5068]">No upcoming events</p>
+                  <p className="text-[10px] text-[#2d3548]">Join circles to see their events here</p>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {apiEvents.map((evt) => (
+                    <div key={evt.id as string} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                      <div className="flex items-start gap-3">
+                        <div className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.1)' }}>
+                          <Calendar size={18} className="text-[#f87171]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-sm font-semibold text-white truncate">{evt.title as string}</h3>
+                          <p className="text-[10px] text-[#4a5068] mt-0.5">{evt.location_name ? `${evt.location_name}` : ''}{evt.city ? ` · ${evt.city}` : ''}</p>
+                          <div className="flex items-center gap-3 mt-2 text-[10px] text-[#4a5068]">
+                            <span><Calendar size={9} className="inline mr-0.5" />{evt.start_time ? new Date(evt.start_time as string).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : ''}</span>
+                            <span><Users size={9} className="inline mr-0.5" />{evt.joined_count as number || 0} joined</span>
+                            {evt.status === 'live' && <span className="text-[#f87171] font-semibold animate-pulse">● LIVE</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>)}
           </div>
         </div>
       </div>

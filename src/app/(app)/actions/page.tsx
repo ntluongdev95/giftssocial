@@ -2,12 +2,18 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import useSWR from 'swr';
 import { useLocationStore } from '@/stores/locationStore';
+import { useAuthStore } from '@/stores/auth-store';
 import {
   Plus, Bot, MapPin, Tag, CalendarDays, FileText, AlertTriangle,
   Store, Calendar, Users, Sparkles, Shield, ChevronRight,
   Bookmark, Map, FileEdit, QrCode, Zap, TrendingUp,
 } from 'lucide-react';
+
+const apiFetcher = (url: string) => fetch(url, {
+  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+}).then(r => r.json());
 
 // ─── Data ────────────────────────────────────────────────────────────────
 
@@ -37,9 +43,16 @@ const SHORTCUTS = [
 
 export default function ActionsPage() {
   const { city } = useLocationStore();
+  const isLoggedIn = useAuthStore(s => s.isAuthed);
+
+  // Activity counts — only fetch when logged in
+  const { data: signalsData } = useSWR(isLoggedIn ? '/api/v1/signals/me' : null, apiFetcher);
+  const { data: proofsData } = useSWR(isLoggedIn ? '/api/v1/proofs/me' : null, apiFetcher);
+  const signalCount = (signalsData?.data || []).length;
+  const proofCount = (proofsData?.data || []).length;
 
   return (
-    <div className="h-full overflow-y-auto px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,12px)+12px)] lg:pt-6 pb-24">
+    <div className="h-full overflow-y-auto px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,20px)+24px)] lg:pt-6 pb-24">
 
       {/* ══ MOBILE ════════════════════════════════════════ */}
       <div className="lg:hidden max-w-lg mx-auto">
@@ -78,7 +91,7 @@ export default function ActionsPage() {
           {SHORTCUTS.map(s => <ShortcutCard key={s.label} {...s} />)}
         </div>
 
-        <ScanButton />
+        {isLoggedIn && <ScanButton />}
       </div>
 
       {/* ══ DESKTOP ═══════════════════════════════════════ */}
@@ -168,9 +181,10 @@ export default function ActionsPage() {
               ))}
             </div>
 
-            <ScanButton />
+            {isLoggedIn && <ScanButton />}
 
-            {/* Stats mini */}
+            {/* Stats mini — only when logged in */}
+            {isLoggedIn && (
             <div className="mt-4 rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp size={14} className="text-[#00d4ff]" />
@@ -178,11 +192,11 @@ export default function ActionsPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="text-center">
-                  <p className="text-lg font-light text-[#00d4ff]">0</p>
+                  <p className="text-lg font-light text-[#00d4ff]">{signalCount}</p>
                   <p className="text-[9px] text-[#4a5068]">Signals</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-lg font-light text-[#34d399]">0</p>
+                  <p className="text-lg font-light text-[#34d399]">{proofCount}</p>
                   <p className="text-[9px] text-[#4a5068]">Proofs</p>
                 </div>
                 <div className="text-center">
@@ -191,6 +205,7 @@ export default function ActionsPage() {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </div>
       </div>
