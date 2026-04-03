@@ -82,7 +82,45 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
     finally { setSending(false); }
   };
 
-  const EMOJIS = ['💋', '❤️', '😘', '🥰', '💕', '🌹', '🎁', '✈️'];
+  const GIFT_CATEGORIES = [
+    { label: 'Love', gifts: [
+      { emoji: '💋', name: 'Kiss', coins: 1 },
+      { emoji: '❤️', name: 'Heart', coins: 1 },
+      { emoji: '😘', name: 'Blow Kiss', coins: 5 },
+      { emoji: '🥰', name: 'In Love', coins: 5 },
+      { emoji: '💕', name: 'Two Hearts', coins: 10 },
+      { emoji: '💖', name: 'Sparkling', coins: 20 },
+      { emoji: '💝', name: 'Gift Heart', coins: 50 },
+      { emoji: '❤️‍🔥', name: 'Fire Heart', coins: 100 },
+    ]},
+    { label: 'Flowers', gifts: [
+      { emoji: '🌹', name: 'Rose', coins: 10 },
+      { emoji: '🌸', name: 'Sakura', coins: 15 },
+      { emoji: '💐', name: 'Bouquet', coins: 50 },
+      { emoji: '🌻', name: 'Sunflower', coins: 10 },
+      { emoji: '🌺', name: 'Hibiscus', coins: 15 },
+      { emoji: '🪻', name: 'Lavender', coins: 20 },
+    ]},
+    { label: 'Luxury', gifts: [
+      { emoji: '💎', name: 'Diamond', coins: 500 },
+      { emoji: '👑', name: 'Crown', coins: 1000 },
+      { emoji: '🏰', name: 'Castle', coins: 2000 },
+      { emoji: '🛳️', name: 'Cruise', coins: 5000 },
+      { emoji: '🚀', name: 'Rocket', coins: 10000 },
+      { emoji: '🌍', name: 'The World', coins: 50000 },
+    ]},
+    { label: 'Fun', gifts: [
+      { emoji: '🎁', name: 'Gift Box', coins: 5 },
+      { emoji: '🧸', name: 'Teddy Bear', coins: 20 },
+      { emoji: '🎂', name: 'Cake', coins: 30 },
+      { emoji: '🍫', name: 'Chocolate', coins: 10 },
+      { emoji: '🎵', name: 'Music', coins: 15 },
+      { emoji: '⭐', name: 'Star', coins: 25 },
+      { emoji: '🦋', name: 'Butterfly', coins: 50 },
+      { emoji: '🌈', name: 'Rainbow', coins: 100 },
+    ]},
+  ];
+  const [activeCategory, setActiveCategory] = useState(0);
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onClose}>
@@ -117,13 +155,24 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
             </select>
           </div>
 
-          {/* Emoji picker */}
+          {/* Gift picker — TikTok style */}
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">Emoji</label>
-            <div className="flex gap-2">
-              {EMOJIS.map(e => (
-                <button key={e} onClick={() => setEmoji(e)} className="h-10 w-10 rounded-xl flex items-center justify-center text-xl cursor-pointer transition-transform" style={emoji === e ? { background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', transform: 'scale(1.15)' } : { background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                  {e}
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-2 block">Choose a Gift</label>
+            {/* Category tabs */}
+            <div className="flex gap-1 mb-2">
+              {GIFT_CATEGORIES.map((cat, idx) => (
+                <button key={cat.label} onClick={() => setActiveCategory(idx)} className="px-2.5 py-1 rounded-lg text-[10px] font-semibold cursor-pointer transition-colors" style={activeCategory === idx ? { background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' } : { background: 'rgba(17,19,24,0.5)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            {/* Gift grid */}
+            <div className="grid grid-cols-4 gap-1.5 max-h-[140px] overflow-y-auto">
+              {GIFT_CATEGORIES[activeCategory].gifts.map(g => (
+                <button key={g.emoji} onClick={() => setEmoji(g.emoji)} className="flex flex-col items-center gap-0.5 rounded-xl py-2 cursor-pointer transition-all" style={emoji === g.emoji ? { background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', transform: 'scale(1.05)' } : { background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <span className="text-2xl">{g.emoji}</span>
+                  <span className="text-[8px] font-medium text-[#a3adc3] truncate w-full text-center px-1">{g.name}</span>
+                  <span className="text-[8px] font-bold" style={{ color: '#fbbf24' }}>🪙 {g.coins}</span>
                 </button>
               ))}
             </div>
@@ -160,34 +209,152 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   );
 }
 
+// ── Gift Effects Config ──
+const GIFT_EFFECTS: Record<string, { particles: string[]; bg: string; sound?: string; animation?: string; subtitle?: string }> = {
+  '💋': { particles: ['💋', '❤️', '💕', '✨'], bg: 'rgba(236,72,153,0.15)', subtitle: 'Mwah!' },
+  '❤️': { particles: ['❤️', '💕', '💗', '✨'], bg: 'rgba(239,68,68,0.15)', subtitle: 'Love you!' },
+  '😘': { particles: ['😘', '💋', '💕', '❤️'], bg: 'rgba(236,72,153,0.15)', subtitle: 'XOXO' },
+  '🥰': { particles: ['🥰', '❤️', '✨', '💖'], bg: 'rgba(251,113,133,0.15)', subtitle: 'So sweet!' },
+  '💕': { particles: ['💕', '💗', '💖', '❤️'], bg: 'rgba(236,72,153,0.15)', subtitle: 'Double love!' },
+  '💖': { particles: ['💖', '✨', '⭐', '💫'], bg: 'rgba(236,72,153,0.2)', animation: 'sparkle', subtitle: '✨ Sparkling!' },
+  '💝': { particles: ['💝', '🎀', '✨', '💖'], bg: 'rgba(236,72,153,0.15)', subtitle: 'A gift of love!' },
+  '❤️‍🔥': { particles: ['🔥', '❤️‍🔥', '💥', '✨'], bg: 'rgba(239,68,68,0.2)', animation: 'fire', subtitle: '🔥 On fire!' },
+  '🌹': { particles: ['🌹', '🌸', '🪻', '✨'], bg: 'rgba(225,29,72,0.15)', subtitle: 'A rose for you' },
+  '🌸': { particles: ['🌸', '🌺', '✨', '💮'], bg: 'rgba(244,114,182,0.15)', subtitle: 'Cherry blossom' },
+  '💐': { particles: ['🌹', '🌸', '🌺', '🌻', '💐', '✨'], bg: 'rgba(244,114,182,0.15)', subtitle: 'Beautiful bouquet!' },
+  '🌻': { particles: ['🌻', '☀️', '✨', '🌼'], bg: 'rgba(234,179,8,0.15)', subtitle: 'Sunshine!' },
+  '💎': { particles: ['💎', '✨', '⭐', '💫', '🔮'], bg: 'rgba(99,102,241,0.2)', animation: 'sparkle', subtitle: '💎 Flawless!' },
+  '👑': { particles: ['👑', '✨', '⭐', '💎', '🏆'], bg: 'rgba(234,179,8,0.2)', animation: 'sparkle', subtitle: '👑 Royal gift!' },
+  '🏰': { particles: ['🏰', '✨', '👑', '🌟', '🎆'], bg: 'rgba(167,139,250,0.2)', animation: 'fireworks', subtitle: '🏰 A castle for you!' },
+  '🛳️': { particles: ['🛳️', '🌊', '⚓', '✨', '🐬'], bg: 'rgba(59,130,246,0.15)', subtitle: '⛵ Bon voyage!' },
+  '🚀': { particles: ['🚀', '⭐', '🌟', '✨', '💫', '🪐'], bg: 'rgba(99,102,241,0.2)', animation: 'fireworks', subtitle: '🚀 To the moon!' },
+  '🌍': { particles: ['🌍', '✨', '⭐', '🌟', '💫', '🎆', '🪐', '🌈'], bg: 'rgba(52,211,153,0.2)', animation: 'fireworks', subtitle: '🌍 The whole world!' },
+  '🎁': { particles: ['🎁', '🎀', '✨', '🎉', '🎊'], bg: 'rgba(239,68,68,0.15)', subtitle: 'Surprise!' },
+  '🧸': { particles: ['🧸', '❤️', '✨', '🎀'], bg: 'rgba(180,83,9,0.15)', subtitle: 'Cuddles!' },
+  '🎂': { particles: ['🎂', '🎉', '🎊', '✨', '🕯️'], bg: 'rgba(234,179,8,0.15)', animation: 'fireworks', subtitle: '🎂 Make a wish!' },
+  '🍫': { particles: ['🍫', '❤️', '✨', '😋'], bg: 'rgba(120,53,15,0.15)', subtitle: 'Sweet treat!' },
+  '🎵': { particles: ['🎵', '🎶', '🎤', '✨', '🎧'], bg: 'rgba(167,139,250,0.15)', subtitle: '🎵 A song for you!' },
+  '⭐': { particles: ['⭐', '✨', '🌟', '💫'], bg: 'rgba(234,179,8,0.15)', animation: 'sparkle', subtitle: 'You are a star!' },
+  '🦋': { particles: ['🦋', '🌸', '✨', '🌺', '🌈'], bg: 'rgba(99,102,241,0.15)', subtitle: '🦋 Beautiful!' },
+  '🌈': { particles: ['🌈', '✨', '⭐', '🦋', '☀️', '🌸'], bg: 'rgba(52,211,153,0.15)', animation: 'fireworks', subtitle: '🌈 Over the rainbow!' },
+};
+
 // ── Kiss Reveal Popup ──
 function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: Kiss; onClose: () => void; currentUserId?: string; onSendBack?: (toId: string) => void }) {
   const senderDisplay = currentUserId === kiss.sender_id ? 'You' : kiss.sender_name;
   const receiverDisplay = currentUserId === kiss.receiver_id ? 'You' : kiss.receiver_name;
   const canSendBack = currentUserId === kiss.receiver_id && onSendBack;
+  const fx = GIFT_EFFECTS[kiss.emoji] || GIFT_EFFECTS['💋'];
+  const isFireworks = fx.animation === 'fireworks';
+  const isSparkle = fx.animation === 'sparkle';
+  const isFire = fx.animation === 'fire';
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70" />
+
+      {/* Full-screen particle shower */}
+      {Array.from({ length: 20 }).map((_, i) => (
+        <motion.span
+          key={`shower-${i}`}
+          className="absolute text-3xl pointer-events-none"
+          style={{ left: `${Math.random() * 100}%`, top: '-5%' }}
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: [0, 1, 1, 0], y: ['0vh', '110vh'], x: (Math.random() - 0.5) * 100 }}
+          transition={{ duration: 3 + Math.random() * 2, delay: i * 0.15, repeat: Infinity, repeatDelay: Math.random() * 2 }}
+        >
+          {fx.particles[i % fx.particles.length]}
+        </motion.span>
+      ))}
+
+      {/* Fireworks bursts */}
+      {isFireworks && Array.from({ length: 5 }).map((_, i) => (
+        <motion.div
+          key={`fw-${i}`}
+          className="absolute pointer-events-none"
+          style={{ left: `${20 + Math.random() * 60}%`, top: `${20 + Math.random() * 40}%` }}
+          initial={{ scale: 0, opacity: 1 }}
+          animate={{ scale: [0, 2.5, 3], opacity: [1, 1, 0] }}
+          transition={{ duration: 1.5, delay: 0.5 + i * 0.4, repeat: Infinity, repeatDelay: 2 }}
+        >
+          {Array.from({ length: 8 }).map((_, j) => (
+            <motion.span
+              key={j}
+              className="absolute text-xl"
+              style={{ transform: `rotate(${j * 45}deg)` }}
+              animate={{ x: [0, Math.cos(j * 45 * Math.PI / 180) * 60], y: [0, Math.sin(j * 45 * Math.PI / 180) * 60], opacity: [1, 0] }}
+              transition={{ duration: 1, delay: 0.5 + i * 0.4 }}
+            >
+              {fx.particles[j % fx.particles.length]}
+            </motion.span>
+          ))}
+        </motion.div>
+      ))}
+
       <motion.div
         initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }}
         transition={{ type: 'spring', damping: 15, stiffness: 200 }}
-        className="relative flex flex-col items-center gap-4 p-8 rounded-3xl"
-        style={{ background: 'rgba(10,11,15,0.95)', border: '1px solid rgba(236,72,153,0.2)', boxShadow: '0 0 60px rgba(236,72,153,0.2)' }}
+        className="relative flex flex-col items-center gap-3 px-10 py-8 rounded-3xl overflow-hidden"
+        style={{ background: 'rgba(10,11,15,0.95)', border: '1px solid rgba(236,72,153,0.2)', boxShadow: `0 0 80px ${fx.bg}` }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Background glow */}
+        <div className="absolute inset-0 rounded-3xl" style={{ background: `radial-gradient(circle at 50% 30%, ${fx.bg}, transparent 70%)` }} />
+
+        {/* Main emoji — with special animations */}
         <motion.div
-          initial={{ scale: 0 }} animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: 'spring', stiffness: 300 }}
-          className="text-7xl"
+          initial={{ scale: 0, rotate: -30 }}
+          animate={isFire
+            ? { scale: [0, 1.3, 1.1, 1.3, 1.1], rotate: [-30, 0, -3, 3, 0] }
+            : isSparkle
+              ? { scale: [0, 1.4, 1.2, 1.3, 1.2], rotate: [-30, 5, -5, 3, 0] }
+              : { scale: [0, 1.3, 1], rotate: [-30, 5, 0] }
+          }
+          transition={isFire || isSparkle
+            ? { duration: 2, ease: 'easeInOut', repeat: Infinity, repeatType: 'reverse' }
+            : { delay: 0.2, duration: 0.6, ease: 'easeOut' }
+          }
+          className="relative text-8xl z-10"
         >
           {kiss.emoji}
+          {/* Sparkle ring around emoji */}
+          {isSparkle && (
+            <motion.div
+              className="absolute inset-0 flex items-center justify-center"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+            >
+              {Array.from({ length: 6 }).map((_, i) => (
+                <motion.span key={i} className="absolute text-lg" style={{ transform: `rotate(${i * 60}deg) translateY(-50px)` }}
+                  animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
+                  transition={{ duration: 1.5, delay: i * 0.25, repeat: Infinity }}
+                >✨</motion.span>
+              ))}
+            </motion.div>
+          )}
+          {/* Fire effect */}
+          {isFire && (
+            <>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <motion.span key={i} className="absolute text-2xl" style={{ bottom: 0, left: `${10 + i * 18}%` }}
+                  animate={{ y: [0, -30, -50], opacity: [0.8, 0.5, 0], scale: [1, 1.3, 0.5] }}
+                  transition={{ duration: 0.8 + Math.random() * 0.5, delay: i * 0.15, repeat: Infinity }}
+                >🔥</motion.span>
+              ))}
+            </>
+          )}
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+
+        {/* Subtitle */}
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+          className="text-sm font-bold z-10" style={{ color: '#ec4899' }}>{fx.subtitle}</motion.p>
+
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="z-10 flex flex-col items-center">
           <p className="text-lg font-bold text-white text-center">
             From <span style={{ color: '#f87171' }}>{senderDisplay}</span>
           </p>
           {kiss.message && <p className="text-sm text-[#a3adc3] text-center mt-2 max-w-xs">{kiss.message}</p>}
-          <p className="text-[10px] text-[#4a5068] text-center mt-3">
+          <p className="text-[10px] text-[#4a5068] text-center mt-2">
             {senderDisplay} → {receiverDisplay}
           </p>
           {canSendBack && (
@@ -200,16 +367,22 @@ function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: K
             </button>
           )}
         </motion.div>
-        {/* Floating hearts animation */}
-        {Array.from({ length: 8 }).map((_, i) => (
+
+        {/* Orbiting particles around card */}
+        {Array.from({ length: 12 }).map((_, i) => (
           <motion.span
-            key={i}
-            className="absolute text-2xl pointer-events-none"
-            initial={{ opacity: 1, y: 0, x: (Math.random() - 0.5) * 100 }}
-            animate={{ opacity: 0, y: -120 - Math.random() * 80, x: (Math.random() - 0.5) * 200 }}
-            transition={{ duration: 2 + Math.random(), delay: 0.3 + i * 0.15, repeat: Infinity, repeatDelay: 1 }}
+            key={`orbit-${i}`}
+            className="absolute text-xl pointer-events-none z-0"
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 0.8, 0],
+              x: [0, (Math.random() - 0.5) * 250],
+              y: [0, -100 - Math.random() * 150],
+              scale: [0.5, 1.2, 0.3],
+            }}
+            transition={{ duration: 2.5 + Math.random() * 1.5, delay: i * 0.2, repeat: Infinity, repeatDelay: Math.random() }}
           >
-            {['❤️', '💕', '💋', '✨'][i % 4]}
+            {fx.particles[i % fx.particles.length]}
           </motion.span>
         ))}
       </motion.div>
