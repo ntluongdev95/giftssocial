@@ -218,15 +218,29 @@ function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: K
 }
 
 // ── Flight HUD Overlay ──
+function generateFlightCode(senderName: string, receiverName: string): string {
+  const s = (senderName || 'X').charAt(0).toUpperCase();
+  const r = (receiverName || 'Y').charAt(0).toUpperCase();
+  const num = Math.abs(senderName.length * 37 + receiverName.length * 73) % 900 + 100;
+  return `${s}${r}${num}`;
+}
+
 function FlightHUD({ from, to, progress, senderName, receiverName, emoji }: {
   from: string; to: string; progress: number; senderName: string; receiverName: string; emoji: string;
 }) {
   const pct = Math.round(progress * 100);
-  const remaining = Math.max(0, Math.round((1 - progress) * 9)); // ~9s total flight
+  const remaining = Math.max(0, Math.round((1 - progress) * 25));
+  const flightCode = generateFlightCode(senderName, receiverName);
   return (
     <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none" style={{ fontFamily: 'Inter, system-ui, monospace' }}>
       {/* Flight info card */}
       <div className="rounded-2xl px-5 py-3 flex flex-col items-center gap-2 min-w-[280px]" style={{ background: 'rgba(10,11,15,0.85)', backdropFilter: 'blur(16px)', border: '1px solid rgba(236,72,153,0.2)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+        {/* Flight title */}
+        <div className="flex items-center gap-2 w-full">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(236,72,153,0.15)', color: '#ec4899' }}>FLIGHT</span>
+          <span className="text-[11px] font-bold text-white tracking-wider">Love Air {flightCode}</span>
+          <span className="text-[9px] text-[#4a5068] ml-auto">{emoji}</span>
+        </div>
         {/* Route */}
         <div className="flex items-center gap-3 w-full">
           <div className="text-right flex-1">
