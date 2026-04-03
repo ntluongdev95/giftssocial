@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import useSWR from 'swr';
@@ -10,6 +11,8 @@ import {
   Store, Calendar, Users, Sparkles, Shield, ChevronRight,
   Bookmark, Map, FileEdit, QrCode, Zap, TrendingUp,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+const ScanCheckin = dynamic(() => import('@/components/checkin/ScanCheckin'), { ssr: false });
 
 const apiFetcher = (url: string) => fetch(url, {
   headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
@@ -44,6 +47,7 @@ const SHORTCUTS = [
 export default function ActionsPage() {
   const { city } = useLocationStore();
   const isLoggedIn = useAuthStore(s => s.isAuthed);
+  const [showScanner, setShowScanner] = useState(false);
 
   // Activity counts — only fetch when logged in
   const { data: signalsData } = useSWR(isLoggedIn ? '/api/v1/signals/me' : null, apiFetcher);
@@ -91,7 +95,7 @@ export default function ActionsPage() {
           {SHORTCUTS.map(s => <ShortcutCard key={s.label} {...s} />)}
         </div>
 
-        {isLoggedIn && <ScanButton />}
+        {isLoggedIn && <ScanButton onClick={() => setShowScanner(true)} />}
       </div>
 
       {/* ══ DESKTOP ═══════════════════════════════════════ */}
@@ -181,7 +185,7 @@ export default function ActionsPage() {
               ))}
             </div>
 
-            {isLoggedIn && <ScanButton />}
+            {isLoggedIn && <ScanButton onClick={() => setShowScanner(true)} />}
 
             {/* Stats mini — only when logged in */}
             {isLoggedIn && (
@@ -209,6 +213,8 @@ export default function ActionsPage() {
           </div>
         </div>
       </div>
+
+      {showScanner && <ScanCheckin isOpen={showScanner} onClose={() => setShowScanner(false)} />}
     </div>
   );
 }
@@ -293,10 +299,11 @@ function ShortcutCard({ href, icon, label, sub, color }: { href: string; icon: R
   );
 }
 
-function ScanButton() {
+function ScanButton({ onClick }: { onClick: () => void }) {
   return (
     <motion.button
       whileTap={{ scale: 0.97 }}
+      onClick={onClick}
       className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold cursor-pointer"
       style={{ background: 'linear-gradient(135deg, #00d4ff, #22C55E)', color: '#0a0b0f', boxShadow: '0 4px 20px rgba(0,212,255,0.3)' }}
     >
