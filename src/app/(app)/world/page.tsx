@@ -20,6 +20,7 @@ import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import EventDetailPage from '@/components/events/EventDetailPage';
 import SignalSheet from '@/components/map/SignalSheet';
 import FriendSidePanel from '@/components/map/FriendSidePanel';
+import KissGlobe from '@/components/map/KissGlobe';
 import type { Signal, Agent, Profile, Business, Event, Circle, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
@@ -372,6 +373,7 @@ export default function WorldPage() {
       <WorldMap onMapReady={handleMapReady}>
         {/* Marker sync */}
         <WorldMapInner signals={signals} agents={agents} profiles={profiles} businesses={businesses} events={events} circles={circles} />
+        <KissGlobe />
 
         {/* ── Top Bar ─────────────────────────────────── */}
         <div className="absolute left-0 right-0 top-0 z-30">
