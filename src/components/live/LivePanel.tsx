@@ -32,6 +32,7 @@ interface LivePanelProps {
 export default function LivePanel({ isOpen, onClose }: LivePanelProps) {
   const [activeChannel, setActiveChannel] = useState(LIVE_CHANNELS[0]);
   const [desktopTab, setDesktopTab] = useState<string>('live');
+  const [mobileTab, setMobileTab] = useState<string>('live');
   const [mobileCategory, setMobileCategory] = useState<string>('All');
   const [unavailable, setUnavailable] = useState<Set<string>>(new Set());
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -208,50 +209,156 @@ export default function LivePanel({ isOpen, onClose }: LivePanelProps) {
           exit={{ y: '100%' }}
           transition={{ type: 'spring', damping: 25, stiffness: 250 }}
           className="fixed inset-0 z-[100] flex flex-col"
-          style={{ background: 'rgba(10,11,15,0.99)' }}
+          style={{ background: '#08090c' }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top,12px)+8px)] pb-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="flex items-center gap-2">
-              <Radio size={14} className="text-red-500 animate-pulse" />
-              <span className="text-sm font-bold text-white">LIVE</span>
-              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400">{mobileFiltered.length} channels</span>
+          <div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top,44px)+8px)] pb-2">
+            <div className="flex items-center gap-2.5">
+              <div className="h-7 w-7 rounded-full bg-red-500/15 flex items-center justify-center">
+                <Radio size={13} className="text-red-500 animate-pulse" />
+              </div>
+              <span className="text-[13px] font-bold text-white tracking-wide">LIVE</span>
             </div>
-            <button onClick={onClose} className="h-8 w-8 rounded-lg flex items-center justify-center cursor-pointer text-[#4a5068] hover:text-white" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <X size={16} />
+            <button onClick={onClose} className="h-8 w-8 rounded-full flex items-center justify-center cursor-pointer" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <X size={15} className="text-[#8892a8]" />
             </button>
           </div>
 
-          {/* Category tabs */}
-          <div className="flex gap-1.5 px-4 py-2">
-            {MOBILE_CATEGORIES.map(cat => (
-              <button key={cat} onClick={() => setMobileCategory(cat)} className="px-3 py-1.5 rounded-lg text-[10px] font-semibold cursor-pointer transition-colors" style={mobileCategory === cat ? { background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' } : { background: 'rgba(17,19,24,0.5)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.04)' }}>
-                {cat}
-              </button>
-            ))}
+          {/* Main tabs: Live TV / Crypto / News */}
+          <div className="flex gap-1 px-5 py-2">
+            {DESKTOP_TABS.map(tab => {
+              const active = mobileTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setMobileTab(tab.id)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[10px] font-semibold cursor-pointer transition-all"
+                  style={active
+                    ? { background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }
+                    : { background: 'transparent', color: '#4a5068', border: '1px solid rgba(255,255,255,0.05)' }
+                  }
+                >
+                  <tab.Icon size={12} />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Video player */}
-          <div className="px-4 py-2 flex-1 min-h-0">
-            <div className="relative rounded-xl overflow-hidden w-full h-full" style={{ background: '#000' }}>
-              <iframe
-                key={activeChannel.id}
-                src={activeChannel.embedUrl}
-                className="w-full h-full"
-                allow="autoplay; encrypted-media"
-                allowFullScreen
-              />
-              <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-                <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-white">{activeChannel.name}</span>
+          {/* Tab content */}
+          {mobileTab === 'live' && (
+            <>
+              {/* Video player — fixed 16:9 */}
+              <div className="px-4 mt-1">
+                <div className="relative rounded-2xl overflow-hidden w-full" style={{ aspectRatio: '16/9', background: '#000' }}>
+                  <iframe
+                    key={activeChannel.id}
+                    src={activeChannel.embedUrl}
+                    className="absolute inset-0 w-full h-full"
+                    allow="autoplay; encrypted-media"
+                    allowFullScreen
+                  />
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}>
+                    <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-[10px] font-bold text-white">{activeChannel.name}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Channel strip */}
-          <div className="pb-[calc(env(safe-area-inset-bottom,0px)+8px)]" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            {channelStrip(mobileFiltered)}
-          </div>
+              {/* Now Playing info */}
+              <div className="px-5 py-3 flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl flex items-center justify-center text-lg" style={{ background: `${activeChannel.color}15`, border: `1px solid ${activeChannel.color}25` }}>
+                  {activeChannel.icon}
+                </div>
+                <div className="flex-1">
+                  <p className="text-[12px] font-bold text-white">{activeChannel.name}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-[9px] font-semibold text-red-400 uppercase tracking-wider">Live now</span>
+                  </div>
+                </div>
+                <span className="text-[8px] font-bold uppercase px-2 py-1 rounded-lg" style={{
+                  background: activeChannel.category === 'news' ? 'rgba(59,130,246,0.12)' : 'rgba(168,85,247,0.12)',
+                  color: activeChannel.category === 'news' ? '#60a5fa' : '#c084fc',
+                  border: activeChannel.category === 'news' ? '1px solid rgba(59,130,246,0.2)' : '1px solid rgba(168,85,247,0.2)',
+                }}>{activeChannel.category}</span>
+              </div>
+
+              {/* Divider */}
+              <div className="mx-5 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.06), transparent)' }} />
+
+              {/* Category filter */}
+              <div className="flex gap-2 px-5 py-3">
+                {MOBILE_CATEGORIES.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setMobileCategory(cat)}
+                    className="px-4 py-1.5 rounded-full text-[10px] font-semibold cursor-pointer transition-all"
+                    style={mobileCategory === cat
+                      ? { background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }
+                      : { background: 'transparent', color: '#4a5068', border: '1px solid rgba(255,255,255,0.05)' }
+                    }
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Channel grid */}
+              <div className="flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+                <div className="grid grid-cols-2 gap-2.5">
+                  {mobileFiltered.map(ch => {
+                    const isActive = activeChannel.id === ch.id;
+                    return (
+                      <button
+                        key={ch.id}
+                        onClick={() => setActiveChannel(ch)}
+                        className="flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer"
+                        style={{
+                          background: isActive ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.025)',
+                          border: isActive ? '1px solid rgba(239,68,68,0.25)' : '1px solid rgba(255,255,255,0.04)',
+                        }}
+                      >
+                        <div
+                          className="shrink-0 h-10 w-10 rounded-xl flex items-center justify-center text-lg"
+                          style={{ background: `${ch.color}12`, border: `1px solid ${ch.color}20` }}
+                        >
+                          {ch.icon}
+                        </div>
+                        <div className="flex-1 text-left min-w-0">
+                          <p className={`text-[11px] font-semibold truncate ${isActive ? 'text-white' : 'text-[#8892a8]'}`}>{ch.name}</p>
+                          {isActive ? (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                              <span className="text-[8px] font-bold text-red-400">PLAYING</span>
+                            </div>
+                          ) : (
+                            <span className="text-[8px] font-bold uppercase mt-0.5 block" style={{
+                              color: ch.category === 'news' ? '#60a5fa' : '#c084fc',
+                            }}>{ch.category}</span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {mobileTab === 'crypto' && (
+            <div className="flex-1 overflow-y-auto px-4 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+              <CryptoWidget />
+              <StocksWidget />
+              <MetalsWidget />
+            </div>
+          )}
+
+          {mobileTab === 'news' && (
+            <div className="flex-1 overflow-y-auto px-4 py-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+              <NewsWidget />
+            </div>
+          )}
         </motion.div>
       </div>
     </AnimatePresence>
