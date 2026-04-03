@@ -768,8 +768,8 @@ export function useMapMarkers(
 
   // ── 3D Globe: GeoJSON layers ─────────────────────────────────────────────
   const GLOBE_SRC = 'gao-globe-src';
-  const GLOBE_TYPES = ['business', 'event', 'people', 'offer', 'profile', 'landmark'] as const;
-  const GLOBE_COLORS: Record<string, string> = { business: '#22C55E', event: '#EF4444', people: '#3B82F6', offer: '#EAB308', profile: '#818CF8', landmark: '#fbbf24' };
+  const GLOBE_TYPES = ['business', 'event', 'people', 'offer', 'profile', 'landmark', 'friend'] as const;
+  const GLOBE_COLORS: Record<string, string> = { business: '#22C55E', event: '#EF4444', people: '#3B82F6', offer: '#EAB308', profile: '#818CF8', landmark: '#fbbf24', friend: '#00d4ff' };
   const GLOBE_ICONS: Record<string, { src: string; size: number }> = {
     business: { src: '/icons/business.png', size: 0.12 },
     event: { src: '/icons/event.png', size: 0.03 },
@@ -805,6 +805,13 @@ export function useMapMarkers(
     for (const lm of landmarks) {
       features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lm.lng, lm.lat] }, properties: { id: lm.id, entityType: 'landmark', name: lm.name, icon: lm.icon } });
     }
+    if (showFriendsOnMap) {
+      for (const f of friends) {
+        if (f.location_sharing !== 'off' && f.location) {
+          features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: f.location.coordinates as [number, number] }, properties: { id: f.id, entityType: 'friend', name: f.display_name } });
+        }
+      }
+    }
 
     const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
 
@@ -819,7 +826,7 @@ export function useMapMarkers(
       // Layers
       for (const t of GLOBE_TYPES) {
         const id = `gao-globe-${t}`;
-        const visible = activeLayers.has(t);
+        const visible = t === 'friend' ? showFriendsOnMap : activeLayers.has(t);
 
         if (!map.getLayer(id)) {
           if (t === 'landmark') {
@@ -855,6 +862,10 @@ export function useMapMarkers(
             map.addLayer({ id, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'landmark'], layout: { 'icon-image': ['concat', 'lm-', ['get', 'icon']], 'icon-size': 0.6, 'icon-allow-overlap': true, visibility: visible ? 'visible' : 'none' } });
             // Name label below
             map.addLayer({ id: `${id}-label`, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'landmark'], layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 2], 'text-anchor': 'top', 'text-allow-overlap': false, visibility: visible ? 'visible' : 'none' }, paint: { 'text-color': '#fbbf24', 'text-halo-color': '#000000', 'text-halo-width': 1.5 } });
+          } else if (t === 'friend') {
+            // Friend: cyan circle + name label
+            map.addLayer({ id, type: 'circle', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'friend'], paint: { 'circle-radius': 9, 'circle-color': '#00d4ff', 'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff' }, layout: { visibility: visible ? 'visible' : 'none' } });
+            map.addLayer({ id: `${id}-label`, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'friend'], layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'text-allow-overlap': true, visibility: visible ? 'visible' : 'none' }, paint: { 'text-color': '#00d4ff', 'text-halo-color': '#000000', 'text-halo-width': 1.5 } });
           } else {
             const iconCfg = GLOBE_ICONS[t];
             if (iconCfg && map.hasImage(`globe-icon-${t}`)) {
@@ -865,7 +876,7 @@ export function useMapMarkers(
           }
         } else {
           map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-          if (t === 'landmark') {
+          if (t === 'landmark' || t === 'friend') {
             if (map.getLayer(`${id}-label`)) map.setLayoutProperty(`${id}-label`, 'visibility', visible ? 'visible' : 'none');
           }
         }
@@ -875,7 +886,7 @@ export function useMapMarkers(
       console.warn('[GLOBE] build error', err);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, activeLayers, signals, businesses, events, profiles, landmarks]);
+  }, [map, activeLayers, signals, businesses, events, profiles, landmarks, friends, showFriendsOnMap]);
 
   // Toggle between 2D DOM markers and 3D globe layers
   useEffect(() => {
