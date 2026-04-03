@@ -19,6 +19,7 @@ import EventSheet from '@/components/map/EventSheet';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import EventDetailPage from '@/components/events/EventDetailPage';
 import SignalSheet from '@/components/map/SignalSheet';
+import FriendSidePanel from '@/components/map/FriendSidePanel';
 import type { Signal, Agent, Profile, Business, Event, Circle, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
@@ -272,6 +273,9 @@ export default function WorldPage() {
   const selectedMarker = selectedMarkerId
     ? markers.get(selectedMarkerId)
     : null;
+
+  // Check if selected marker is a friend
+  const selectedFriend = selectedMarker?.entity_type === 'friend' ? selectedMarker : null;
 
   // Check if selected marker is a developer
   const selectedDeveloper = selectedMarkerId
@@ -591,7 +595,7 @@ export default function WorldPage() {
         </div>
 
         {/* ── Nearby List Popup ─────────────────────── */}
-        {nearbyList && (
+        {nearbyList && !selectedMarkerId && (
           <div className="absolute inset-0 z-40 flex items-end justify-center pb-[calc(64px+env(safe-area-inset-bottom,0px)+12px)] lg:pb-4">
             {/* Backdrop */}
             <div className="absolute inset-0" onClick={() => setNearbyList(null)} />
@@ -633,8 +637,13 @@ export default function WorldPage() {
           </div>
         )}
 
+        {/* ── Friend Side Panel ─────────────────────── */}
+        {selectedFriend && (
+          <FriendSidePanel data={{ name: selectedFriend.title, ...selectedFriend.metadata }} />
+        )}
+
         {/* ── Marker Detail Sheet ─────────────────────── */}
-        {selectedMarker && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && (
+        {selectedMarker && !selectedFriend && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && (
           <MarkerDetailSheet
             entityType={selectedMarker.entity_type as EntityType}
             data={selectedMarker.metadata ?? { name: selectedMarker.title }}

@@ -542,7 +542,7 @@ export function useMapMarkers(
           title: friend.display_name,
           state: friend.is_online ? 'live' : 'default',
           trust_level: friend.trust_level,
-          metadata: { gao_domain: friend.gao_domain, is_online: friend.is_online },
+          metadata: { gao_domain: friend.gao_domain, is_online: friend.is_online, avatar_url: friend.avatar_url, trust_score: friend.trust_score, last_seen_at: friend.last_seen_at },
         });
       }
     } else {
@@ -808,7 +808,7 @@ export function useMapMarkers(
     if (showFriendsOnMap) {
       for (const f of friends) {
         if (f.location_sharing !== 'off' && f.location) {
-          features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: f.location.coordinates as [number, number] }, properties: { id: f.id, entityType: 'friend', name: f.display_name } });
+          features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: f.location.coordinates as [number, number] }, properties: { id: f.id, entityType: 'friend', name: f.display_name, avatar_url: f.avatar_url || '', gao_domain: f.gao_domain || '', trust_level: f.trust_level, trust_score: f.trust_score, is_online: f.is_online, last_seen_at: f.last_seen_at || '' } });
         }
       }
     }
@@ -922,18 +922,35 @@ export function useMapMarkers(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, activeLayers, styleVersion, buildGlobe]);
 
-  // Globe click handler
+  // Globe click handler — register marker in store so sheets can read it
   useEffect(() => {
     if (!map) return;
     const handler = (e: maplibregl.MapMouseEvent) => {
       const layers = GLOBE_TYPES.map(t => `gao-globe-${t}`).filter(id => map.getLayer(id));
       if (layers.length === 0) return;
       const features = map.queryRenderedFeatures(e.point, { layers });
-      if (features.length > 0) setSelectedMarker(features[0].properties?.id);
+      if (features.length === 0) return;
+      const props = features[0].properties || {};
+      const geo = features[0].geometry as GeoJSON.Point;
+      const id = props.id as string;
+      const entityType = (props.entityType || 'people') as string;
+      // Ensure marker exists in store for sheets to read
+      if (!useMapStore.getState().markers.has(id)) {
+        addMarker({
+          id,
+          entity_type: entityType as import('@/types').EntityType,
+          lat: geo.coordinates[1],
+          lng: geo.coordinates[0],
+          title: (props.name as string) || id,
+          state: props.is_online ? 'live' : 'default',
+          metadata: { ...props },
+        });
+      }
+      setSelectedMarker(id);
     };
     map.on('click', handler);
     return () => { map.off('click', handler); };
-  }, [map, setSelectedMarker]);
+  }, [map, setSelectedMarker, addMarker]);
 
   // Cleanup all on unmount
   useEffect(() => {
