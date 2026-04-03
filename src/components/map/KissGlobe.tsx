@@ -500,7 +500,7 @@ export default function KissGlobe() {
       </svg>`;
     }
     // rotation=0 means pointing up (North). setRotation(bearing) points it in travel direction.
-    const planeMarker = new maplibregl.Marker({ element: planeEl, anchor: 'center', rotationAlignment: 'viewport' })
+    const planeMarker = new maplibregl.Marker({ element: planeEl, anchor: 'center', rotationAlignment: 'map' })
       .setLngLat(from)
       .addTo(map);
     markersRef.current.set(`plane_${kiss.id}`, planeMarker);
@@ -580,8 +580,11 @@ export default function KissGlobe() {
       const tgtLng = a[0] + (b[0] - a[0]) * f;
       const tgtLat = a[1] + (b[1] - a[1]) * f;
 
-      // Lerp plane position (silk smooth)
-      planeLng += (tgtLng - planeLng) * 0.12;
+      // Lerp plane position — handle dateline wrapping
+      let dLng = tgtLng - planeLng;
+      if (dLng > 180) dLng -= 360;
+      if (dLng < -180) dLng += 360;
+      planeLng += dLng * 0.12;
       planeLat += (tgtLat - planeLat) * 0.12;
       planeMarker.setLngLat([planeLng, planeLat]);
 
@@ -592,7 +595,10 @@ export default function KissGlobe() {
       const la1 = planeLat * Math.PI / 180;
       const la2 = lk[1] * Math.PI / 180;
       const rawBrg = Math.atan2(Math.sin(dLn) * Math.cos(la2), Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLn)) * 180 / Math.PI;
-      planeBrg += (rawBrg - planeBrg) * 0.03; // ultra smooth
+      let brgDiff = rawBrg - planeBrg;
+      if (brgDiff > 180) brgDiff -= 360;
+      if (brgDiff < -180) brgDiff += 360;
+      planeBrg += brgDiff * 0.03; // ultra smooth
       planeMarker.setRotation(planeBrg);
 
       // ── Camera: lerp ALL properties every frame → zero jitter ──
@@ -621,11 +627,17 @@ export default function KissGlobe() {
 
         // Lerp speed: globe is slower for grand sweeping motion
         const lerpSpeed = isGlobe ? 0.025 : 0.04;
-        camLng += (cl[0] - camLng) * lerpSpeed;
+        let camDLng = cl[0] - camLng;
+        if (camDLng > 180) camDLng -= 360;
+        if (camDLng < -180) camDLng += 360;
+        camLng += camDLng * lerpSpeed;
         camLat += (cl[1] - camLat) * lerpSpeed;
         camZoom += (tgtZoom - camZoom) * lerpSpeed;
         camPitch += (tgtPitch - camPitch) * lerpSpeed;
-        camBearing += (planeBrg - camBearing) * (isGlobe ? 0.02 : 0.03);
+        let camBrgDiff = planeBrg - camBearing;
+        if (camBrgDiff > 180) camBrgDiff -= 360;
+        if (camBrgDiff < -180) camBrgDiff += 360;
+        camBearing += camBrgDiff * (isGlobe ? 0.02 : 0.03);
 
         map?.jumpTo({ center: [camLng, camLat], zoom: camZoom, pitch: camPitch, bearing: isGlobe ? 0 : camBearing });
 
@@ -640,7 +652,10 @@ export default function KissGlobe() {
         // Street-level motorbike follow
         const camLookIdx = Math.min(i + 5, arcPoints.length - 1);
         const cl = arcPoints[camLookIdx];
-        camLng += (cl[0] - camLng) * 0.06;
+        let scDLng = cl[0] - camLng;
+        if (scDLng > 180) scDLng -= 360;
+        if (scDLng < -180) scDLng += 360;
+        camLng += scDLng * 0.06;
         camLat += (cl[1] - camLat) * 0.06;
         camBearing += (planeBrg - camBearing) * 0.04;
         camZoom += (15 - camZoom) * 0.05;
