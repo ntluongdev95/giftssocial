@@ -8,7 +8,9 @@ import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMap } from './WorldMap';
 import { useFriendStore } from '@/stores/friendStore';
+import SignInGateSheet from '@/components/auth/SignInGateSheet';
 import { useAuthStore } from '@/stores/auth-store';
+import { useMapStore } from '@/stores/mapStore';
 
 const fetcher = (url: string) => fetch(url, {
   headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
@@ -51,10 +53,11 @@ function interpolateGreatCircle(from: [number, number], to: [number, number], st
   return points;
 }
 
+
 // ── Send Kiss Modal ──
-function SendKissModal({ onClose, onSent }: { onClose: () => void; onSent: () => void }) {
+function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => void; onSent: () => void; defaultReceiverId?: string | null }) {
   const { friends, fetchFriends } = useFriendStore();
-  const [receiverId, setReceiverId] = useState('');
+  const [receiverId, setReceiverId] = useState(defaultReceiverId || '');
   const [message, setMessage] = useState('');
   const [emoji, setEmoji] = useState('💋');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
@@ -158,9 +161,10 @@ function SendKissModal({ onClose, onSent }: { onClose: () => void; onSent: () =>
 }
 
 // ── Kiss Reveal Popup ──
-function KissRevealPopup({ kiss, onClose, currentUserId }: { kiss: Kiss; onClose: () => void; currentUserId?: string }) {
+function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: Kiss; onClose: () => void; currentUserId?: string; onSendBack?: (toId: string) => void }) {
   const senderDisplay = currentUserId === kiss.sender_id ? 'You' : kiss.sender_name;
   const receiverDisplay = currentUserId === kiss.receiver_id ? 'You' : kiss.receiver_name;
+  const canSendBack = currentUserId === kiss.receiver_id && onSendBack;
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70" />
@@ -186,6 +190,15 @@ function KissRevealPopup({ kiss, onClose, currentUserId }: { kiss: Kiss; onClose
           <p className="text-[10px] text-[#4a5068] text-center mt-3">
             {senderDisplay} → {receiverDisplay}
           </p>
+          {canSendBack && (
+            <button
+              onClick={() => { onSendBack(kiss.sender_id); onClose(); }}
+              className="mt-4 flex items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold cursor-pointer transition-transform active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #f87171, #ec4899)', color: 'white', boxShadow: '0 4px 16px rgba(236,72,153,0.3)' }}
+            >
+              💋 Send Back
+            </button>
+          )}
         </motion.div>
         {/* Floating hearts animation */}
         {Array.from({ length: 8 }).map((_, i) => (
@@ -256,6 +269,8 @@ export default function KissGlobe() {
   const { map } = useMap();
   const currentUserId = useAuthStore(s => s.user?.id);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [sendBackTo, setSendBackTo] = useState<string | null>(null);
+  const [showAuthGate, setShowAuthGate] = useState(false);
   const [revealKiss, setRevealKiss] = useState<Kiss | null>(null);
   const [flightHUD, setFlightHUD] = useState<{ from: string; to: string; progress: number; senderName: string; receiverName: string; emoji: string } | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -263,7 +278,8 @@ export default function KissGlobe() {
   const replayedRef = useRef<Set<string>>(new Set());
   const activeFollowRef = useRef<string | null>(null); // Only 1 kiss controls camera at a time
 
-  const { data, mutate } = useSWR<{ data: Kiss[] }>('/api/v1/kisses?limit=30', fetcher, { refreshInterval: 30000 });
+  const giftLayerOn = useMapStore(s => s.activeLayers.has('gift'));
+  const { data, mutate } = useSWR<{ data: Kiss[] }>(giftLayerOn ? '/api/v1/kisses?limit=30' : null, fetcher, { refreshInterval: 30000 });
   const kisses = data?.data ?? [];
 
   // ── Place static gift marker (no animation) ──
@@ -367,17 +383,22 @@ export default function KissGlobe() {
   const playFlightAnimation = useCallback((kiss: Kiss) => {
     if (!map) return;
 
-    // Clean up any existing animation for this kiss
-    const existingPlane = markersRef.current.get(`plane_${kiss.id}`);
-    if (existingPlane) { existingPlane.remove(); markersRef.current.delete(`plane_${kiss.id}`); }
-    const existingFrame = animFrameRef.current.get(kiss.id);
-    if (existingFrame) { clearTimeout(existingFrame); cancelAnimationFrame(existingFrame); }
-    ['kiss-arc-', 'kiss-trail-'].forEach(prefix => {
-      try {
-        if (map.getLayer(`${prefix}${kiss.id}`)) map.removeLayer(`${prefix}${kiss.id}`);
-        if (map.getSource(`${prefix}${kiss.id}`)) map.removeSource(`${prefix}${kiss.id}`);
-      } catch {}
+    // Cancel ALL existing flights first — only 1 flight at a time
+    animFrameRef.current.forEach(f => { clearTimeout(f); cancelAnimationFrame(f); });
+    animFrameRef.current.clear();
+    markersRef.current.forEach((marker, key) => {
+      if (key.startsWith('plane_')) { marker.remove(); marker.getElement().remove(); }
     });
+    // Remove stale plane keys
+    Array.from(markersRef.current.keys()).forEach(key => { if (key.startsWith('plane_')) markersRef.current.delete(key); });
+    // Clean up all arc/trail layers
+    kisses.forEach(k => {
+      ['kiss-arc-', 'kiss-trail-'].forEach(prefix => {
+        try { if (map.getLayer(`${prefix}${k.id}`)) map.removeLayer(`${prefix}${k.id}`); } catch {}
+        try { if (map.getSource(`${prefix}${k.id}`)) map.removeSource(`${prefix}${k.id}`); } catch {}
+      });
+    });
+    setFlightHUD(null);
 
     // Set this as the active followed kiss
     activeFollowRef.current = kiss.id;
@@ -392,8 +413,12 @@ export default function KissGlobe() {
     const a = Math.sin(dLat / 2) ** 2 + Math.cos(kiss.sender_lat * Math.PI / 180) * Math.cos(kiss.receiver_lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
     const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const isSameCity = distKm < 50;
+    const isGlobe = useMapStore.getState().viewMode === '3d';
 
-    const arcPoints = interpolateGreatCircle(from, to, isSameCity ? 80 : 500);
+    // Route: great circle for all long distance (2D + 3D), short arc for same city
+    const arcPoints = isSameCity
+      ? interpolateGreatCircle(from, to, 80)
+      : interpolateGreatCircle(from, to, 500);
 
     // Reverse geocode for HUD city names
     let senderCity = `${kiss.sender_lat.toFixed(1)}°`;
@@ -416,13 +441,38 @@ export default function KissGlobe() {
     // Animation element — airplane (long distance) or thrown gift (same city)
     const planeEl = document.createElement('div');
     if (isSameCity) {
-      planeEl.style.cssText = `
-        pointer-events:none;
-        filter:drop-shadow(0 4px 12px rgba(0,0,0,0.7)) drop-shadow(0 0 12px rgba(236,72,153,0.5));
-        font-size:36px;
-        transition:transform 0.05s linear;
-      `;
-      planeEl.textContent = '🎁';
+      // Motorbike SVG pointing UP (North = 0°)
+      planeEl.style.cssText = `pointer-events:none;width:44px;height:44px;`;
+      planeEl.innerHTML = `<svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="mbglow-${kiss.id}" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="1.5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g filter="url(#mbglow-${kiss.id})">
+          <!-- Back wheel -->
+          <circle cx="22" cy="34" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
+          <circle cx="22" cy="34" r="1.5" fill="#64748b"/>
+          <!-- Front wheel -->
+          <circle cx="22" cy="10" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/>
+          <circle cx="22" cy="10" r="1.5" fill="#64748b"/>
+          <!-- Frame -->
+          <path d="M22 29 L22 15" stroke="#ec4899" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M22 15 L18 20 M22 15 L26 20" stroke="#ec4899" stroke-width="2" stroke-linecap="round"/>
+          <!-- Rider body -->
+          <ellipse cx="22" cy="22" rx="4" ry="3" fill="#ec4899" opacity="0.8"/>
+          <!-- Rider head -->
+          <circle cx="22" cy="17" r="3" fill="#fbbf24"/>
+          <!-- Gift on back -->
+          <rect x="17" y="26" width="10" height="8" rx="2" fill="#f87171" opacity="0.9"/>
+          <path d="M17 30 L27 30 M22 26 L22 34" stroke="#fbbf24" stroke-width="1"/>
+          <!-- Headlight glow -->
+          <circle cx="22" cy="5" r="2" fill="#fbbf24" opacity="0.7">
+            <animate attributeName="opacity" values="0.5;1;0.5" dur="0.6s" repeatCount="indefinite"/>
+          </circle>
+        </g>
+      </svg>`;
     } else {
       planeEl.style.cssText = `pointer-events:none;width:48px;height:48px;`;
       // SVG airplane pointing UP (North = 0°) — rotation will align with bearing
@@ -480,12 +530,10 @@ export default function KissGlobe() {
       }
     } catch {}
 
-    // Animate plane along arc with camera follow
-    let step = 0;
     const isFollowing = () => activeFollowRef.current === kiss.id;
 
     // ── Buttery smooth flight — direct camera control each frame ──
-    const flightMs = isSameCity ? 3000 : 30000;
+    const flightMs = isSameCity ? 3000 : isGlobe ? 25000 : 25000; // globe 1 orbit ~25s
     let t0 = 0;
     // Camera state — lerped every frame for zero jitter
     let camLng = from[0], camLat = from[1], camZoom = 9, camPitch = 0, camBearing = 0;
@@ -499,20 +547,27 @@ export default function KissGlobe() {
       const t = lin < 0.5 ? 4 * lin * lin * lin : 1 - Math.pow(-2 * lin + 2, 3) / 2;
 
       if (t >= 1) {
-        // Arrived — remove plane, place gift marker
+        // Arrived — full cleanup
         planeMarker.remove();
+        planeEl.remove();
         markersRef.current.delete(`plane_${kiss.id}`);
+        animFrameRef.current.delete(kiss.id);
         placeGiftMarker(kiss);
-        if (isFollowing()) {
-          setFlightHUD(null);
-          activeFollowRef.current = null;
-          map?.flyTo({ center: to, zoom: 14, pitch: 0, bearing: 0, duration: 2000 });
-        }
+
+        // Stop camera control + reset to normal view
+        setFlightHUD(null);
+        activeFollowRef.current = null;
+        map?.jumpTo({ center: to, zoom: isGlobe ? 4 : 14, pitch: 0, bearing: 0 });
+
+        // Clean arc/trail lines after delay
         setTimeout(() => {
           try {
-            [trailId, lineId].forEach(lid => { try { map?.getLayer(lid) && map.removeLayer(lid); } catch {} try { map?.getSource(lid) && map.removeSource(lid); } catch {} });
+            [trailId, lineId].forEach(lid => {
+              try { if (map?.getLayer(lid)) map.removeLayer(lid); } catch {}
+              try { if (map?.getSource(lid)) map.removeSource(lid); } catch {}
+            });
           } catch {}
-        }, 5000);
+        }, 3000);
         return;
       }
 
@@ -542,26 +597,37 @@ export default function KissGlobe() {
 
       // ── Camera: lerp ALL properties every frame → zero jitter ──
       if (isFollowing() && !isSameCity) {
-        // Target camera values based on flight progress
-        const cruiseZ = 7;
         let tgtZoom: number, tgtPitch: number;
-        if (t < 0.12) { tgtZoom = 9 - (9 - cruiseZ) * (t / 0.12); tgtPitch = t / 0.12 * 50; }
-        else if (t > 0.85) { tgtZoom = cruiseZ + (10.5 - cruiseZ) * ((t - 0.85) / 0.15); tgtPitch = ((1 - t) / 0.15) * 50; }
-        else { tgtZoom = cruiseZ; tgtPitch = 50; }
 
-        // Camera looks slightly ahead of plane
-        const camLookIdx = Math.min(i + 25, arcPoints.length - 1);
+        if (isGlobe) {
+          // Globe: zoom out to see Earth, then zoom in for landing
+          const orbitZ = 1.8; // see whole globe
+          const landZ = 8;
+          if (t < 0.1) { tgtZoom = 5 - (5 - orbitZ) * (t / 0.1); tgtPitch = 0; }
+          else if (t > 0.9) { tgtZoom = orbitZ + (landZ - orbitZ) * ((t - 0.9) / 0.1); tgtPitch = ((t - 0.9) / 0.1) * 40; }
+          else { tgtZoom = orbitZ; tgtPitch = 0; }
+        } else {
+          // 2D: closer fly-over
+          const cruiseZ = 7;
+          if (t < 0.12) { tgtZoom = 9 - (9 - cruiseZ) * (t / 0.12); tgtPitch = t / 0.12 * 50; }
+          else if (t > 0.85) { tgtZoom = cruiseZ + (10.5 - cruiseZ) * ((t - 0.85) / 0.15); tgtPitch = ((1 - t) / 0.15) * 50; }
+          else { tgtZoom = cruiseZ; tgtPitch = 50; }
+        }
+
+        // Camera looks ahead of plane
+        const lookAmt = isGlobe ? 40 : 25;
+        const camLookIdx = Math.min(i + lookAmt, arcPoints.length - 1);
         const cl = arcPoints[camLookIdx];
 
-        // Lerp camera smoothly (0.04 = very gentle, no jitter)
-        camLng += (cl[0] - camLng) * 0.04;
-        camLat += (cl[1] - camLat) * 0.04;
-        camZoom += (tgtZoom - camZoom) * 0.04;
-        camPitch += (tgtPitch - camPitch) * 0.04;
-        camBearing += (planeBrg - camBearing) * 0.03;
+        // Lerp speed: globe is slower for grand sweeping motion
+        const lerpSpeed = isGlobe ? 0.025 : 0.04;
+        camLng += (cl[0] - camLng) * lerpSpeed;
+        camLat += (cl[1] - camLat) * lerpSpeed;
+        camZoom += (tgtZoom - camZoom) * lerpSpeed;
+        camPitch += (tgtPitch - camPitch) * lerpSpeed;
+        camBearing += (planeBrg - camBearing) * (isGlobe ? 0.02 : 0.03);
 
-        // Direct set — no easeTo, no animation conflicts
-        map?.jumpTo({ center: [camLng, camLat], zoom: camZoom, pitch: camPitch, bearing: camBearing });
+        map?.jumpTo({ center: [camLng, camLat], zoom: camZoom, pitch: camPitch, bearing: isGlobe ? 0 : camBearing });
 
         // HUD
         setFlightHUD({
@@ -571,11 +637,15 @@ export default function KissGlobe() {
           emoji: kiss.emoji,
         });
       } else if (isFollowing() && isSameCity) {
-        if (elapsed < 50) {
-          const mx = (from[0] + to[0]) / 2, my = (from[1] + to[1]) / 2;
-          map?.jumpTo({ center: [mx, my], zoom: 14, pitch: 30, bearing: 0 });
-        }
-        planeEl.style.marginTop = `${-Math.sin(t * Math.PI) * 60}px`;
+        // Street-level motorbike follow
+        const camLookIdx = Math.min(i + 5, arcPoints.length - 1);
+        const cl = arcPoints[camLookIdx];
+        camLng += (cl[0] - camLng) * 0.06;
+        camLat += (cl[1] - camLat) * 0.06;
+        camBearing += (planeBrg - camBearing) * 0.04;
+        camZoom += (15 - camZoom) * 0.05;
+        camPitch += (45 - camPitch) * 0.05;
+        map?.jumpTo({ center: [camLng, camLat], zoom: camZoom, pitch: camPitch, bearing: camBearing });
       }
 
       // Trail
@@ -596,26 +666,66 @@ export default function KissGlobe() {
       const mx = (from[0] + to[0]) / 2, my = (from[1] + to[1]) / 2;
       map?.flyTo({ center: [mx, my], zoom: 14, pitch: 30, bearing: 0, duration: 800 });
       setTimeout(() => requestAnimationFrame(fly), 1000);
+    } else if (isGlobe) {
+      // Globe: zoom to sender, then pull out to see whole Earth
+      map?.flyTo({ center: from, zoom: 5, pitch: 0, bearing: 0, duration: 2000 });
+      setTimeout(() => {
+        camLng = from[0]; camLat = from[1]; camZoom = 5; camPitch = 0; camBearing = 0;
+        requestAnimationFrame(fly);
+      }, 2300);
     } else {
-      // Smooth zoom to departure point
+      // 2D: zoom to departure
       map?.flyTo({ center: from, zoom: 9, pitch: 40, bearing: 0, duration: 2500, easing: (x: number) => 1 - Math.pow(1 - x, 3) });
       setTimeout(() => {
-        // Init camera state to current map view
         camLng = from[0]; camLat = from[1]; camZoom = 9; camPitch = 40; camBearing = 0;
         requestAnimationFrame(fly);
       }, 2800);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, mutate, currentUserId, placeGiftMarker]);
 
-  // Place static gift markers (skip kisses currently in-flight)
+  // Place/remove gift markers based on layer toggle
   useEffect(() => {
     if (!map) return;
-    kisses.forEach(k => {
-      // Don't place gift if plane is currently flying for this kiss
-      if (markersRef.current.has(`plane_${k.id}`)) return;
-      placeGiftMarker(k);
-    });
-  }, [map, kisses, placeGiftMarker]);
+    if (giftLayerOn) {
+      kisses.forEach(k => {
+        if (markersRef.current.has(`plane_${k.id}`)) return;
+        placeGiftMarker(k);
+      });
+    } else {
+      // Clean everything: markers, animations, map layers
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current.clear();
+      animFrameRef.current.forEach(f => { clearTimeout(f); cancelAnimationFrame(f); });
+      animFrameRef.current.clear();
+      activeFollowRef.current = null;
+      setFlightHUD(null);
+      // Remove all kiss arc/trail layers
+      kisses.forEach(k => {
+        ['kiss-arc-', 'kiss-trail-'].forEach(prefix => {
+          try { if (map.getLayer(`${prefix}${k.id}`)) map.removeLayer(`${prefix}${k.id}`); } catch {}
+          try { if (map.getSource(`${prefix}${k.id}`)) map.removeSource(`${prefix}${k.id}`); } catch {}
+        });
+      });
+    }
+  }, [map, kisses, placeGiftMarker, giftLayerOn]);
+
+  // Hide/show gift markers based on zoom level (prevent clutter on globe)
+  useEffect(() => {
+    if (!map || !giftLayerOn) return;
+    const updateVisibility = () => {
+      const zoom = map.getZoom();
+      const isGlobe = useMapStore.getState().viewMode === '3d';
+      const minZoom = isGlobe ? 4 : 0; // hide on globe when zoomed out
+      markersRef.current.forEach((marker, key) => {
+        if (key.startsWith('plane_')) return; // don't hide flying planes
+        marker.getElement().style.display = zoom >= minZoom ? '' : 'none';
+      });
+    };
+    map.on('zoom', updateVisibility);
+    updateVisibility();
+    return () => { map.off('zoom', updateVisibility); };
+  }, [map, giftLayerOn]);
 
   // Listen for ?kiss=<id> URL param — replay that kiss animation
   useEffect(() => {
@@ -654,19 +764,23 @@ export default function KissGlobe() {
         )}
       </AnimatePresence>
 
-      {/* Send Kiss Button — floating on map */}
-      <button
-        onClick={() => setShowSendModal(true)}
+      {/* Send Kiss Button — only visible when gift layer is on */}
+      {giftLayerOn && <button
+        onClick={() => {
+          const token = localStorage.getItem('access_token');
+          if (!token) { setShowAuthGate(true); return; }
+          setShowSendModal(true);
+        }}
         className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+100px)] lg:bottom-24 right-4 z-30 h-12 w-12 rounded-full flex items-center justify-center cursor-pointer shadow-lg"
         style={{ background: 'linear-gradient(135deg, #f87171, #ec4899)', boxShadow: '0 4px 20px rgba(236,72,153,0.4)' }}
         title="Send a Kiss"
       >
         <span className="text-xl">💋</span>
-      </button>
+      </button>}
 
       {/* Send Modal */}
       <AnimatePresence>
-        {showSendModal && <SendKissModal onClose={() => setShowSendModal(false)} onSent={async () => {
+        {showSendModal && <SendKissModal defaultReceiverId={sendBackTo} onClose={() => { setShowSendModal(false); setSendBackTo(null); }} onSent={async () => {
           const fresh = await mutate();
           const newest = (fresh as { data: Kiss[] } | undefined)?.data?.[0];
           if (newest) setTimeout(() => playFlightAnimation(newest), 500);
@@ -675,8 +789,11 @@ export default function KissGlobe() {
 
       {/* Kiss Reveal */}
       <AnimatePresence>
-        {revealKiss && <KissRevealPopup kiss={revealKiss} onClose={() => setRevealKiss(null)} currentUserId={currentUserId} />}
+        {revealKiss && <KissRevealPopup kiss={revealKiss} onClose={() => setRevealKiss(null)} currentUserId={currentUserId} onSendBack={(toId) => { setSendBackTo(toId); setShowSendModal(true); }} />}
       </AnimatePresence>
+
+      {/* Auth Gate */}
+      <SignInGateSheet action="default" isOpen={showAuthGate} onClose={() => setShowAuthGate(false)} />
     </>
   );
 }

@@ -27,8 +27,20 @@ export async function GET(req: NextRequest) {
        WHERE k.sender_id = $1 OR k.receiver_id = $1
        ORDER BY k.created_at DESC LIMIT $2`;
       values = [userId, limit];
+    } else if (userId) {
+      // Public kisses + my private kisses
+      query = `SELECT k.*,
+        s.display_name AS sender_name, s.avatar_url AS sender_avatar,
+        r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
+       FROM kisses k
+       LEFT JOIN users s ON s.id = k.sender_id
+       LEFT JOIN users r ON r.id = k.receiver_id
+       WHERE k.created_at > NOW() - INTERVAL '7 days'
+         AND (k.visibility = 'public' OR k.sender_id = $1 OR k.receiver_id = $1)
+       ORDER BY k.created_at DESC LIMIT $2`;
+      values = [userId, limit];
     } else {
-      // Public kisses for globe animation
+      // Not logged in — public only
       query = `SELECT k.*,
         s.display_name AS sender_name, s.avatar_url AS sender_avatar,
         r.display_name AS receiver_name, r.avatar_url AS receiver_avatar

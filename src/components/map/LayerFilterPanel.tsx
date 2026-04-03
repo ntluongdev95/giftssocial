@@ -20,6 +20,7 @@ const ENTITY_LAYERS: { key: EntityType; icon: string }[] = [
 const SPECIAL_LAYERS = [
   // { key: 'landmarks', icon: '🏛', label: 'Landmarks', color: '#fbbf24' }, // TODO: re-enable later
   { key: 'friends', icon: '👥', label: 'Friends', color: '#00d4ff' },
+  { key: 'gifts', icon: '🎁', label: 'Gifts', color: '#ec4899' },
   { key: 'developers', icon: '💻', label: 'Developers', color: '#34d399' },
 ];
 
@@ -32,6 +33,7 @@ export default function LayerFilterPanel() {
   const specialState: Record<string, { active: boolean; toggle: () => void }> = {
     landmarks: { active: showLandmarks, toggle: toggleLandmarks },
     friends: { active: showFriends, toggle: toggleFriends },
+    gifts: { active: activeLayers.has('gift'), toggle: () => toggleLayer('gift') },
     developers: { active: showDevs, toggle: toggleDevs },
   };
 
