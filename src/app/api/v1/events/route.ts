@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { pgPool } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import { notify } from '@/lib/notify';
 
 // ─── GET /api/v1/events — Search nearby events ──────────────────────────
 
@@ -14,24 +15,41 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get('category');
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
-    const conditions: string[] = ["status IN ('scheduled', 'live')", 'start_time > NOW()'];
+    const userId = await resolveUserId(req).catch(() => null);
+
+    const conditions: string[] = ["e.status IN ('scheduled', 'live')", 'e.start_time > NOW()'];
     const values: unknown[] = [];
     let idx = 1;
 
+    // Visibility filter
+    if (userId) {
+      conditions.push(`(
+        e.visibility = 'public' OR e.visibility IS NULL
+        OR (e.visibility = 'circle' AND e.circle_id IN (
+          SELECT circle_id FROM circle_members WHERE user_id = $${idx} AND status = 'active'
+        ))
+        OR e.host_user_id = $${idx}
+      )`);
+      values.push(userId);
+      idx++;
+    } else {
+      conditions.push("(e.visibility = 'public' OR e.visibility IS NULL)");
+    }
+
     if (category) {
-      conditions.push(`category = $${idx++}`);
+      conditions.push(`e.category = $${idx++}`);
       values.push(category);
     }
 
     if (radiusKm > 0 && (lat !== 0 || lng !== 0)) {
-      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians($${idx})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(location_lat))))) < $${idx + 2}`);
+      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians($${idx})) * cos(radians(e.location_lat)) * cos(radians(e.location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(e.location_lat))))) < $${idx + 2}`);
       values.push(lat, lng, radiusKm);
       idx += 3;
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
     const result = await pgPool.query(
-      `SELECT * FROM events ${where} ORDER BY start_time ASC LIMIT ${limit}`,
+      `SELECT e.* FROM events e ${where} ORDER BY e.start_time ASC LIMIT ${limit}`,
       values
     );
 
@@ -85,6 +103,25 @@ export async function POST(req: NextRequest) {
        RETURNING id, status, created_at`,
       [userId, d.host_type || 'user', d.host_id || userId, d.title, d.description || '', d.category || 'general', latVal, lngVal, d.location_name || '', d.city || '', d.start_time, d.end_time, d.capacity || null, d.visibility || 'public', circleId]
     );
+
+    // Notify circle members if event is for a circle
+    if (d.visibility === 'circle' && circleId) {
+      try {
+        const authorName = await pgPool.query('SELECT display_name, username FROM users WHERE id = $1', [userId]);
+        const name = authorName.rows[0]?.display_name || authorName.rows[0]?.username || 'Someone';
+        const circleName = await pgPool.query('SELECT name FROM circles WHERE id = $1', [circleId]);
+        const cName = circleName.rows[0]?.name || 'your circle';
+
+        const members = await pgPool.query(
+          "SELECT user_id FROM circle_members WHERE circle_id = $1 AND status = 'active' AND user_id != $2",
+          [circleId, userId]
+        );
+
+        for (const m of members.rows) {
+          notify(m.user_id, 'circle_activity', `New event in ${cName}`, `${name}: ${d.title}`, 'circle', circleId);
+        }
+      } catch {}
+    }
 
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (err) {
