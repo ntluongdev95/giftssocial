@@ -17,10 +17,11 @@ const DEFAULT_CAT = { bg: 'rgba(0,212,255,0.1)', text: '#00d4ff', icon: '⦿' };
 interface CircleCardProps {
   circle: Circle;
   isMember?: boolean;
+  isPending?: boolean;
   onClick?: () => void;
 }
 
-export default function CircleCard({ circle, isMember = false, onClick }: CircleCardProps) {
+export default function CircleCard({ circle, isMember = false, isPending = false, onClick }: CircleCardProps) {
   const cat = CATEGORY_COLORS[circle.category] || DEFAULT_CAT;
 
   return (
@@ -37,10 +38,10 @@ export default function CircleCard({ circle, isMember = false, onClick }: Circle
       <div className="flex items-start gap-3.5">
         {/* Category icon */}
         <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl overflow-hidden"
           style={{ background: cat.bg }}
         >
-          {cat.icon}
+          {circle.avatar_url ? <img src={circle.avatar_url} alt={circle.name} className="w-full h-full object-cover" /> : cat.icon}
         </div>
 
         <div className="min-w-0 flex-1">
@@ -48,9 +49,21 @@ export default function CircleCard({ circle, isMember = false, onClick }: Circle
             <h3 className="truncate text-sm font-semibold text-white group-hover:text-[#00d4ff] transition-colors">
               {circle.name}
             </h3>
-            {!isMember && (
+            {isMember ? (
+              <span className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold text-[#34d399]"
+                style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)' }}
+              >
+                Joined ✓
+              </span>
+            ) : isPending ? (
+              <span className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold"
+                style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.2)', color: '#EAB308' }}
+              >
+                Pending
+              </span>
+            ) : (
               <button
-                className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold transition-all active:scale-95"
+                className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold transition-all active:scale-95 cursor-pointer"
                 style={{
                   background: 'linear-gradient(135deg, rgba(0,212,255,0.15), rgba(99,102,241,0.1))',
                   border: '1px solid rgba(0,212,255,0.25)',
@@ -59,13 +72,6 @@ export default function CircleCard({ circle, isMember = false, onClick }: Circle
               >
                 Join
               </button>
-            )}
-            {isMember && (
-              <span className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold text-[#34d399]"
-                style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)' }}
-              >
-                Joined ✓
-              </span>
             )}
           </div>
 

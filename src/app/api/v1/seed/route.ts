@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server';
-import { pgPool, connectMongo } from '@/lib/db';
-import Signal from '@/models/Signal';
-import AgentModel from '@/models/Agent';
+import { pgPool } from '@/lib/db';
 import {
   SEED_BUSINESSES,
-  SEED_SIGNALS,
   SEED_CIRCLES,
   SEED_EVENTS,
-  SEED_AGENTS,
 } from '@/lib/seed';
 
 export async function POST() {
@@ -78,38 +74,6 @@ export async function POST() {
       );
     }
     results.events = `${SEED_EVENTS.length} seeded`;
-
-    // ─── MongoDB: Signals ─────────────────────────────────────────────
-    await connectMongo();
-
-    const now = new Date();
-    const eightHoursLater = new Date(now.getTime() + 8 * 3600 * 1000);
-
-    for (const signal of SEED_SIGNALS) {
-      await Signal.updateOne(
-        { _id: signal._id },
-        {
-          $setOnInsert: {
-            ...signal,
-            starts_at: now,
-            expires_at: eightHoursLater,
-            created_at: now,
-          },
-        },
-        { upsert: true }
-      );
-    }
-    results.signals = `${SEED_SIGNALS.length} seeded`;
-
-    // ─── MongoDB: Agents ──────────────────────────────────────────────
-    for (const agent of SEED_AGENTS) {
-      await AgentModel.updateOne(
-        { _id: agent._id },
-        { $setOnInsert: agent },
-        { upsert: true }
-      );
-    }
-    results.agents = `${SEED_AGENTS.length} seeded`;
 
     return NextResponse.json({ success: true, results });
   } catch (err) {

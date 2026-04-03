@@ -1,8 +1,7 @@
 // ─── Gao Social V3 — Database Connections ─────────────────────────────────
-// PostgreSQL (primary) + MongoDB (geo/signals) + Redis (cache/realtime)
+// PostgreSQL (primary) + Redis (cache/realtime)
 
 import { Pool } from 'pg';
-import mongoose from 'mongoose';
 import Redis from 'ioredis';
 
 // ─── PostgreSQL ───────────────────────────────────────────────────────────
@@ -21,35 +20,6 @@ pgPool.on('error', (err) => {
 pgPool.on('connect', () => {
   console.log('[PostgreSQL] Client connected');
 });
-
-// ─── MongoDB ──────────────────────────────────────────────────────────────
-
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-const MONGODB_DB = 'gao-social';
-
-let mongoConnecting: Promise<typeof mongoose> | null = null;
-
-export async function connectMongo(): Promise<typeof mongoose> {
-  if (mongoose.connection.readyState === 1) {
-    return mongoose;
-  }
-
-  if (mongoose.connection.readyState === 2 && mongoConnecting) {
-    return mongoConnecting;
-  }
-
-  mongoConnecting = mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB });
-
-  try {
-    await mongoConnecting;
-    console.log('[MongoDB] Connected to', MONGODB_DB);
-    return mongoose;
-  } catch (err) {
-    mongoConnecting = null;
-    console.error('[MongoDB] Connection error:', (err as Error).message);
-    throw err;
-  }
-}
 
 // ─── Redis ────────────────────────────────────────────────────────────────
 

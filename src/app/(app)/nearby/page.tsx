@@ -9,6 +9,7 @@ import BusinessCard from '@/components/cards/BusinessCard';
 import EventCard from '@/components/cards/EventCard';
 import OfferCard from '@/components/cards/OfferCard';
 import CircleCard from '@/components/cards/CircleCard';
+import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 import ProfileCard from '@/components/cards/ProfileCard';
 import SignalCard from '@/components/cards/SignalCard';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
@@ -177,6 +178,7 @@ export default function NearbyPage() {
   }, []);
 
   const [sort, setSort] = useState<Sort>('Closest');
+  const { joinedCircleIds, pendingCircleIds } = useJoinedCircles();
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -257,7 +259,7 @@ export default function NearbyPage() {
         return cirs.length === 0 ? (
           <EmptyState onSelectCircle={setSelectedCircle} />
         ) : (
-          cirs.map((c) => <CircleCard key={c.id} circle={c} onClick={() => setSelectedCircle(c)} />)
+          cirs.map((c) => <CircleCard key={c.id} circle={c} isMember={joinedCircleIds.has(c.id)} isPending={pendingCircleIds.has(c.id)} onClick={() => setSelectedCircle(c)} />)
         );
       }
 
