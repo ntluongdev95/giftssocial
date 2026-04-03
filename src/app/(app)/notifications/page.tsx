@@ -93,6 +93,9 @@ export default function NotificationsPage() {
                     if (n.type === 'circle_join_request') {
                       router.push('/me/circles');
                     }
+                    if (n.ref_type === 'kiss' && n.ref_id) {
+                      router.push(`/world?kiss=${n.ref_id}`);
+                    }
                   }}
                 >
                   <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cfg.color}12`, color: cfg.color }}>
