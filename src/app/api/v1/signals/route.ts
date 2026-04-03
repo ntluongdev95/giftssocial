@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { pgPool } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import { notify } from '@/lib/notify';
+
+// ─── Visibility filter helper ───────────────────────────────────────────
+// public → everyone sees
+// circle → only members of target_circle_id
+// private → only the author
+// trusted_only → only users with trust_score >= 30
 
 // ─── Default durations per signal type ───────────────────────────────────
 
@@ -20,9 +27,31 @@ export async function GET(req: NextRequest) {
     const types = searchParams.get('types')?.split(',').filter(Boolean);
     const limit = Math.min(parseInt(searchParams.get('limit') || '30'), 100);
 
+    // Resolve caller for visibility filtering
+    const userId = await resolveUserId(req).catch(() => null);
+
     const conditions: string[] = ["s.status = 'active'", 's.expires_at > NOW()'];
     const values: unknown[] = [];
     let idx = 1;
+
+    // Visibility filter: only show signals the user is allowed to see
+    if (userId) {
+      conditions.push(`(
+        s.visibility = 'public'
+        OR (s.visibility = 'circle' AND s.target_circle_id IN (
+          SELECT circle_id FROM circle_members WHERE user_id = $${idx} AND status = 'active'
+        ))
+        OR s.author_id = $${idx}
+        OR (s.visibility = 'trusted_only' AND EXISTS (
+          SELECT 1 FROM users WHERE id = $${idx} AND trust_score >= 30
+        ))
+      )`);
+      values.push(userId);
+      idx++;
+    } else {
+      // Not logged in → only public signals
+      conditions.push("s.visibility = 'public'");
+    }
 
     if (types && types.length > 0) {
       conditions.push(`s.type = ANY($${idx++})`);
@@ -137,6 +166,27 @@ export async function POST(req: NextRequest) {
         JSON.stringify(d.metadata),
       ]
     );
+
+    // Notify circle members if signal is for a circle
+    if (d.visibility === 'circle' && d.target_circle_id) {
+      try {
+        const authorName = await pgPool.query('SELECT display_name, username FROM users WHERE id = $1', [userId]);
+        const name = authorName.rows[0]?.display_name || authorName.rows[0]?.username || 'Someone';
+        const circleName = await pgPool.query('SELECT name FROM circles WHERE id = $1', [d.target_circle_id]);
+        const cName = circleName.rows[0]?.name || 'your circle';
+        const typeLabel = d.type === 'event' ? 'event' : 'signal';
+
+        // Get all active members except the author
+        const members = await pgPool.query(
+          "SELECT user_id FROM circle_members WHERE circle_id = $1 AND status = 'active' AND user_id != $2",
+          [d.target_circle_id, userId]
+        );
+
+        for (const m of members.rows) {
+          notify(m.user_id, 'circle_activity', `New ${typeLabel} in ${cName}`, `${name}: ${d.title}`, 'circle', d.target_circle_id);
+        }
+      } catch {}
+    }
 
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (err) {
