@@ -4,7 +4,9 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut, Bell } from 'lucide-react';
+import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut, Bell, Radio } from 'lucide-react';
+import dynamic from 'next/dynamic';
+const LivePanel = dynamic(() => import('@/components/live/LivePanel'), { ssr: false });
 import { DomainBadge } from '@/components/gao/DomainBadge';
 import { useAuthStore } from '@/stores/auth-store';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -25,6 +27,7 @@ export default function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
+  const [showLive, setShowLive] = useState(false);
   
   const handleLogout = async () => {
     try {
@@ -79,6 +82,17 @@ export default function Sidebar() {
               </Link>
             );
           })}
+
+          {/* Live */}
+          <button
+            onClick={() => setShowLive(true)}
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 w-full cursor-pointer"
+            style={{ color: showLive ? '#f87171' : '#a3adc3', background: showLive ? 'rgba(239,68,68,0.08)' : 'transparent', borderLeft: showLive ? '3px solid #f87171' : '3px solid transparent' }}
+          >
+            <Radio size={18} strokeWidth={1.5} className={`shrink-0 ${showLive ? 'animate-pulse' : ''}`} />
+            Live
+            <span className="ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+          </button>
 
           {/* Profile or Login */}
           {user ? (
@@ -154,6 +168,7 @@ export default function Sidebar() {
       </aside>
 
       <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
+      {showLive && <LivePanel isOpen={showLive} onClose={() => setShowLive(false)} />}
     </>
   );
 }

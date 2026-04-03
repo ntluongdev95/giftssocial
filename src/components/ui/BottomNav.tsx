@@ -4,7 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Globe, MapPin, Users, Zap, User, ScanFace, Bell } from 'lucide-react';
+import { Globe, MapPin, Users, Zap, User, ScanFace, Bell, Radio } from 'lucide-react';
+import dynamic from 'next/dynamic';
+const LivePanel = dynamic(() => import('@/components/live/LivePanel'), { ssr: false });
 import { useAuthStore } from '@/stores/auth-store';
 import { useNotifications } from '@/hooks/useNotifications';
 import AuthPopup from '@/components/ui/AuthPopup';
@@ -22,8 +24,10 @@ export default function BottomNav() {
   const isLoggedIn = useAuthStore((s) => s.isAuthed);
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
+  const [showLive, setShowLive] = useState(false);
 
   return (
+    <>
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 pb-[env(safe-area-inset-bottom,0px)]"
       style={{
@@ -98,6 +102,19 @@ export default function BottomNav() {
         )}
       </div>
       <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
+
+      {/* Floating LIVE button */}
+      <button
+        onClick={() => setShowLive(true)}
+        className="absolute -top-14 right-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 cursor-pointer shadow-lg lg:hidden"
+        style={{ background: 'rgba(10,11,15,0.9)', border: '1px solid rgba(239,68,68,0.3)', backdropFilter: 'blur(8px)' }}
+      >
+        <Radio size={12} className="text-red-500 animate-pulse" />
+        <span className="text-[10px] font-bold text-red-400">LIVE</span>
+      </button>
+
     </nav>
+    {showLive && <LivePanel isOpen={showLive} onClose={() => setShowLive(false)} />}
+  </>
   );
 }
