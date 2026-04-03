@@ -48,8 +48,8 @@ function CircleRow({ circle, onClick, isJoined, isPending, onJoin, onLeave, join
       className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer transition-colors hover:bg-white/[0.01]"
       style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}
     >
-      <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-        {circle.name.charAt(0)}
+      <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold overflow-hidden" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+        {circle.avatar_url ? <img src={circle.avatar_url} alt={circle.name} className="w-full h-full object-cover" /> : circle.name.charAt(0)}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-white truncate">{circle.name}</p>
@@ -306,8 +306,8 @@ export default function CirclesPage() {
                   style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}
                 >
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="h-11 w-11 rounded-xl flex items-center justify-center text-sm font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-                      {circle.name.charAt(0)}
+                    <div className="h-11 w-11 rounded-xl flex items-center justify-center text-sm font-bold overflow-hidden" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                      {circle.avatar_url ? <img src={circle.avatar_url} alt={circle.name} className="w-full h-full object-cover" /> : circle.name.charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-white truncate">{circle.name}</p>

@@ -90,8 +90,8 @@ export default function MyCirclesPage() {
                   {/* Header gradient */}
                   <div className="h-20 relative cursor-pointer" style={{ background: `linear-gradient(135deg, rgba(0,212,255,0.15), rgba(167,139,250,0.1))` }} onClick={() => router.push(`/circles/${cid}`)}>
                     <div className="absolute -bottom-5 left-4">
-                      <div className="h-12 w-12 rounded-xl flex items-center justify-center text-lg font-bold" style={{ background: '#111318', border: '2px solid rgba(0,212,255,0.2)', color: '#00d4ff' }}>
-                        {(c.name as string).charAt(0)}
+                      <div className="h-12 w-12 rounded-xl flex items-center justify-center text-lg font-bold overflow-hidden" style={{ background: '#111318', border: '2px solid rgba(0,212,255,0.2)', color: '#00d4ff' }}>
+                        {c.avatar_url ? <img src={String(c.avatar_url)} alt={c.name as string} className="w-full h-full object-cover" /> : (c.name as string).charAt(0)}
                       </div>
                     </div>
                   </div>
@@ -182,8 +182,8 @@ function CircleListItem({ circle: c, onLeave, leavingId, router, isPending, pend
   return (
     <div className="rounded-2xl p-4" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
       <div className="flex items-start gap-3">
-        <div className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-          {(c.name as string).charAt(0)}
+        <div className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold overflow-hidden" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+          {c.avatar_url ? <img src={String(c.avatar_url)} alt={c.name as string} className="w-full h-full object-cover" /> : (c.name as string).charAt(0)}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-white truncate">{c.name as string}</h3>

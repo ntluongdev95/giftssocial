@@ -65,7 +65,7 @@ export default function CircleDetailPage() {
       const uploadRes = await fetch('/api/v1/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error?.message || 'Upload failed');
-      const patchRes = await fetch(`/api/v1/circles/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ avatar_url: uploadData.url }) });
+      const patchRes = await fetch(`/api/v1/circles/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ avatar_url: uploadData.data?.url }) });
       if (patchRes.ok) { toast.success('Avatar updated!'); mutateCircle(); }
     } catch { toast.error('Failed to upload'); }
     finally { setUploading(false); }
