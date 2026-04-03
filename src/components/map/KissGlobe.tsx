@@ -488,27 +488,72 @@ export default function KissGlobe() {
         </g>
       </svg>`;
     } else {
-      planeEl.style.cssText = `pointer-events:none;width:48px;height:48px;`;
-      // SVG airplane pointing UP (North = 0°) — rotation will align with bearing
-      planeEl.innerHTML = `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      planeEl.style.cssText = `pointer-events:none;width:64px;height:64px;`;
+      const id = kiss.id.slice(0, 8);
+      planeEl.innerHTML = `<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <filter id="glow-${kiss.id}" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2" result="blur"/>
-            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          <filter id="shadow-${id}" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
           </filter>
+          <linearGradient id="fuselage-${id}" x1="32" y1="6" x2="32" y2="58" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#f8fafc"/><stop offset="40%" stop-color="#e2e8f0"/><stop offset="100%" stop-color="#cbd5e1"/>
+          </linearGradient>
+          <linearGradient id="wing-${id}" x1="6" y1="28" x2="58" y2="28" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#64748b"/><stop offset="50%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#64748b"/>
+          </linearGradient>
         </defs>
-        <g filter="url(#glow-${kiss.id})">
-          <!-- Fuselage -->
-          <ellipse cx="24" cy="24" rx="4" ry="16" fill="#e0e8f0" stroke="#94a3b8" stroke-width="0.5"/>
-          <!-- Wings -->
-          <path d="M24 18 L6 28 L10 30 L24 24 L38 30 L42 28 Z" fill="#3b82f6" stroke="#2563eb" stroke-width="0.5"/>
-          <!-- Tail -->
-          <path d="M24 38 L18 44 L24 42 L30 44 Z" fill="#3b82f6" stroke="#2563eb" stroke-width="0.5"/>
-          <!-- Cockpit -->
-          <ellipse cx="24" cy="10" rx="2.5" ry="3" fill="#0ea5e9" opacity="0.8"/>
-          <!-- Engine glow -->
-          <circle cx="24" cy="40" r="2" fill="#f97316" opacity="0.6">
-            <animate attributeName="opacity" values="0.4;0.8;0.4" dur="0.8s" repeatCount="indefinite"/>
+        <g filter="url(#shadow-${id})">
+          <!-- Fuselage body -->
+          <path d="M32 6 C29 6 27 10 27 16 L27 48 C27 52 29 56 32 58 C35 56 37 52 37 48 L37 16 C37 10 35 6 32 6Z" fill="url(#fuselage-${id})" stroke="#94a3b8" stroke-width="0.3"/>
+          <!-- Fuselage center line -->
+          <line x1="32" y1="8" x2="32" y2="54" stroke="#cbd5e1" stroke-width="0.5" opacity="0.5"/>
+          <!-- Cockpit windows -->
+          <ellipse cx="32" cy="10" rx="2" ry="2.5" fill="#0c4a6e" stroke="#0ea5e9" stroke-width="0.4"/>
+          <ellipse cx="32" cy="10" rx="1.2" ry="1.5" fill="#38bdf8" opacity="0.6"/>
+          <!-- Cabin windows (row of dots) -->
+          <g fill="#64748b" opacity="0.6">
+            <rect x="28" y="16" width="1" height="1" rx="0.5"/><rect x="28" y="19" width="1" height="1" rx="0.5"/>
+            <rect x="28" y="22" width="1" height="1" rx="0.5"/><rect x="28" y="25" width="1" height="1" rx="0.5"/>
+            <rect x="28" y="28" width="1" height="1" rx="0.5"/><rect x="28" y="31" width="1" height="1" rx="0.5"/>
+            <rect x="35" y="16" width="1" height="1" rx="0.5"/><rect x="35" y="19" width="1" height="1" rx="0.5"/>
+            <rect x="35" y="22" width="1" height="1" rx="0.5"/><rect x="35" y="25" width="1" height="1" rx="0.5"/>
+            <rect x="35" y="28" width="1" height="1" rx="0.5"/><rect x="35" y="31" width="1" height="1" rx="0.5"/>
+          </g>
+          <!-- Main wings -->
+          <path d="M27 24 L4 32 L6 34 L27 28Z" fill="url(#wing-${id})" stroke="#64748b" stroke-width="0.3"/>
+          <path d="M37 24 L60 32 L58 34 L37 28Z" fill="url(#wing-${id})" stroke="#64748b" stroke-width="0.3"/>
+          <!-- Wing tips -->
+          <path d="M4 32 L3 30 L6 31Z" fill="#475569"/>
+          <path d="M60 32 L61 30 L58 31Z" fill="#475569"/>
+          <!-- Engines under wings -->
+          <ellipse cx="16" cy="28" rx="2" ry="3.5" fill="#475569" stroke="#334155" stroke-width="0.3"/>
+          <ellipse cx="48" cy="28" rx="2" ry="3.5" fill="#475569" stroke="#334155" stroke-width="0.3"/>
+          <!-- Engine intake (front) -->
+          <ellipse cx="16" cy="25" rx="1.8" ry="1" fill="#1e293b"/>
+          <ellipse cx="48" cy="25" rx="1.8" ry="1" fill="#1e293b"/>
+          <!-- Engine exhaust glow -->
+          <ellipse cx="16" cy="32" rx="1.2" ry="1.5" fill="#f97316" opacity="0.5">
+            <animate attributeName="opacity" values="0.3;0.7;0.3" dur="0.6s" repeatCount="indefinite"/>
+          </ellipse>
+          <ellipse cx="48" cy="32" rx="1.2" ry="1.5" fill="#f97316" opacity="0.5">
+            <animate attributeName="opacity" values="0.3;0.7;0.3" dur="0.6s" repeatCount="indefinite" begin="0.3s"/>
+          </ellipse>
+          <!-- Horizontal stabilizer (tail wings) -->
+          <path d="M27 46 L16 50 L18 51 L27 48Z" fill="#94a3b8" stroke="#64748b" stroke-width="0.3"/>
+          <path d="M37 46 L48 50 L46 51 L37 48Z" fill="#94a3b8" stroke="#64748b" stroke-width="0.3"/>
+          <!-- Vertical stabilizer (tail fin) -->
+          <path d="M32 44 L32 56 L35 54 L35 46Z" fill="#ec4899" stroke="#be185d" stroke-width="0.3"/>
+          <!-- Heart logo on tail -->
+          <text x="33" y="52" font-size="5" text-anchor="middle">❤</text>
+          <!-- Love Air stripe -->
+          <line x1="28" y1="20" x2="28" y2="34" stroke="#ec4899" stroke-width="0.6" opacity="0.7"/>
+          <line x1="36" y1="20" x2="36" y2="34" stroke="#ec4899" stroke-width="0.6" opacity="0.7"/>
+          <!-- Navigation lights -->
+          <circle cx="4" cy="32" r="0.8" fill="#ef4444">
+            <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="60" cy="32" r="0.8" fill="#22c55e">
+            <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite" begin="0.75s"/>
           </circle>
         </g>
       </svg>`;
