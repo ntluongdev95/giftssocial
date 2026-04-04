@@ -377,12 +377,12 @@ export default function WorldPage() {
         {/* ── Top Bar ─────────────────────────────────── */}
         <div className="absolute left-0 right-0 top-0 z-30">
           {/* Search + controls */}
-          <div className="flex items-center gap-2 px-4 pb-1 pt-[calc(env(safe-area-inset-top,12px)+12px)] lg:pt-4 lg:px-6 max-w-4xl lg:mx-auto">
+          <div className="flex items-center gap-2 px-4 pb-2 pt-[calc(env(safe-area-inset-top,8px)+8px)] lg:pt-4 lg:px-6 max-w-4xl lg:mx-auto">
             {/* Search — mobile: icon only, expand on tap */}
             {/* Mobile search icon */}
             <button
               onClick={() => { setSearchExpanded(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-              className="flex lg:hidden items-center justify-center rounded-xl px-3 py-2.5 transition-colors"
+              className="flex lg:hidden items-center justify-center rounded-2xl px-3 py-3 transition-colors"
               style={{ background: 'rgba(10,11,15,0.7)', border: '1px solid rgba(0,212,255,0.1)' }}
             >
               <Search size={15} style={{ color: '#4a5068' }} />
@@ -390,11 +390,11 @@ export default function WorldPage() {
 
             {/* Mobile expanded search overlay */}
             {searchExpanded && (
-              <div className="fixed inset-x-0 top-0 z-50 lg:hidden px-4 pt-[env(safe-area-inset-top,12px)]" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(16px)' }}>
-                <div className="flex items-center gap-2">
+              <div className="fixed inset-x-0 top-0 z-50 lg:hidden px-4 pt-[calc(env(safe-area-inset-top,44px)+12px)] pb-3" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(16px)' }}>
+                <div className="flex items-center gap-2.5">
                   <div
-                    className="relative flex-1 flex items-center gap-2 rounded-xl px-3 py-2"
-                    style={{ background: 'rgba(10,11,15,0.95)', border: '1px solid rgba(0,212,255,0.4)', boxShadow: '0 0 20px rgba(0,212,255,0.15)' }}
+                    className="relative flex-1 flex items-center gap-2.5 rounded-2xl px-4 py-3"
+                    style={{ background: 'rgba(17,19,24,0.9)', border: '1px solid rgba(0,212,255,0.3)', boxShadow: '0 0 20px rgba(0,212,255,0.1)' }}
                   >
                     {searchLoading ? (
                       <Loader2 size={15} className="animate-spin shrink-0" style={{ color: '#00d4ff' }} />
