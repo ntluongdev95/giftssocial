@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url, {
@@ -9,8 +8,9 @@ const fetcher = (url: string) => fetch(url, {
 
 export function useFollow() {
   const { data, mutate } = useSWR('/api/v1/follows?type=following', fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 10000,
+    revalidateOnFocus: true,
+    revalidateOnMount: true,
+    dedupingInterval: 2000,
   });
 
   const follows = (data?.data || []) as Record<string, unknown>[];
@@ -40,8 +40,9 @@ export function useFollow() {
 
   // Friends = mutual follows (I follow them AND they follow me)
   const { data: followersData } = useSWR('/api/v1/follows?type=followers', fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 10000,
+    revalidateOnFocus: true,
+    revalidateOnMount: true,
+    dedupingInterval: 2000,
   });
   const followerUserIds = new Set(
     ((followersData?.data || []) as Record<string, unknown>[])

@@ -102,7 +102,7 @@ export default function WorldMap({
       container: containerRef.current,
       style: is3D ? STYLE_GLOBE : STYLE_2D,
       center: is3D ? [0, 20] : center,
-      zoom: is3D ? 1.8 : 13,
+      zoom: is3D ? (window.innerWidth < 768 ? 1.2 : 1.8) : 13,
       maxZoom: 18,
       minZoom: 0.5,
       attributionControl: false,
@@ -235,7 +235,7 @@ export default function WorldMap({
           lat !== null && lng !== null ? [lng, lat] : [0, 20];
         map.easeTo({
           center: globeCenter,
-          zoom: 1.5,
+          zoom: window.innerWidth < 768 ? 1.0 : 1.5,
           pitch: 0,
           bearing: 0,
           duration: 1500,

@@ -358,10 +358,9 @@ export default function WorldPage() {
     if (!activeLayers.has(layer)) toggleLayer(layer);
 
     if (listItems.length === 1) {
-      // Single item — fly + select
+      // Single item — fly to location
       const item = listItems[0];
       window.dispatchEvent(new CustomEvent('gao-fly-to', { detail: { lng: item.lng, lat: item.lat, zoom: 15 } }));
-      setTimeout(() => setSelectedMarker(item.id), 500);
     } else {
       // Multiple items — show list popup
       setNearbyList({ type, items: listItems });
@@ -621,7 +620,6 @@ export default function WorldPage() {
                     onClick={() => {
                       setNearbyList(null);
                       window.dispatchEvent(new CustomEvent('gao-fly-to', { detail: { lng: item.lng, lat: item.lat, zoom: 15 } }));
-                      setTimeout(() => setSelectedMarker(item.id), 500);
                     }}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
