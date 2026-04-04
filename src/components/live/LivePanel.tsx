@@ -146,7 +146,7 @@ export default function LivePanel({ isOpen, onClose }: LivePanelProps) {
   return (
     <AnimatePresence>
       {/* ── Desktop: Side panel ── */}
-      <div className="hidden lg:block">
+      <div key="desktop" className="hidden xl:block">
         <motion.div
           initial={{ x: '100%' }}
           animate={{ x: 0 }}
@@ -161,7 +161,7 @@ export default function LivePanel({ isOpen, onClose }: LivePanelProps) {
           }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top,0px)+10px)] pb-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             <div className="flex items-center gap-2">
               <Radio size={14} className="text-red-500 animate-pulse" />
               <span className="text-sm font-bold text-white">LIVE</span>
@@ -202,7 +202,7 @@ export default function LivePanel({ isOpen, onClose }: LivePanelProps) {
       </div>
 
       {/* ── Mobile: Full screen modal ── */}
-      <div className="lg:hidden">
+      <div key="mobile" className="xl:hidden">
         <motion.div
           initial={{ y: '100%' }}
           animate={{ y: 0 }}
@@ -212,7 +212,7 @@ export default function LivePanel({ isOpen, onClose }: LivePanelProps) {
           style={{ background: '#08090c' }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top,44px)+8px)] pb-2">
+          <div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top,0px)+20px)] pb-2">
             <div className="flex items-center gap-2.5">
               <div className="h-7 w-7 rounded-full bg-red-500/15 flex items-center justify-center">
                 <Radio size={13} className="text-red-500 animate-pulse" />

@@ -68,6 +68,28 @@ export default function BottomNav() {
           );
         })}
 
+        {/* Live */}
+        <button onClick={() => setShowLive(true)} className="flex flex-1 justify-center cursor-pointer">
+          <motion.div
+            whileTap={{ scale: 0.92 }}
+            className="flex flex-col items-center gap-0.5 py-1 relative"
+            style={{ color: showLive ? '#f87171' : '#4a5068' }}
+          >
+            <span
+              className="mb-0.5 h-1 w-1 rounded-full transition-all duration-200"
+              style={{
+                background: showLive ? '#f87171' : 'transparent',
+                boxShadow: showLive ? '0 0 6px rgba(239,68,68,0.6)' : 'none',
+              }}
+            />
+            <div className="relative">
+              <Radio size={24} strokeWidth={showLive ? 2.5 : 1.5} />
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+            </div>
+            <span className="text-[10px] font-medium">Live</span>
+          </motion.div>
+        </button>
+
         {/* Profile / Login */}
         {isLoggedIn ? (
           <Link href="/me" className="flex flex-1 justify-center">
@@ -103,15 +125,6 @@ export default function BottomNav() {
       </div>
       <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
 
-      {/* Floating LIVE button */}
-      <button
-        onClick={() => setShowLive(true)}
-        className="absolute -top-14 right-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 cursor-pointer shadow-lg lg:hidden"
-        style={{ background: 'rgba(10,11,15,0.9)', border: '1px solid rgba(239,68,68,0.3)', backdropFilter: 'blur(8px)' }}
-      >
-        <Radio size={12} className="text-red-500 animate-pulse" />
-        <span className="text-[10px] font-bold text-red-400">LIVE</span>
-      </button>
 
     </nav>
     {showLive && <LivePanel isOpen={showLive} onClose={() => setShowLive(false)} />}

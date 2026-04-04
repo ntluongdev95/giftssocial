@@ -599,6 +599,15 @@ export default function KissGlobe() {
   const activeFollowRef = useRef<string | null>(null); // Only 1 kiss controls camera at a time
 
   const giftLayerOn = useMapStore(s => s.activeLayers.has('gift'));
+
+  // Auto-enable gift layer when navigating with ?kiss= param
+  useEffect(() => {
+    const kissId = new URLSearchParams(window.location.search).get('kiss');
+    if (kissId && !giftLayerOn) {
+      useMapStore.getState().toggleLayer('gift');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { data, mutate } = useSWR<{ data: Kiss[] }>(giftLayerOn ? '/api/v1/kisses?limit=30' : null, fetcher, { refreshInterval: 30000 });
   const kisses = data?.data ?? [];
 

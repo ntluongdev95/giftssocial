@@ -23,12 +23,12 @@ const TABS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-   const logoutStorage = useAuthStore((s) => s.logout);
+  const logoutStorage = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
   const [showLive, setShowLive] = useState(false);
-  
+
   const handleLogout = async () => {
     try {
       await logoutApi();
@@ -37,21 +37,25 @@ export default function Sidebar() {
       deleteRefreshTokenFromLocal();
       clearLoginSessionStorage();
       logoutStorage();
-      
     }
   };
+
   return (
     <>
+      {/* Single aside — collapsed on lg, expanded on xl */}
       <aside
-        className="hidden lg:flex shrink-0 flex-col h-full"
+        className="hidden lg:flex shrink-0 flex-col h-full lg:w-[68px] lg:items-center lg:py-4 xl:w-[260px] xl:items-stretch xl:py-0"
         style={{
-          width: 260,
           background: 'rgba(10,11,15,0.95)',
           borderRight: '1px solid rgba(0,212,255,0.06)',
         }}
       >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5">
+        {/* Logo — collapsed */}
+        <div className="lg:block xl:hidden mb-4">
+          <Image src="/images/gao-logo.png" alt="Gao" width={32} height={32} />
+        </div>
+        {/* Logo — expanded */}
+        <div className="hidden xl:flex items-center gap-3 px-5 py-5">
           <Image src="/images/gao-logo.png" alt="Gao" width={36} height={36} className="shrink-0" />
           <div>
             <span className="text-base font-bold text-white">Gao Social</span>
@@ -62,14 +66,15 @@ export default function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-2 space-y-0.5">
+        <nav className="flex-1 lg:flex lg:flex-col lg:items-center lg:gap-1 lg:w-full lg:px-2 xl:block xl:px-3 xl:py-2 xl:space-y-0.5">
           {TABS.map(({ href, label, Icon }) => {
             const active = pathname === href || pathname?.startsWith(href + '/');
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150"
+                title={label}
+                className="flex items-center transition-colors cursor-pointer lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium"
                 style={{
                   color: active ? '#00d4ff' : '#a3adc3',
                   background: active ? 'rgba(0,212,255,0.08)' : 'transparent',
@@ -77,8 +82,8 @@ export default function Sidebar() {
                   boxShadow: active ? 'inset 0 0 20px rgba(0,212,255,0.03)' : 'none',
                 }}
               >
-                <Icon size={18} strokeWidth={active ? 2.2 : 1.5} className="shrink-0" />
-                {label}
+                <Icon size={18} strokeWidth={active ? 2.2 : 1.5} className="shrink-0 lg:w-5 lg:h-5 xl:w-[18px] xl:h-[18px]" />
+                <span className="hidden xl:inline">{label}</span>
               </Link>
             );
           })}
@@ -86,20 +91,25 @@ export default function Sidebar() {
           {/* Live */}
           <button
             onClick={() => setShowLive(true)}
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 w-full cursor-pointer"
-            style={{ color: showLive ? '#f87171' : '#a3adc3', background: showLive ? 'rgba(239,68,68,0.08)' : 'transparent', borderLeft: showLive ? '3px solid #f87171' : '3px solid transparent' }}
+            title="Live"
+            className="flex items-center transition-colors cursor-pointer w-full lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium relative"
+            style={{
+              color: showLive ? '#f87171' : '#a3adc3',
+              background: showLive ? 'rgba(239,68,68,0.08)' : 'transparent',
+              borderLeft: showLive ? '3px solid #f87171' : '3px solid transparent',
+            }}
           >
             <Radio size={18} strokeWidth={1.5} className={`shrink-0 ${showLive ? 'animate-pulse' : ''}`} />
-            Live
-            <span className="ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="hidden xl:inline">Live</span>
+            <span className="lg:absolute lg:top-2 lg:right-2 xl:static xl:ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse" />
           </button>
 
-          {/* Profile or Login */}
-          {user ? (
-            <>
+          {/* Notifications */}
+          {user && (
             <Link
               href="/notifications"
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150"
+              title="Notifications"
+              className="flex items-center transition-colors cursor-pointer lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium"
               style={{
                 color: pathname === '/notifications' ? '#00d4ff' : '#a3adc3',
                 background: pathname === '/notifications' ? 'rgba(0,212,255,0.08)' : 'transparent',
@@ -114,55 +124,63 @@ export default function Sidebar() {
                   </span>
                 )}
               </div>
-              Notifications
+              <span className="hidden xl:inline">Notifications</span>
             </Link>
-            <Link
-              href="/me"
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150"
-              style={{
-                color: pathname === '/me' ? '#00d4ff' : '#a3adc3',
-                background: pathname === '/me' ? 'rgba(0,212,255,0.08)' : 'transparent',
-                borderLeft: pathname === '/me' ? '3px solid #00d4ff' : '3px solid transparent',
-                boxShadow: pathname === '/me' ? 'inset 0 0 20px rgba(0,212,255,0.03)' : 'none',
-              }}
-            >
-              <User size={18} strokeWidth={pathname === '/me' ? 2.2 : 1.5} className="shrink-0" />
-              Profile
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 w-full cursor-pointer"
-              style={{ color: '#a3adc3', borderLeft: '3px solid transparent' }}
-            >
-              <LogOut size={18} strokeWidth={1.5} className="shrink-0" />
-              Logout
-            </button>
+          )}
+
+          {/* Profile / Login */}
+          {user ? (
+            <>
+              <Link
+                href="/me"
+                title="Profile"
+                className="flex items-center transition-colors cursor-pointer lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium"
+                style={{
+                  color: pathname === '/me' ? '#00d4ff' : '#a3adc3',
+                  background: pathname === '/me' ? 'rgba(0,212,255,0.08)' : 'transparent',
+                  borderLeft: pathname === '/me' ? '3px solid #00d4ff' : '3px solid transparent',
+                }}
+              >
+                <User size={18} strokeWidth={pathname === '/me' ? 2.2 : 1.5} className="shrink-0" />
+                <span className="hidden xl:inline">Profile</span>
+              </Link>
+              <button
+                onClick={handleLogout}
+                title="Logout"
+                className="flex items-center transition-colors cursor-pointer w-full lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium"
+                style={{ color: '#a3adc3', borderLeft: '3px solid transparent' }}
+              >
+                <LogOut size={18} strokeWidth={1.5} className="shrink-0" />
+                <span className="hidden xl:inline">Logout</span>
+              </button>
             </>
           ) : (
             <button
               onClick={() => setShowAuth(true)}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 w-full"
+              title="Login"
+              className="flex items-center transition-colors cursor-pointer w-full lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium"
               style={{ color: '#a3adc3', borderLeft: '3px solid transparent' }}
             >
               <ScanFace size={18} strokeWidth={1.5} className="shrink-0" />
-              Login / Signup
+              <span className="hidden xl:inline">Login / Signup</span>
             </button>
           )}
         </nav>
 
-        {/* Quick action */}
-        <div className="px-4 py-4">
+        {/* New Signal */}
+        <div className="lg:mt-2 lg:px-2 lg:w-full xl:px-4 xl:py-4">
           <Link
             href="/create"
-            className="btn-primary flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold w-full"
+            title="New Signal"
+            className="btn-primary flex items-center justify-center rounded-xl cursor-pointer lg:w-full lg:h-11 xl:gap-2 xl:px-4 xl:py-2.5 xl:text-sm xl:font-semibold"
           >
             <Plus size={16} className="shrink-0" />
-            New Signal
+            <span className="hidden xl:inline">New Signal</span>
           </Link>
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 text-[10px] text-[#2d3548]" style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+        {/* Footer — expanded only */}
+        <div className="hidden xl:block px-5 py-3 text-[10px] text-[#2d3548]" style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
           Gao Internet · L1 Workspace · Toii Labs
         </div>
       </aside>

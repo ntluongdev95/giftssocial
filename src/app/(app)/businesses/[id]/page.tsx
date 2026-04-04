@@ -176,7 +176,7 @@ export default function BusinessDetailPage() {
         {/* Back button */}
         <button
           onClick={() => router.back()}
-          className="absolute left-4 top-[env(safe-area-inset-top,12px)] flex h-8 w-8 items-center justify-center rounded-full bg-[#0a0b0f]/60 backdrop-blur"
+          className="absolute left-4 top-[calc(env(safe-area-inset-top,44px)+4px)] flex h-8 w-8 items-center justify-center rounded-full bg-[#0a0b0f]/60 backdrop-blur"
         >
           <ArrowLeft size={16} className="text-[#f0f4ff]" />
         </button>

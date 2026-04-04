@@ -51,7 +51,7 @@ export default function MePage() {
       <div className="aurora-gradient absolute inset-x-0 top-0 h-48 pointer-events-none" />
 
       {/* ══ MOBILE ════════════════════════════════════════ */}
-      <div className="lg:hidden relative max-w-lg mx-auto px-4 pt-[calc(env(safe-area-inset-top,12px)+16px)] pb-24">
+      <div className="lg:hidden relative max-w-lg mx-auto px-4 pt-[calc(env(safe-area-inset-top,44px)+16px)] pb-24">
 
         {/* Profile header */}
         <div className="flex items-start gap-4 mb-5">

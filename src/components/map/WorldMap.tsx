@@ -113,7 +113,7 @@ export default function WorldMap({
     map.on('load', () => {
       // Set globe projection after style is fully loaded
       if (is3D) {
-        try { map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe projection not supported:', e); }
+        try { if (map.getStyle()) map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe projection not supported:', e); }
         // Make background transparent so starfield shows through
         try {
           const style = map.getStyle();
@@ -223,7 +223,7 @@ export default function WorldMap({
       fadeMapLabels(map);
 
       if (is3D) {
-        try { map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe:', e); }
+        try { if (map.getStyle()) map.setProjection({ type: 'globe' }); } catch (e) { console.warn('Globe:', e); }
         // Remove background layer for starfield (mutate in place, don't setStyle again)
         try {
           const bgLayer = map.getLayer('background');

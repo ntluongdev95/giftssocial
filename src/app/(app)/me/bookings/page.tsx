@@ -75,7 +75,7 @@ export default function MyBookingsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 lg:px-8 py-3" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,44px)+8px)] pb-3" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <button onClick={() => router.back()} className="flex items-center gap-2 text-sm text-[#a3adc3] cursor-pointer"><ArrowLeft size={18} /> Back</button>
         <h1 className="text-sm font-bold text-white">My Bookings</h1>
         <span className="ml-auto text-[11px] text-[#4a5068]">{bookings.length} booking{bookings.length !== 1 ? 's' : ''}</span>
