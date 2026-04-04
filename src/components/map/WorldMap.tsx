@@ -293,16 +293,16 @@ export default function WorldMap({
           (map.getSource('gao-user-loc') as maplibregl.GeoJSONSource).setData(geo);
         } else {
           map.addSource('gao-user-loc', { type: 'geojson', data: geo });
-          // Outer pulse ring (not interactive)
+          // Outer ring (thin stroke, transparent fill)
           map.addLayer({
             id: 'gao-user-pulse', type: 'circle', source: 'gao-user-loc',
-            paint: { 'circle-radius': 16, 'circle-color': '#3B82F6', 'circle-opacity': 0.12 },
+            paint: { 'circle-radius': 8, 'circle-color': 'transparent', 'circle-opacity': 1, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#3B82F6', 'circle-stroke-opacity': 0.5 },
             metadata: { interactive: false },
           });
-          // Inner dot (not interactive)
+          // Inner dot
           map.addLayer({
             id: 'gao-user-dot', type: 'circle', source: 'gao-user-loc',
-            paint: { 'circle-radius': 4, 'circle-color': '#3B82F6', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
+            paint: { 'circle-radius': 3.5, 'circle-color': '#3B82F6', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff' },
             metadata: { interactive: false },
           });
         }

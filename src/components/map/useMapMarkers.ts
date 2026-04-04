@@ -390,16 +390,17 @@ function createImageMarkerElement(iconSrc: string, _borderColor: string, title: 
   const el = document.createElement('div');
   el.className = 'gao-marker' + (isLive ? ' state-live' : '');
   el.style.cssText = `
-    width:40px;height:40px;
+    width:32px;height:32px;
     cursor:pointer;
     background:transparent;
     border:none;
+    display:flex;align-items:center;justify-content:center;
   `;
 
   const img = document.createElement('img');
   img.src = iconSrc;
   img.alt = title;
-  img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+  img.style.cssText = 'width:28px;height:28px;object-fit:contain;';
   el.appendChild(img);
 
   return el;
