@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import maplibregl from 'maplibre-gl';
 import { X } from 'lucide-react';
@@ -599,14 +600,15 @@ export default function KissGlobe() {
   const activeFollowRef = useRef<string | null>(null); // Only 1 kiss controls camera at a time
 
   const giftLayerOn = useMapStore(s => s.activeLayers.has('gift'));
+  const searchParams = useSearchParams();
+  const kissParam = searchParams.get('kiss');
 
   // Auto-enable gift layer when navigating with ?kiss= param
   useEffect(() => {
-    const kissId = new URLSearchParams(window.location.search).get('kiss');
-    if (kissId && !giftLayerOn) {
+    if (kissParam && !useMapStore.getState().activeLayers.has('gift')) {
       useMapStore.getState().toggleLayer('gift');
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [kissParam]);
 
   const { data, mutate } = useSWR<{ data: Kiss[] }>(giftLayerOn ? '/api/v1/kisses?limit=30' : null, fetcher, { refreshInterval: 30000 });
   const kisses = data?.data ?? [];
@@ -1094,14 +1096,16 @@ export default function KissGlobe() {
   }, [map, mutate, currentUserId, placeGiftMarker]);
 
   // Place/remove gift markers based on layer toggle
+  // On 3D globe: don't auto-place markers (only show on ?kiss= replay)
   useEffect(() => {
     if (!map) return;
-    if (giftLayerOn) {
+    const isGlobe = useMapStore.getState().viewMode === '3d';
+    if (giftLayerOn && !isGlobe) {
       kisses.forEach(k => {
         if (markersRef.current.has(`plane_${k.id}`)) return;
         placeGiftMarker(k);
       });
-    } else {
+    } else if (!giftLayerOn) {
       // Clean everything: markers, animations, map layers
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current.clear();
