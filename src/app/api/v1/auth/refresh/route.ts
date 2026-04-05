@@ -1,24 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { verifyToken, signAccessToken, signRefreshToken } from '@/lib/jwt';
-
-const schema = z.object({
-  refresh_token: z.string().min(1),
-});
+import { setAuthCookies } from '@/lib/auth-cookies';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const parsed = schema.safeParse(body);
+    // Accept refresh token from body OR httpOnly cookie
+    let refreshTokenInput: string | undefined;
 
-    if (!parsed.success) {
+    try {
+      const body = await req.json();
+      refreshTokenInput = body.refresh_token;
+    } catch { /* no body */ }
+
+    if (!refreshTokenInput) {
+      refreshTokenInput = req.cookies.get('gao_refresh')?.value;
+    }
+
+    if (!refreshTokenInput) {
       return NextResponse.json(
         { error: { code: 'invalid_request', message: 'refresh_token is required' } },
         { status: 400 }
       );
     }
 
-    const payload = await verifyToken(parsed.data.refresh_token);
+    const payload = await verifyToken(refreshTokenInput);
 
     if (!payload || !payload.sub) {
       return NextResponse.json(
@@ -36,15 +41,7 @@ export async function POST(req: NextRequest) {
       expires_in: 2592000,
     });
 
-    response.cookies.set('gao_token', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 2592000,
-      path: '/',
-    });
-
-    return response;
+    return setAuthCookies(response, accessToken, refreshToken);
   } catch (err) {
     console.error('[Auth Refresh]', err);
     return NextResponse.json(

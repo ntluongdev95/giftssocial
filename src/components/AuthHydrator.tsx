@@ -15,27 +15,52 @@ export default function AuthHydrator() {
     if (hydrated.current || isAuthed) return;
     hydrated.current = true;
 
-    const accessToken = getAccessTokenFromLocal();
-    if (!accessToken) return;
+    // Primary: cookie-based session (works after refresh without localStorage)
+    fetch('/api/v1/auth/session', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.data?.id) {
+          hydrateFromMe(data);
 
-    const refreshToken = getRefreshTokenFromLocal();
-    setTokens(accessToken, refreshToken || undefined);
+          // Also sync tokens to localStorage for external API clients that need Authorization header
+          const accessToken = getAccessTokenFromLocal();
+          if (accessToken) {
+            const refreshToken = getRefreshTokenFromLocal();
+            setTokens(accessToken, refreshToken || undefined);
+          }
+          return;
+        }
 
-    getMe().then((user) => {
-      if (user) {
-        hydrateFromMe(user);
+        // Fallback: try localStorage tokens (for external passkey auth flow)
+        const accessToken = getAccessTokenFromLocal();
+        if (!accessToken) return;
 
-        // Sync user to local PostgreSQL DB, then re-hydrate with local data (has display_name, avatar)
-        fetch('/api/v1/users/sync', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }).then(() =>
-          fetch('/api/v1/users/me', { headers: { Authorization: `Bearer ${accessToken}` } })
-            .then(r => r.json())
-            .then(local => { if (local.data?.display_name || local.data?.avatar_url) hydrateFromMe(local); })
-        ).catch(() => {});
-      }
-    });
+        const refreshToken = getRefreshTokenFromLocal();
+        setTokens(accessToken, refreshToken || undefined);
+
+        getMe().then((user) => {
+          if (user) {
+            hydrateFromMe(user);
+            // Sync to local DB
+            fetch('/api/v1/users/sync', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }).then(() =>
+              fetch('/api/v1/users/me', { headers: { Authorization: `Bearer ${accessToken}` } })
+                .then(r => r.json())
+                .then(local => { if (local.data?.display_name || local.data?.avatar_url) hydrateFromMe(local); })
+            ).catch(() => {});
+          }
+        });
+      })
+      .catch(() => {
+        // Session endpoint failed — fall back to localStorage
+        const accessToken = getAccessTokenFromLocal();
+        if (!accessToken) return;
+        const refreshToken = getRefreshTokenFromLocal();
+        setTokens(accessToken, refreshToken || undefined);
+        getMe().then((user) => { if (user) hydrateFromMe(user); });
+      });
   }, [setTokens, hydrateFromMe, isAuthed]);
 
   return null;

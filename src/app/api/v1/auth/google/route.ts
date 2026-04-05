@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
+import { setAuthCookies } from '@/lib/auth-cookies';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -108,15 +109,7 @@ export async function POST(req: NextRequest) {
       is_new_user: existing.rows.length === 0,
     });
 
-    response.cookies.set('gao_token', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 2592000,
-      path: '/',
-    });
-
-    return response;
+    return setAuthCookies(response, accessToken, refreshToken);
   } catch (err) {
     console.error('[Auth Google]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Google login failed' } }, { status: 500 });

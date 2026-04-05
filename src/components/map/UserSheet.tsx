@@ -60,7 +60,8 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
   const [showAuth, setShowAuth] = useState(false);
   const { followingUserIds, follow, unfollow } = useFollow();
   const storeAuthed = useAuthStore((s) => s.isAuthed);
-  const isAuthed = storeAuthed || (typeof window !== 'undefined' && !!localStorage.getItem('access_token'));
+  const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+  const isAuthed = storeAuthed || hasCookie;
   const isFollowing = followingUserIds.has(userId);
 
   useEffect(() => {

@@ -25,8 +25,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const logoutStorage = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
-  const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('access_token');
-  const isLoggedIn = !!user || hasToken;
+  const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+  const isLoggedIn = !!user || hasCookie;
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
   const [showLive, setShowLive] = useState(false);
@@ -35,6 +35,8 @@ export default function Sidebar() {
     try {
       await logoutApi();
     } finally {
+      // Clear httpOnly cookies via server endpoint
+      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
       deleteAccessTokenFromLocal();
       deleteRefreshTokenFromLocal();
       clearLoginSessionStorage();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/jwt';
+import { verifyToken, signAccessToken, signRefreshToken } from '@/lib/jwt';
+import { setAuthCookies } from '@/lib/auth-cookies';
 
 const PUBLIC_PATHS = [
   '/api/v1/auth/',
@@ -27,8 +28,24 @@ export async function middleware(req: NextRequest) {
   const cookieToken = req.cookies.get('gao_token')?.value;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken;
 
-  // No token — allow GET (public read), block writes
+  // No token — try auto-refresh via gao_refresh cookie
   if (!token) {
+    const refreshCookie = req.cookies.get('gao_refresh')?.value;
+    if (refreshCookie) {
+      const refreshPayload = await verifyToken(refreshCookie);
+      if (refreshPayload?.sub) {
+        // Issue new tokens and attach user to request
+        const newAccess = await signAccessToken(refreshPayload.sub);
+        const newRefresh = await signRefreshToken(refreshPayload.sub);
+        const requestHeaders = new Headers(req.headers);
+        requestHeaders.set('x-user-id', refreshPayload.sub);
+        requestHeaders.set('x-user-role', 'user');
+        const response = NextResponse.next({ request: { headers: requestHeaders } });
+        return setAuthCookies(response, newAccess, newRefresh);
+      }
+    }
+
+    // No valid tokens at all
     if (req.method === 'GET') {
       return NextResponse.next();
     }
@@ -47,6 +64,21 @@ export async function middleware(req: NextRequest) {
     requestHeaders.set('x-user-id', payload.sub);
     requestHeaders.set('x-user-role', payload.role);
     return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  // Access token expired — try refresh cookie
+  const refreshCookie = req.cookies.get('gao_refresh')?.value;
+  if (refreshCookie) {
+    const refreshPayload = await verifyToken(refreshCookie);
+    if (refreshPayload?.sub) {
+      const newAccess = await signAccessToken(refreshPayload.sub);
+      const newRefresh = await signRefreshToken(refreshPayload.sub);
+      const requestHeaders = new Headers(req.headers);
+      requestHeaders.set('x-user-id', refreshPayload.sub);
+      requestHeaders.set('x-user-role', 'user');
+      const response = NextResponse.next({ request: { headers: requestHeaders } });
+      return setAuthCookies(response, newAccess, newRefresh);
+    }
   }
 
   // External token (e.g. from passkey auth) — forward token in request headers
