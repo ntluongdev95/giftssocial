@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { Search, Layers, X, MapPin, Loader2, Store, User, Users, Calendar } from 'lucide-react';
+import { Search, Layers, X, MapPin, Loader2, Store, User, Users, Calendar, History, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
@@ -147,6 +147,7 @@ export default function WorldPage() {
   const [desktopResults, setDesktopResults] = useState<Record<string, Array<Record<string, unknown>>>>({ people: [], businesses: [], events: [], circles: [], places: [] });
   const [desktopTab, setDesktopTab] = useState('top');
   const [desktopSearchLoading, setDesktopSearchLoading] = useState(false);
+  const [desktopHistory, setDesktopHistory] = useState<Array<Record<string, unknown>>>([]);
   const desktopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -241,6 +242,12 @@ export default function WorldPage() {
   }, [desktopTab, lat, lng]);
 
   const handleDesktopSelect = useCallback((item: Record<string, unknown>) => {
+    // Save to shared search history
+    try {
+      const h = JSON.parse(localStorage.getItem('gao_search_history') || '[]').filter((x: Record<string, unknown>) => x.id !== item.id);
+      h.unshift(item);
+      localStorage.setItem('gao_search_history', JSON.stringify(h.slice(0, 10)));
+    } catch { /* ignore */ }
     setDesktopSearchQuery('');
     setDesktopResults({ people: [], businesses: [], events: [], circles: [], places: [] });
     setSearchFocused(false);
@@ -589,7 +596,7 @@ export default function WorldPage() {
                 <input
                   value={desktopSearchQuery}
                   onChange={(e) => handleDesktopSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
+                  onFocus={() => { setSearchFocused(true); try { setDesktopHistory(JSON.parse(localStorage.getItem('gao_search_history') || '[]')); } catch { setDesktopHistory([]); } }}
                   onBlur={(e) => {
                     // Don't close dropdown if clicking inside it
                     if (dropdownRef.current?.contains(e.relatedTarget as Node)) return;
@@ -605,8 +612,8 @@ export default function WorldPage() {
                 )}
               </div>
 
-              {/* Desktop results dropdown — tabs + grouped results */}
-              {searchFocused && desktopSearchQuery.length >= 2 && (
+              {/* Desktop results dropdown — tabs + grouped results + history */}
+              {searchFocused && (desktopSearchQuery.length >= 2 || desktopHistory.length > 0) && (
                 <div
                   ref={dropdownRef}
                   tabIndex={-1}
@@ -620,8 +627,8 @@ export default function WorldPage() {
                     maxHeight: '60vh',
                   }}
                 >
-                  {/* Tabs */}
-                  <div className="flex gap-1 px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  {/* Tabs — hide when showing history only */}
+                  {desktopSearchQuery.length >= 2 && <div className="flex gap-1 px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                     {['top', 'people', 'businesses', 'events', 'circles', 'places'].map(t => (
                       <button
                         key={t}
@@ -633,7 +640,7 @@ export default function WorldPage() {
                         }
                       >{t}</button>
                     ))}
-                  </div>
+                  </div>}
 
                   {/* Results */}
                   <div className="overflow-y-auto" style={{ maxHeight: 'calc(60vh - 40px)' }}>
@@ -679,6 +686,27 @@ export default function WorldPage() {
 
                     {!desktopSearchLoading && Object.values(desktopResults).every(arr => arr.length === 0) && desktopSearchQuery.length >= 2 && (
                       <p className="text-center text-[11px] text-[#4a5068] py-4">No results</p>
+                    )}
+
+                    {/* History — show when no query */}
+                    {!desktopSearchQuery && desktopHistory.length > 0 && (
+                      <div>
+                        <div className="px-3 pt-2 pb-1 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <History size={10} className="text-[#4a5068]" />
+                            <span className="text-[9px] font-semibold uppercase tracking-wider text-[#4a5068]">Recent</span>
+                          </div>
+                          <button
+                            onMouseDown={() => { localStorage.removeItem('gao_search_history'); setDesktopHistory([]); }}
+                            className="flex items-center gap-1 text-[9px] text-[#4a5068] hover:text-[#a3adc3] cursor-pointer"
+                          >
+                            <Trash2 size={9} /> Clear
+                          </button>
+                        </div>
+                        {desktopHistory.map((r: Record<string, unknown>) => (
+                          <DesktopResultRow key={r.id as string} item={r} onSelect={handleDesktopSelect} />
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, X, MapPin, Store, Users, Calendar, Globe, Loader2, Star, Clock, Shield, Navigation } from 'lucide-react';
+import { Search, X, MapPin, Store, Users, Calendar, Globe, Loader2, Star, Clock, Shield, Navigation, History, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocationStore } from '@/stores/locationStore';
 
@@ -36,17 +36,45 @@ interface SearchOverlayProps {
   onSelect: (result: SearchResult, action: 'detail' | 'flyto') => void;
 }
 
+const HISTORY_KEY = 'gao_search_history';
+const MAX_HISTORY = 10;
+
+function getHistory(): SearchResult[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch { return []; }
+}
+
+function addToHistory(item: SearchResult) {
+  const history = getHistory().filter(h => h.id !== item.id);
+  history.unshift(item);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+}
+
+function removeFromHistory(id: string) {
+  const history = getHistory().filter(h => h.id !== id);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function clearHistory() {
+  localStorage.removeItem(HISTORY_KEY);
+}
+
 export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverlayProps) {
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState('top');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<Record<string, SearchResult[]>>({ people: [], businesses: [], events: [], circles: [], places: [] });
+  const [history, setHistory] = useState<SearchResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { lat, lng } = useLocationStore();
 
   useEffect(() => {
-    if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
+    if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+      setHistory(getHistory());
+    }
   }, [isOpen]);
 
   const doSearch = useCallback(async (q: string, t: string) => {
@@ -77,6 +105,7 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
   };
 
   const handleSelect = (item: SearchResult, action: 'detail' | 'flyto') => {
+    addToHistory(item);
     onSelect(item, action);
     onClose();
   };
@@ -154,7 +183,39 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+80px)]">
-          {!query && (
+          {!query && history.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2 px-1">
+                <div className="flex items-center gap-2">
+                  <History size={12} className="text-[#4a5068]" />
+                  <span className="text-[11px] font-semibold text-[#4a5068] uppercase tracking-wider">Recent</span>
+                </div>
+                <button
+                  onClick={() => { clearHistory(); setHistory([]); }}
+                  className="flex items-center gap-1 text-[10px] text-[#4a5068] hover:text-[#a3adc3] cursor-pointer transition-colors"
+                >
+                  <Trash2 size={10} /> Clear
+                </button>
+              </div>
+              <div className="space-y-0.5">
+                {history.map(item => (
+                  <div key={item.id} className="flex items-center group">
+                    <div className="flex-1 min-w-0">
+                      <ResultItem item={item} onSelect={handleSelect} />
+                    </div>
+                    <button
+                      onClick={() => { removeFromHistory(item.id); setHistory(h => h.filter(x => x.id !== item.id)); }}
+                      className="shrink-0 mr-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity text-[#4a5068] hover:text-white"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!query && history.length === 0 && (
             <div className="flex flex-col items-center justify-center pt-20 text-center">
               <Search size={32} className="text-[#2d3548] mb-3" />
               <p className="text-sm text-[#4a5068]">Search across Gao</p>
