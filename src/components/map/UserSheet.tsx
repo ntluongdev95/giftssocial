@@ -114,6 +114,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
   const hiddenActivityCount = isAuthed ? 0 : Math.max(0, allActivity.length - GUEST_ACTIVITY_LIMIT);
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         key="user-sheet"
@@ -390,19 +391,20 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
           </motion.div>
         )}
       </motion.div>
-
-      {/* Auth popup */}
-      <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
-
-      {/* Private chat */}
-      {showChat && (
-        <PrivateChat
-          roomId={`dm_${[useAuthStore.getState().user?.id, userId].sort().join('_')}`}
-          title={displayName}
-          subtitle={username ? `@${username}` : undefined}
-          onClose={() => setShowChat(false)}
-        />
-      )}
     </AnimatePresence>
+
+    {/* Auth popup — outside AnimatePresence */}
+    <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
+
+    {/* Private chat — outside AnimatePresence */}
+    {showChat && (
+      <PrivateChat
+        roomId={`dm_${[useAuthStore.getState().user?.id, userId].sort().join('_')}`}
+        title={displayName}
+        subtitle={username ? `@${username}` : undefined}
+        onClose={() => setShowChat(false)}
+      />
+    )}
+    </>
   );
 }
