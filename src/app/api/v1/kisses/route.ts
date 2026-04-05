@@ -84,12 +84,12 @@ export async function POST(req: NextRequest) {
 
     // Get sender location
     const sender = await pgPool.query('SELECT display_name, location_lat, location_lng FROM users WHERE id = $1', [userId]);
-    if (!sender.rows[0]?.location_lat) return NextResponse.json({ error: { code: 'invalid_request', message: 'Update your location first' } }, { status: 400 });
+    if (!sender.rows[0]?.location_lat) return NextResponse.json({ error: { code: 'no_location', message: 'Please enable location sharing in your profile first' } }, { status: 400 });
 
     // Get receiver location
     const receiver = await pgPool.query('SELECT display_name, location_lat, location_lng FROM users WHERE id = $1', [d.receiver_id]);
-    if (!receiver.rows[0]) return NextResponse.json({ error: { code: 'not_found', message: 'Receiver not found' } }, { status: 404 });
-    if (!receiver.rows[0].location_lat) return NextResponse.json({ error: { code: 'invalid_request', message: 'Receiver has no location' } }, { status: 400 });
+    if (!receiver.rows[0]) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
+    if (!receiver.rows[0].location_lat) return NextResponse.json({ error: { code: 'no_location', message: `${receiver.rows[0].display_name || 'This user'} hasn't shared their location yet` } }, { status: 400 });
 
     const result = await pgPool.query(
       `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
