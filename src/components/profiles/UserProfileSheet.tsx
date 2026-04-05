@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import PrivateChat from '@/components/chat/PrivateChat';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface UserData {
   id: string;
@@ -146,7 +147,7 @@ export default function UserProfileSheet({ user: u, isFollowing, isFriend, onFol
 
     {showChat && (
       <PrivateChat
-        roomId={`dm_${u.id}`}
+        roomId={`dm_${[useAuthStore.getState().user?.id, u.id].sort().join('_')}`}
         title={fullUser.display_name || 'User'}
         subtitle="Direct message"
         onClose={() => setShowChat(false)}
