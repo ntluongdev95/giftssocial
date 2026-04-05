@@ -317,10 +317,21 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
 
           {/* Error */}
           {sendError && (
-            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <span className="text-[12px]">⚠️</span>
-              <p className="text-[11px] text-[#f87171] flex-1">{sendError}</p>
-              <button onClick={() => setSendError(null)} className="text-[#f87171] cursor-pointer"><X size={12} /></button>
+            <div className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px]">⚠️</span>
+                <p className="text-[11px] text-[#f87171] flex-1">{sendError}</p>
+                <button onClick={() => setSendError(null)} className="text-[#f87171] cursor-pointer"><X size={12} /></button>
+              </div>
+              {sendError.includes('location sharing') && (
+                <button
+                  onClick={() => { onClose(); window.location.href = '/me/edit'; }}
+                  className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-semibold cursor-pointer"
+                  style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.15)' }}
+                >
+                  📍 Share your location
+                </button>
+              )}
             </div>
           )}
 
