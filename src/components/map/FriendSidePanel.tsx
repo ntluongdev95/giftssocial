@@ -1,11 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, MapPin, Send, Globe, Radio, Clock, X, Shield, Navigation, Phone } from 'lucide-react';
+import { MessageCircle, MapPin, Send, Globe, Radio, Clock, X, Shield, Navigation, Phone, Lock, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { TrustLevel } from '@/types';
 import { TRUST_BANDS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
+import { useAuthStore } from '@/stores/auth-store';
+import AuthPopup from '@/components/ui/AuthPopup';
+import PrivateChat from '@/components/chat/PrivateChat';
 
 interface FriendSidePanelProps {
   data: Record<string, unknown>;
@@ -13,7 +17,12 @@ interface FriendSidePanelProps {
 
 export default function FriendSidePanel({ data }: FriendSidePanelProps) {
   const { selectedMarkerId, setSelectedMarker } = useMapStore();
+  const myUserId = useAuthStore(s => s.user?.id);
+  const isAuthed = useAuthStore(s => s.isAuthed) || (typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1'));
+  const [showAuth, setShowAuth] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
+  const friendUserId = (data.user_id as string) || selectedMarkerId || '';
   const name = (data.name as string) || 'Unknown';
   const avatarUrl = data.avatar_url as string | undefined;
   const gaoDomain = data.gao_domain as string | undefined;
@@ -26,6 +35,7 @@ export default function FriendSidePanel({ data }: FriendSidePanelProps) {
   const handleClose = () => setSelectedMarker(null);
 
   return (
+    <>
     <AnimatePresence>
       {selectedMarkerId && (
         <>
@@ -43,7 +53,7 @@ export default function FriendSidePanel({ data }: FriendSidePanelProps) {
                 <div className="h-1 w-10 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }} />
               </div>
               <div className="px-5 pb-8">
-                <MobileContent name={name} avatarUrl={avatarUrl} gaoDomain={gaoDomain} isOnline={isOnline} trustLevel={trustLevel} trustScore={trustScore} lastSeen={lastSeen} band={band} />
+                <MobileContent name={name} avatarUrl={avatarUrl} gaoDomain={gaoDomain} isOnline={isOnline} trustLevel={trustLevel} trustScore={trustScore} lastSeen={lastSeen} band={band} onChat={() => isAuthed ? setShowChat(true) : setShowAuth(true)} isAuthed={isAuthed} />
               </div>
             </motion.div>
           </div>
@@ -125,7 +135,7 @@ export default function FriendSidePanel({ data }: FriendSidePanelProps) {
 
                 {/* Quick actions */}
                 <div className="mt-5 grid grid-cols-3 gap-2">
-                  <ActionCard icon={<MessageCircle size={18} />} label="Message" color="#00d4ff" />
+                  <ActionCard icon={isAuthed ? <MessageCircle size={18} /> : <Lock size={18} />} label="Message" color="#00d4ff" onClick={() => isAuthed ? setShowChat(true) : setShowAuth(true)} />
                   <ActionCard icon={<Phone size={18} />} label="Call" color="#34d399" />
                   <ActionCard icon={<Navigation size={18} />} label="Navigate" color="#a78bfa" />
                 </div>
@@ -145,13 +155,26 @@ export default function FriendSidePanel({ data }: FriendSidePanelProps) {
         </>
       )}
     </AnimatePresence>
+
+    <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
+
+    {showChat && friendUserId && (
+      <PrivateChat
+        roomId={`dm_${[myUserId, friendUserId].sort().join('_')}`}
+        title={name}
+        subtitle={gaoDomain || 'Direct message'}
+        avatar={avatarUrl}
+        onClose={() => setShowChat(false)}
+      />
+    )}
+    </>
   );
 }
 
 // ── Desktop action card ──
-function ActionCard({ icon, label, color }: { icon: React.ReactNode; label: string; color: string }) {
+function ActionCard({ icon, label, color, onClick }: { icon: React.ReactNode; label: string; color: string; onClick?: () => void }) {
   return (
-    <button className="flex flex-col items-center gap-1.5 rounded-xl py-3 cursor-pointer transition-all hover:scale-105" style={{ background: `${color}08`, border: `1px solid ${color}15` }}>
+    <button onClick={onClick} className="flex flex-col items-center gap-1.5 rounded-xl py-3 cursor-pointer transition-all hover:scale-105" style={{ background: `${color}08`, border: `1px solid ${color}15` }}>
       <span style={{ color }}>{icon}</span>
       <span className="text-[10px] font-semibold" style={{ color: '#a3adc3' }}>{label}</span>
     </button>
@@ -159,7 +182,7 @@ function ActionCard({ icon, label, color }: { icon: React.ReactNode; label: stri
 }
 
 // ── Mobile compact content ──
-function MobileContent({ name, avatarUrl, gaoDomain, isOnline, trustLevel, trustScore, lastSeen, band }: { name: string; avatarUrl?: string; gaoDomain?: string; isOnline: boolean; trustLevel: TrustLevel; trustScore: number; lastSeen?: string; band: { color: string; label: string } }) {
+function MobileContent({ name, avatarUrl, gaoDomain, isOnline, trustLevel, trustScore, lastSeen, band, onChat, isAuthed }: { name: string; avatarUrl?: string; gaoDomain?: string; isOnline: boolean; trustLevel: TrustLevel; trustScore: number; lastSeen?: string; band: { color: string; label: string }; onChat?: () => void; isAuthed?: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3.5">
@@ -187,7 +210,7 @@ function MobileContent({ name, avatarUrl, gaoDomain, isOnline, trustLevel, trust
       )}
 
       <div className="flex gap-2">
-        <button className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}><MessageCircle size={13} /> Message</button>
+        <button onClick={onChat} className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}>{isAuthed ? <MessageCircle size={13} /> : <Lock size={13} />} {isAuthed ? 'Message' : 'Sign in'}</button>
         <button className="flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-semibold cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', color: '#a3adc3' }}><Navigation size={13} /> Navigate</button>
       </div>
     </div>
