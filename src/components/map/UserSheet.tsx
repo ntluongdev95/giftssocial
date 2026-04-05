@@ -101,9 +101,9 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
   const reviews = user?.reviews || [];
   const checkins = user?.checkins || [];
   const allActivity = [
-    ...signals.map(s => ({ key: `s-${s.id}`, type: 'signal' as const, data: s, time: s.created_at })),
-    ...reviews.map(r => ({ key: `r-${r.id}`, type: 'review' as const, data: r, time: r.created_at })),
-    ...checkins.map(c => ({ key: `c-${c.id}`, type: 'checkin' as const, data: c, time: c.created_at })),
+    ...signals.map((s, i) => ({ key: `s-${s.id || i}`, type: 'signal' as const, data: s, time: s.created_at })),
+    ...reviews.map((r, i) => ({ key: `r-${r.id || i}`, type: 'review' as const, data: r, time: r.created_at })),
+    ...checkins.map((c, i) => ({ key: `c-${c.id || i}`, type: 'checkin' as const, data: c, time: c.created_at })),
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
   const hasActivity = allActivity.length > 0;
 
