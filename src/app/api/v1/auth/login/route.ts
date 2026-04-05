@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { pgPool } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
+import { createSession } from '@/lib/session';
 
 const schema = z.object({
   email: z.string().email(),
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
     // Generate tokens
     const accessToken = await signAccessToken(user.id);
     const refreshToken = await signRefreshToken(user.id);
+
+    // Create session in DB (token revocation support)
+    await createSession(user.id, refreshToken, req).catch(() => {});
 
     const response = NextResponse.json({
       user_id: user.id,

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
+import { validateCsrf } from '@/lib/csrf';
+import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rate-limit';
 
 const PUBLIC_PATHS = [
   '/api/v1/auth/',
@@ -18,12 +20,28 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip auth routes
-  if (isPublicPath(pathname)) {
-    return NextResponse.next();
+  // ── Rate Limiting ──────────────────────────────────────────────────────
+  const rateResult = await checkRateLimit(req);
+  if (rateResult && !rateResult.allowed) {
+    return rateLimitResponse(rateResult.resetIn);
   }
 
-  // Extract token from header or cookie
+  // Skip auth for auth routes (but rate limit still applies above)
+  if (isPublicPath(pathname)) {
+    const response = NextResponse.next();
+    if (rateResult) addRateLimitHeaders(response, rateResult.remaining, rateResult.resetIn, pathname);
+    return response;
+  }
+
+  // ── CSRF Validation ────────────────────────────────────────────────────
+  if (!validateCsrf(req)) {
+    return NextResponse.json(
+      { error: { code: 'csrf_invalid', message: 'Invalid or missing CSRF token' } },
+      { status: 403 }
+    );
+  }
+
+  // ── Token Extraction ───────────────────────────────────────────────────
   const authHeader = req.headers.get('authorization');
   const cookieToken = req.cookies.get('gao_token')?.value;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken;
@@ -34,20 +52,23 @@ export async function middleware(req: NextRequest) {
     if (refreshCookie) {
       const refreshPayload = await verifyToken(refreshCookie);
       if (refreshPayload?.sub) {
-        // Issue new tokens and attach user to request
         const newAccess = await signAccessToken(refreshPayload.sub);
         const newRefresh = await signRefreshToken(refreshPayload.sub);
         const requestHeaders = new Headers(req.headers);
         requestHeaders.set('x-user-id', refreshPayload.sub);
         requestHeaders.set('x-user-role', 'user');
         const response = NextResponse.next({ request: { headers: requestHeaders } });
-        return setAuthCookies(response, newAccess, newRefresh);
+        setAuthCookies(response, newAccess, newRefresh);
+        if (rateResult) addRateLimitHeaders(response, rateResult.remaining, rateResult.resetIn, pathname);
+        return response;
       }
     }
 
-    // No valid tokens at all
+    // No valid tokens
     if (req.method === 'GET') {
-      return NextResponse.next();
+      const response = NextResponse.next();
+      if (rateResult) addRateLimitHeaders(response, rateResult.remaining, rateResult.resetIn, pathname);
+      return response;
     }
     return NextResponse.json(
       { error: { code: 'unauthorized', message: 'Authentication required' } },
@@ -55,15 +76,16 @@ export async function middleware(req: NextRequest) {
     );
   }
 
-  // Try local JWT verify first
+  // ── Verify Token ───────────────────────────────────────────────────────
   const payload = await verifyToken(token);
 
   if (payload) {
-    // Local token — attach user info via request headers
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set('x-user-id', payload.sub);
     requestHeaders.set('x-user-role', payload.role);
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    if (rateResult) addRateLimitHeaders(response, rateResult.remaining, rateResult.resetIn, pathname);
+    return response;
   }
 
   // Access token expired — try refresh cookie
@@ -77,14 +99,18 @@ export async function middleware(req: NextRequest) {
       requestHeaders.set('x-user-id', refreshPayload.sub);
       requestHeaders.set('x-user-role', 'user');
       const response = NextResponse.next({ request: { headers: requestHeaders } });
-      return setAuthCookies(response, newAccess, newRefresh);
+      setAuthCookies(response, newAccess, newRefresh);
+      if (rateResult) addRateLimitHeaders(response, rateResult.remaining, rateResult.resetIn, pathname);
+      return response;
     }
   }
 
-  // External token (e.g. from passkey auth) — forward token in request headers
+  // External token (passkey auth) — forward
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-auth-token', token);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  if (rateResult) addRateLimitHeaders(response, rateResult.remaining, rateResult.resetIn, pathname);
+  return response;
 }
 
 export const config = {

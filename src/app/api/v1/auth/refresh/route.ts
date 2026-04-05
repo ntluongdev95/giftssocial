@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, signAccessToken, signRefreshToken } from '@/lib/jwt';
-import { setAuthCookies } from '@/lib/auth-cookies';
+import { setAuthCookies, clearAuthCookies } from '@/lib/auth-cookies';
+import { validateRefreshToken, rotateRefreshToken } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,17 +24,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Verify JWT signature
     const payload = await verifyToken(refreshTokenInput);
-
     if (!payload || !payload.sub) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: { code: 'invalid_token', message: 'Invalid or expired refresh token' } },
         { status: 401 }
       );
+      return clearAuthCookies(response);
     }
 
+    // Validate against session DB (check if revoked)
+    const session = await validateRefreshToken(refreshTokenInput).catch(() => null);
+    if (!session) {
+      // Token valid JWT but revoked in DB — possible token theft
+      const response = NextResponse.json(
+        { error: { code: 'token_revoked', message: 'Session has been revoked' } },
+        { status: 401 }
+      );
+      return clearAuthCookies(response);
+    }
+
+    // Issue new tokens
     const accessToken = await signAccessToken(payload.sub);
     const refreshToken = await signRefreshToken(payload.sub);
+
+    // Rotate: revoke old refresh token, create new session entry
+    await rotateRefreshToken(refreshTokenInput, refreshToken, payload.sub).catch(() => {});
 
     const response = NextResponse.json({
       access_token: accessToken,

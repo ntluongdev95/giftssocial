@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
+import { createSession } from '@/lib/session';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
 
     const accessToken = await signAccessToken(userId);
     const refreshToken = await signRefreshToken(userId);
+    await createSession(userId, refreshToken, req).catch(() => {});
 
     const response = NextResponse.json({
       user_id: userId,
