@@ -401,7 +401,8 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
       <PrivateChat
         roomId={`dm_${[useAuthStore.getState().user?.id, userId].sort().join('_')}`}
         title={displayName}
-        subtitle={username ? `@${username}` : undefined}
+        subtitle={username ? `@${username}` : 'Direct message'}
+        avatar={avatar}
         onClose={() => setShowChat(false)}
       />
     )}

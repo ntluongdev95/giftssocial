@@ -149,7 +149,8 @@ export default function UserProfileSheet({ user: u, isFollowing, isFriend, onFol
       <PrivateChat
         roomId={`dm_${[useAuthStore.getState().user?.id, u.id].sort().join('_')}`}
         title={fullUser.display_name || 'User'}
-        subtitle="Direct message"
+        subtitle={fullUser.username ? `@${fullUser.username}` : 'Direct message'}
+        avatar={fullUser.avatar_url}
         onClose={() => setShowChat(false)}
       />
     )}

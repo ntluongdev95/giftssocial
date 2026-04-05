@@ -19,6 +19,7 @@ interface Props {
   roomId: string;
   title: string;
   subtitle?: string;
+  avatar?: string;
   onClose: () => void;
   onBack?: () => void;
 }
@@ -27,7 +28,7 @@ const fetcher = (url: string) => fetch(url, {
   headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
 }).then(r => r.json());
 
-export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }: Props) {
+export default function PrivateChat({ roomId, title, subtitle, avatar, onClose, onBack }: Props) {
   const { data, mutate } = useSWR<{ data: Message[] }>(
     `/api/v1/messages?room_type=dm&room_id=${roomId}`,
     fetcher,
@@ -107,8 +108,8 @@ export default function PrivateChat({ roomId, title, subtitle, onClose, onBack }
                   <ArrowLeft size={16} className="text-[#a3adc3]" />
                 </button>
               )}
-              <div className="h-9 w-9 rounded-full flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #3B82F6, #00d4ff)' }}>
-                {title.charAt(0).toUpperCase()}
+              <div className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden text-sm font-bold" style={{ background: 'linear-gradient(135deg, #3B82F6, #00d4ff)', color: 'white' }}>
+                {avatar ? <img src={avatar} alt="" className="h-full w-full object-cover" /> : title.charAt(0).toUpperCase()}
               </div>
               <div>
                 <h2 className="text-sm font-bold text-white truncate max-w-[220px]">{title}</h2>
