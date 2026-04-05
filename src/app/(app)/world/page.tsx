@@ -257,15 +257,15 @@ export default function WorldPage() {
     if (itemLat && itemLng) {
       const zoom = itemType === 'place' ? 14 : 15;
       window.dispatchEvent(new CustomEvent('gao-fly-to', {
-        detail: { lng: itemLng, lat: itemLat, zoom, label: isEntity ? undefined : item.title, skipPin: isEntity }
+        detail: { lng: itemLng, lat: itemLat, zoom, label: item.title }
       }));
     }
-    // For entities, show detail
+    // For entities, show detail after marker lands
     if (isEntity) {
       if (itemType === 'people') {
-        setSearchUser({ id: item.id as string, preview: { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string } });
+        setTimeout(() => setSearchUser({ id: item.id as string, preview: { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string } }), 2500);
       } else {
-        setTimeout(() => setSelectedMarker(item.id as string), 800);
+        setTimeout(() => setSelectedMarker(item.id as string), 2500);
       }
     }
   }, [activeLayers, toggleLayer]);
@@ -969,26 +969,19 @@ export default function WorldPage() {
           if (result.type === 'people' && !activeLayers.has('people')) toggleLayer('people');
           if (result.type === 'circle' && !activeLayers.has('circle')) toggleLayer('circle');
 
+          if (result.lat && result.lng) {
+            const zoom = result.type === 'place' ? 14 : 15;
+            window.dispatchEvent(new CustomEvent('gao-fly-to', {
+              detail: { lng: result.lng, lat: result.lat, zoom, label: result.title }
+            }));
+          }
+
           if (action === 'detail' && isEntity) {
-            // FlyTo without pin, then show detail
-            if (result.lat && result.lng) {
-              window.dispatchEvent(new CustomEvent('gao-fly-to', {
-                detail: { lng: result.lng, lat: result.lat, zoom: 15, skipPin: true }
-              }));
-            }
-            // For people, open UserSheet directly (profile might not be loaded)
+            // After flyTo + marker lands, show detail popup
             if (result.type === 'people') {
-              setSearchUser({ id: result.id, preview: { title: result.title, subtitle: result.subtitle, image: result.image } });
+              setTimeout(() => setSearchUser({ id: result.id, preview: { title: result.title, subtitle: result.subtitle, image: result.image } }), 2500);
             } else {
-              setTimeout(() => setSelectedMarker(result.id), 800);
-            }
-          } else {
-            // Place or flyto action — fly with pin label
-            if (result.lat && result.lng) {
-              const zoom = result.type === 'place' ? 14 : 15;
-              window.dispatchEvent(new CustomEvent('gao-fly-to', {
-                detail: { lng: result.lng, lat: result.lat, zoom, label: result.title }
-              }));
+              setTimeout(() => setSelectedMarker(result.id), 2500);
             }
           }
         }}
