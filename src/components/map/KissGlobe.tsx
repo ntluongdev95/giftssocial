@@ -866,7 +866,7 @@ export default function KissGlobe() {
   }, [map, currentUserId, mutate]);
 
   // ── Play flight animation (only when explicitly triggered) ──
-  const playFlightAnimation = useCallback((kiss: Kiss) => {
+  const playFlightAnimation = useCallback(async (kiss: Kiss) => {
     if (!map) return;
 
     // Cancel ALL existing flights first — only 1 flight at a time
@@ -892,33 +892,38 @@ export default function KissGlobe() {
     const from: [number, number] = [kiss.sender_lng, kiss.sender_lat];
     const to: [number, number] = [kiss.receiver_lng, kiss.receiver_lat];
 
-    // Distance check
-    const R = 6371;
-    const dLat = (kiss.receiver_lat - kiss.sender_lat) * Math.PI / 180;
-    const dLng = (kiss.receiver_lng - kiss.sender_lng) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(kiss.sender_lat * Math.PI / 180) * Math.cos(kiss.receiver_lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-    const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const isSameCity = distKm < 50;
     const isGlobe = useMapStore.getState().viewMode === '3d';
+
+    // Reverse geocode to check same city + HUD names
+    let senderCity = `${kiss.sender_lat.toFixed(1)}°`;
+    let receiverCity = `${kiss.receiver_lat.toFixed(1)}°`;
+    let isSameCity = false;
+
+    try {
+      const [sRes, rRes] = await Promise.all([
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.sender_lat}&lon=${kiss.sender_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.receiver_lat}&lon=${kiss.receiver_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
+      ]);
+      if (sRes?.address) senderCity = sRes.address.city || sRes.address.town || sRes.address.state || sRes.address.country || senderCity;
+      if (rRes?.address) receiverCity = rRes.address.city || rRes.address.town || rRes.address.state || rRes.address.country || receiverCity;
+      // Same city/town → motorbike, different → airplane
+      isSameCity = !!(senderCity && receiverCity && senderCity === receiverCity);
+    } catch {}
+
+    // Fallback: if geocode failed, use distance < 30km
+    if (!isSameCity && senderCity.includes('°')) {
+      const R = 6371;
+      const dLat = (kiss.receiver_lat - kiss.sender_lat) * Math.PI / 180;
+      const dLng = (kiss.receiver_lng - kiss.sender_lng) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(kiss.sender_lat * Math.PI / 180) * Math.cos(kiss.receiver_lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+      const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      isSameCity = distKm < 30;
+    }
 
     // Route: great circle for all long distance (2D + 3D), short arc for same city
     const arcPoints = isSameCity
       ? interpolateGreatCircle(from, to, 80)
       : interpolateGreatCircle(from, to, 500);
-
-    // Reverse geocode for HUD city names
-    let senderCity = `${kiss.sender_lat.toFixed(1)}°`;
-    let receiverCity = `${kiss.receiver_lat.toFixed(1)}°`;
-    (async () => {
-      try {
-        const [sRes, rRes] = await Promise.all([
-          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.sender_lat}&lon=${kiss.sender_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
-          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.receiver_lat}&lon=${kiss.receiver_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
-        ]);
-        if (sRes?.address) senderCity = sRes.address.city || sRes.address.state || sRes.address.country || senderCity;
-        if (rRes?.address) receiverCity = rRes.address.city || rRes.address.state || rRes.address.country || receiverCity;
-      } catch {}
-    })();
 
     // Remove existing gift marker — will re-place when plane arrives
     const existingGift = markersRef.current.get(kiss.id);
