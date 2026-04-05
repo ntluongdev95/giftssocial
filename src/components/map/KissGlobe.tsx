@@ -70,6 +70,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   const [emoji, setEmoji] = useState('💋');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchFriends();
@@ -90,9 +91,12 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   }, [fetchFriends]);
 
   const handleSend = async () => {
-    if (!receiverId) { toast.error('Pick someone to send to'); return; }
+    setSendError(null);
+    if (!receiverId) { setSendError('Pick someone to send to'); return; }
+    if (receiverId === useAuthStore.getState().user?.id) { setSendError("Can't send a kiss to yourself"); return; }
+    if (!emoji) { setSendError('Choose a gift first'); return; }
     const token = localStorage.getItem('access_token');
-    if (!token) return;
+    if (!token) { setSendError('Please login first'); return; }
     setSending(true);
     try {
       const res = await fetch('/api/v1/kisses', {
@@ -101,8 +105,8 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
         body: JSON.stringify({ receiver_id: receiverId, message, emoji, visibility }),
       });
       if (res.ok) { toast.success('Kiss sent! ✈️💋'); onSent(); onClose(); }
-      else { const d = await res.json(); toast.error(d.error?.message || 'Failed'); }
-    } catch { toast.error('Network error'); }
+      else { const d = await res.json(); setSendError(d.error?.message || 'Failed to send kiss'); }
+    } catch { setSendError('Network error — please try again'); }
     finally { setSending(false); }
   };
 
@@ -310,6 +314,15 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
               </button>
             ))}
           </div>
+
+          {/* Error */}
+          {sendError && (
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <span className="text-[12px]">⚠️</span>
+              <p className="text-[11px] text-[#f87171] flex-1">{sendError}</p>
+              <button onClick={() => setSendError(null)} className="text-[#f87171] cursor-pointer"><X size={12} /></button>
+            </div>
+          )}
 
           {/* Send */}
           <button onClick={handleSend} disabled={sending} className="w-full rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #f87171, #ec4899)', color: 'white', boxShadow: '0 4px 20px rgba(236,72,153,0.3)' }}>
