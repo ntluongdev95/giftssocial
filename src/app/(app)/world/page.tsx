@@ -260,13 +260,9 @@ export default function WorldPage() {
         detail: { lng: itemLng, lat: itemLat, zoom, label: item.title }
       }));
     }
-    // For entities, show detail after marker lands
+    // For entities, fetch full data and show detail after marker lands
     if (isEntity) {
-      if (itemType === 'people') {
-        setTimeout(() => setSearchUser({ id: item.id as string, preview: { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string } }), 2500);
-      } else {
-        setTimeout(() => setSelectedMarker(item.id as string), 2500);
-      }
+      setTimeout(() => showSearchEntityDetail(item.id as string, itemType, { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string }), 2500);
     }
   }, [activeLayers, toggleLayer]);
 
@@ -420,6 +416,31 @@ export default function WorldPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch full entity from API and show detail popup (for search results)
+  const showSearchEntityDetail = useCallback(async (id: string, type: string, preview?: { title: string; subtitle?: string; image?: string }) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
+    const headers = { Authorization: `Bearer ${token}` };
+
+    if (type === 'people') {
+      setSearchUser({ id, preview: preview || { title: 'User' } });
+    } else if (type === 'business') {
+      try {
+        const res = await fetch(`/api/v1/businesses/${id}`, { headers });
+        const data = await res.json();
+        if (data.data) setDetailBusiness(data.data);
+      } catch { /* try marker fallback */ setSelectedMarker(id); }
+    } else if (type === 'event') {
+      try {
+        const res = await fetch(`/api/v1/events/${id}`, { headers });
+        const data = await res.json();
+        if (data.data) setDetailEvent(data.data);
+      } catch { setSelectedMarker(id); }
+    } else {
+      // circles, other — use marker selection
+      setSelectedMarker(id);
+    }
+  }, [setSelectedMarker]);
 
   // Handle summary card click — 1 item: fly + select, 2+: show list popup
   const handleSummaryClick = useCallback((type: 'signals' | 'events' | 'offers' | 'businesses') => {
@@ -977,12 +998,8 @@ export default function WorldPage() {
           }
 
           if (action === 'detail' && isEntity) {
-            // After flyTo + marker lands, show detail popup
-            if (result.type === 'people') {
-              setTimeout(() => setSearchUser({ id: result.id, preview: { title: result.title, subtitle: result.subtitle, image: result.image } }), 2500);
-            } else {
-              setTimeout(() => setSelectedMarker(result.id), 2500);
-            }
+            // After flyTo + marker lands, fetch full entity and show detail popup
+            setTimeout(() => showSearchEntityDetail(result.id, result.type, { title: result.title, subtitle: result.subtitle, image: result.image }), 2500);
           }
         }}
       />
