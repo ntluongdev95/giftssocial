@@ -86,10 +86,11 @@ export async function POST(req: NextRequest) {
     const sender = await pgPool.query('SELECT display_name, location_lat, location_lng FROM users WHERE id = $1', [userId]);
     if (!sender.rows[0]?.location_lat) return NextResponse.json({ error: { code: 'no_location', message: 'Please enable location sharing in your profile first' } }, { status: 400 });
 
-    // Get receiver location
+    // Get receiver info (location optional — kiss still sent)
     const receiver = await pgPool.query('SELECT display_name, location_lat, location_lng FROM users WHERE id = $1', [d.receiver_id]);
     if (!receiver.rows[0]) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
-    if (!receiver.rows[0].location_lat) return NextResponse.json({ error: { code: 'no_location', message: `${receiver.rows[0].display_name || 'This user'} hasn't shared their location yet` } }, { status: 400 });
+
+    const receiverHasLocation = !!receiver.rows[0].location_lat;
 
     const result = await pgPool.query(
       `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
@@ -97,12 +98,16 @@ export async function POST(req: NextRequest) {
        RETURNING *`,
       [userId, d.receiver_id, d.message, d.emoji, d.visibility,
        sender.rows[0].location_lat, sender.rows[0].location_lng,
-       receiver.rows[0].location_lat, receiver.rows[0].location_lng]
+       receiver.rows[0].location_lat || null, receiver.rows[0].location_lng || null]
     );
 
     // Notify receiver
     const senderName = sender.rows[0].display_name || 'Someone';
-    notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'A top-secret surprise is waiting for you! Open it on the map 🎁✨', 'kiss', result.rows[0].id);
+    if (receiverHasLocation) {
+      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'A top-secret surprise is waiting for you! Open it on the map 🎁✨', 'kiss', result.rows[0].id);
+    } else {
+      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Enable location sharing to see it fly across the globe! 📍🌍', 'kiss', result.rows[0].id);
+    }
 
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (err) {
