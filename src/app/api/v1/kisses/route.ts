@@ -17,18 +17,19 @@ export async function GET(req: NextRequest) {
     let values: unknown[];
 
     if (mine && userId) {
-      // My kisses (sent + received)
+      // My kisses (sent + received) — only within 24h or already opened
       query = `SELECT k.*,
         s.display_name AS sender_name, s.avatar_url AS sender_avatar,
         r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
        FROM kisses k
        LEFT JOIN users s ON s.id = k.sender_id
        LEFT JOIN users r ON r.id = k.receiver_id
-       WHERE k.sender_id = $1 OR k.receiver_id = $1
+       WHERE (k.sender_id = $1 OR k.receiver_id = $1)
+         AND (k.opened = true OR k.created_at > NOW() - INTERVAL '24 hours')
        ORDER BY k.created_at DESC LIMIT $2`;
       values = [userId, limit];
     } else if (userId) {
-      // Public kisses + my private kisses
+      // Public kisses + my private kisses — hide expired unopened
       query = `SELECT k.*,
         s.display_name AS sender_name, s.avatar_url AS sender_avatar,
         r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
@@ -36,18 +37,21 @@ export async function GET(req: NextRequest) {
        LEFT JOIN users s ON s.id = k.sender_id
        LEFT JOIN users r ON r.id = k.receiver_id
        WHERE k.created_at > NOW() - INTERVAL '7 days'
+         AND (k.opened = true OR k.created_at > NOW() - INTERVAL '24 hours')
          AND (k.visibility = 'public' OR k.sender_id = $1 OR k.receiver_id = $1)
        ORDER BY k.created_at DESC LIMIT $2`;
       values = [userId, limit];
     } else {
-      // Not logged in — public only
+      // Not logged in — public only, hide expired
       query = `SELECT k.*,
         s.display_name AS sender_name, s.avatar_url AS sender_avatar,
         r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
        FROM kisses k
        LEFT JOIN users s ON s.id = k.sender_id
        LEFT JOIN users r ON r.id = k.receiver_id
-       WHERE k.visibility = 'public' AND k.created_at > NOW() - INTERVAL '7 days'
+       WHERE k.visibility = 'public'
+         AND (k.opened = true OR k.created_at > NOW() - INTERVAL '24 hours')
+         AND k.created_at > NOW() - INTERVAL '7 days'
        ORDER BY k.created_at DESC LIMIT $1`;
       values = [limit];
     }
