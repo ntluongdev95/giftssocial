@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { Search, Layers, X, MapPin, Loader2, Store, User } from 'lucide-react';
+import { Search, Layers, X, MapPin, Loader2, Store, User, Users, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
@@ -20,7 +20,10 @@ import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import EventDetailPage from '@/components/events/EventDetailPage';
 import SignalSheet from '@/components/map/SignalSheet';
 import FriendSidePanel from '@/components/map/FriendSidePanel';
+import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
+import UserSheet from '@/components/map/UserSheet';
 import KissGlobe from '@/components/map/KissGlobe';
+import SearchOverlay from '@/components/map/SearchOverlay';
 import type { Signal, Agent, Profile, Business, Event, Circle, EntityType } from '@/types';
 
 // Dynamic import — MapLibre needs browser
@@ -87,6 +90,37 @@ function WorldMapInner({
   return null;
 }
 
+// ─── Desktop search result row ────────────────────────────────────────────
+function DesktopResultRow({ item, onSelect }: { item: Record<string, unknown>; onSelect: (r: Record<string, unknown>) => void }) {
+  const typeIcons: Record<string, { Icon: React.ElementType; color: string }> = {
+    people: { Icon: Users, color: '#3b82f6' },
+    business: { Icon: Store, color: '#22c55e' },
+    event: { Icon: Calendar, color: '#ef4444' },
+    place: { Icon: MapPin, color: '#f59e0b' },
+  };
+  const { Icon, color } = typeIcons[(item.type as string)] || typeIcons.place;
+  const dist = item.distance as number | null;
+
+  return (
+    <button
+      onMouseDown={() => onSelect(item)}
+      className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/[0.04] cursor-pointer"
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+    >
+      {(item.image as string) ? (
+        <div className="shrink-0 h-7 w-7 rounded-lg overflow-hidden"><img src={item.image as string} alt="" className="h-full w-full object-cover" /></div>
+      ) : (
+        <div className="shrink-0 h-7 w-7 rounded-lg flex items-center justify-center" style={{ background: `${color}12` }}><Icon size={12} style={{ color }} /></div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-medium text-white truncate">{item.title as string}</p>
+        {item.subtitle && <p className="text-[9px] text-[#4a5068] truncate">{item.subtitle as string}</p>}
+      </div>
+      {dist != null && dist > 0 && <span className="shrink-0 text-[9px] text-[#4a5068]">{dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist}km`}</span>}
+    </button>
+  );
+}
+
 // ─── World Page ───────────────────────────────────────────────────────────
 
 export default function WorldPage() {
@@ -98,6 +132,7 @@ export default function WorldPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
+  const [searchUser, setSearchUser] = useState<{ id: string; preview: { title: string; subtitle?: string; image?: string } } | null>(null);
   const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
 
   // ── Search ──────────────────────────────────────────────────────────────
@@ -106,6 +141,14 @@ export default function WorldPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
+  const [showSearchOverlay, setShowSearchOverlay] = useState(false);
+  // Desktop search state
+  const [desktopSearchQuery, setDesktopSearchQuery] = useState('');
+  const [desktopResults, setDesktopResults] = useState<Record<string, Array<Record<string, unknown>>>>({ people: [], businesses: [], events: [], circles: [], places: [] });
+  const [desktopTab, setDesktopTab] = useState('top');
+  const [desktopSearchLoading, setDesktopSearchLoading] = useState(false);
+  const desktopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || '';
@@ -168,15 +211,64 @@ export default function WorldPage() {
     setSearchResults([]);
     setSearchFocused(false);
 
-    // Detect zoom level — address/house = zoom 18, city = 12, country = 5
     const name = result.place_name.toLowerCase();
-    const isAddress = /\d/.test(name.split(',')[0]); // has number in first part = street address
+    const isAddress = /\d/.test(name.split(',')[0]);
     const zoom = isAddress ? 18 : name.split(',').length >= 3 ? 15 : 12;
 
     window.dispatchEvent(new CustomEvent('gao-fly-to', {
       detail: { lng: result.center[0], lat: result.center[1], zoom, label: result.place_name }
     }));
   }, []);
+
+  // ── Desktop unified search ──
+  const handleDesktopSearch = useCallback((q: string, t?: string) => {
+    setDesktopSearchQuery(q);
+    if (desktopTimerRef.current) clearTimeout(desktopTimerRef.current);
+    if (!q.trim() || q.length < 2) { setDesktopResults({ people: [], businesses: [], events: [], circles: [], places: [] }); setDesktopSearchLoading(false); return; }
+    // Show loading immediately when switching tabs (no debounce delay)
+    if (t) setDesktopSearchLoading(true);
+    desktopTimerRef.current = setTimeout(async () => {
+      setDesktopSearchLoading(true);
+      try {
+        const params = new URLSearchParams({ q, tab: t || desktopTab, limit: '20' });
+        if (lat) params.set('lat', String(lat));
+        if (lng) params.set('lng', String(lng));
+        const res = await fetch(`/api/v1/search?${params}`);
+        if (res.ok) { const data = await res.json(); setDesktopResults(data.data); }
+      } catch { /* ignore */ }
+      setDesktopSearchLoading(false);
+    }, t ? 0 : 300);
+  }, [desktopTab, lat, lng]);
+
+  const handleDesktopSelect = useCallback((item: Record<string, unknown>) => {
+    setDesktopSearchQuery('');
+    setDesktopResults({ people: [], businesses: [], events: [], circles: [], places: [] });
+    setSearchFocused(false);
+    const itemLat = item.lat as number;
+    const itemLng = item.lng as number;
+    const itemType = item.type as string;
+    const isEntity = itemType !== 'place';
+
+    if (itemType === 'business' && !activeLayers.has('business')) toggleLayer('business');
+    if (itemType === 'event' && !activeLayers.has('event')) toggleLayer('event');
+    if (itemType === 'people' && !activeLayers.has('people')) toggleLayer('people');
+    if (itemType === 'circle' && !activeLayers.has('circle')) toggleLayer('circle');
+
+    if (itemLat && itemLng) {
+      const zoom = itemType === 'place' ? 14 : 15;
+      window.dispatchEvent(new CustomEvent('gao-fly-to', {
+        detail: { lng: itemLng, lat: itemLat, zoom, label: isEntity ? undefined : item.title, skipPin: isEntity }
+      }));
+    }
+    // For entities, show detail
+    if (isEntity) {
+      if (itemType === 'people') {
+        setSearchUser({ id: item.id as string, preview: { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string } });
+      } else {
+        setTimeout(() => setSelectedMarker(item.id as string), 800);
+      }
+    }
+  }, [activeLayers, toggleLayer]);
 
   // Auto-request location on mount (browser handles the permission prompt)
   useEffect(() => {
@@ -284,9 +376,9 @@ export default function WorldPage() {
     ? developers.find((d) => d.id === selectedMarkerId)
     : null;
 
-  // Check if selected marker is a profile
+  // Check if selected marker is a profile (match by _id or user_id)
   const selectedProfile = selectedMarkerId
-    ? profiles.find((p) => p._id === selectedMarkerId)
+    ? profiles.find((p) => p._id === selectedMarkerId || p.user_id === selectedMarkerId)
     : null;
 
   // Check if selected marker is a business
@@ -304,6 +396,11 @@ export default function WorldPage() {
     ? signals.find((s) => s.id === selectedMarkerId)
     : null;
   if (selectedSignal) console.log('[World] selectedSignal keys:', Object.keys(selectedSignal), 'author_id:', (selectedSignal as unknown as Record<string, unknown>).author_id);
+
+  // Check if selected marker is a circle
+  const selectedCircle = selectedMarkerId
+    ? circles.find((c) => c.id === selectedMarkerId)
+    : null;
 
   const handleMapReady = useCallback(() => {
     // Check for flyTo URL param (from business save, event create, etc.)
@@ -380,10 +477,10 @@ export default function WorldPage() {
           {/* Search + controls */}
           <div className="flex items-center gap-2 px-4 pb-2 pt-[calc(env(safe-area-inset-top,8px)+8px)] lg:pt-4 lg:px-6 max-w-4xl lg:mx-auto">
             {/* Search — mobile: icon only, expand on tap */}
-            {/* Mobile search icon */}
+            {/* Mobile search icon — opens full SearchOverlay */}
             <button
-              onClick={() => { setSearchExpanded(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-              className="flex lg:hidden items-center justify-center rounded-2xl px-3 py-3 transition-colors"
+              onClick={() => setShowSearchOverlay(true)}
+              className="flex lg:hidden items-center justify-center rounded-2xl px-3 py-3 transition-colors cursor-pointer"
               style={{ background: 'rgba(10,11,15,0.7)', border: '1px solid rgba(0,212,255,0.1)' }}
             >
               <Search size={15} style={{ color: '#4a5068' }} />
@@ -452,7 +549,7 @@ export default function WorldPage() {
               </div>
             )}
 
-            {/* Desktop search — always visible */}
+            {/* Desktop search — inline with dropdown */}
             <div className="relative flex-1 hidden lg:block">
               <div
                 className="flex items-center gap-2 rounded-xl px-3 py-2 transition-all"
@@ -469,45 +566,100 @@ export default function WorldPage() {
                   <Search size={15} className="shrink-0" style={{ color: searchFocused ? '#00d4ff' : '#4a5068' }} />
                 )}
                 <input
-                  value={searchQuery}
-                  onChange={(e) => handleSearchInput(e.target.value)}
+                  value={desktopSearchQuery}
+                  onChange={(e) => handleDesktopSearch(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                  placeholder="Search places, cities, countries…"
+                  onBlur={(e) => {
+                    // Don't close dropdown if clicking inside it
+                    if (dropdownRef.current?.contains(e.relatedTarget as Node)) return;
+                    setTimeout(() => setSearchFocused(false), 200);
+                  }}
+                  placeholder="Search people, businesses, events, places..."
                   className="flex-1 bg-transparent text-sm text-white placeholder:text-[#4a5068] outline-none"
                 />
-                {searchQuery && (
-                  <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="shrink-0" style={{ color: '#4a5068' }}>
+                {desktopSearchQuery && (
+                  <button onClick={() => { setDesktopSearchQuery(''); setDesktopResults({ people: [], businesses: [], events: [], circles: [], places: [] }); }} className="shrink-0 cursor-pointer" style={{ color: '#4a5068' }}>
                     <X size={14} />
                   </button>
                 )}
               </div>
 
-              {/* Desktop results dropdown */}
-              {searchFocused && searchResults.length > 0 && (
+              {/* Desktop results dropdown — tabs + grouped results */}
+              {searchFocused && desktopSearchQuery.length >= 2 && (
                 <div
-                  className="absolute left-0 right-0 top-full mt-1.5 rounded-xl overflow-hidden z-50"
+                  ref={dropdownRef}
+                  tabIndex={-1}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute left-0 right-0 top-full mt-1.5 rounded-xl overflow-hidden z-50 outline-none"
                   style={{
-                    background: 'rgba(10,11,15,0.95)',
+                    background: 'rgba(10,11,15,0.97)',
                     backdropFilter: 'blur(20px)',
                     border: '1px solid rgba(0,212,255,0.12)',
                     boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+                    maxHeight: '60vh',
                   }}
                 >
-                  {searchResults.map((r) => (
-                    <button
-                      key={r.id}
-                      onMouseDown={() => handleSelectPlace(r)}
-                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,212,255,0.06)]"
-                      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
-                    >
-                      {r.type === 'business'
-                        ? <Store size={13} className="shrink-0" style={{ color: '#34d399' }} />
-                        : <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
-                      }
-                      <span className="text-xs text-[#a3adc3] truncate">{r.place_name}</span>
-                    </button>
-                  ))}
+                  {/* Tabs */}
+                  <div className="flex gap-1 px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    {['top', 'people', 'businesses', 'events', 'circles', 'places'].map(t => (
+                      <button
+                        key={t}
+                        onMouseDown={() => { setDesktopTab(t); handleDesktopSearch(desktopSearchQuery, t); }}
+                        className="px-2.5 py-1 rounded-lg text-[9px] font-semibold capitalize cursor-pointer"
+                        style={desktopTab === t
+                          ? { background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }
+                          : { color: '#4a5068' }
+                        }
+                      >{t}</button>
+                    ))}
+                  </div>
+
+                  {/* Results */}
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(60vh - 40px)' }}>
+                    {desktopSearchLoading && (
+                      <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-[#00d4ff]" /></div>
+                    )}
+
+                    {!desktopSearchLoading && desktopTab === 'top' && (
+                      <>
+                        {(['people', 'businesses', 'events', 'circles', 'places'] as const).map(section => {
+                          const items = desktopResults[section] || [];
+                          if (items.length === 0) return null;
+                          const labels: Record<string, { label: string; color: string }> = {
+                            people: { label: 'People', color: '#3b82f6' },
+                            businesses: { label: 'Businesses', color: '#22c55e' },
+                            events: { label: 'Events', color: '#ef4444' },
+                            circles: { label: 'Circles', color: '#a855f7' },
+                            places: { label: 'Places', color: '#f59e0b' },
+                          };
+                          const { label, color } = labels[section];
+                          return (
+                            <div key={section}>
+                              <div className="px-3 pt-2 pb-1 flex items-center justify-between">
+                                <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color }}>{label}</span>
+                                {items.length >= 3 && (
+                                  <button onMouseDown={() => { setDesktopTab(section); handleDesktopSearch(desktopSearchQuery, section); }} className="text-[9px] font-semibold text-[#00d4ff] cursor-pointer">See all</button>
+                                )}
+                              </div>
+                              {items.map((r: Record<string, unknown>) => (
+                                <DesktopResultRow key={r.id as string} item={r} onSelect={handleDesktopSelect} />
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {!desktopSearchLoading && desktopTab !== 'top' && (
+                      (desktopResults[desktopTab as keyof typeof desktopResults] || []).map((r: Record<string, unknown>) => (
+                        <DesktopResultRow key={r.id as string} item={r} onSelect={handleDesktopSelect} />
+                      ))
+                    )}
+
+                    {!desktopSearchLoading && Object.values(desktopResults).every(arr => arr.length === 0) && desktopSearchQuery.length >= 2 && (
+                      <p className="text-center text-[11px] text-[#4a5068] py-4">No results</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -705,7 +857,7 @@ export default function WorldPage() {
         )}
 
         {/* ── Marker Detail Sheet ─────────────────────── */}
-        {selectedMarker && !selectedFriend && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && (
+        {selectedMarker && !selectedFriend && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && !selectedCircle && (
           <MarkerDetailSheet
             entityType={selectedMarker.entity_type as EntityType}
             data={selectedMarker.metadata ?? { name: selectedMarker.title }}
@@ -768,6 +920,14 @@ export default function WorldPage() {
             onClose={() => setSelectedMarker(null)}
           />
         )}
+
+        {/* ── Circle Detail Sheet ────────────────────── */}
+        {selectedCircle && !selectedSignal && (
+          <CircleDetailSheet
+            circle={selectedCircle}
+            onClose={() => setSelectedMarker(null)}
+          />
+        )}
       </WorldMap>
 
       {/* Business detail */}
@@ -785,6 +945,54 @@ export default function WorldPage() {
           onClose={() => setDetailEvent(null)}
         />
       )}
+
+      {/* User detail from search */}
+      {searchUser && (
+        <UserSheet
+          userId={searchUser.id}
+          preview={searchUser.preview}
+          onClose={() => setSearchUser(null)}
+        />
+      )}
+
+      {/* Unified Search Overlay */}
+      <SearchOverlay
+        isOpen={showSearchOverlay}
+        onClose={() => setShowSearchOverlay(false)}
+        onSelect={(result, action) => {
+          setShowSearchOverlay(false);
+          const isEntity = result.type !== 'place';
+
+          // Enable relevant layer
+          if (result.type === 'business' && !activeLayers.has('business')) toggleLayer('business');
+          if (result.type === 'event' && !activeLayers.has('event')) toggleLayer('event');
+          if (result.type === 'people' && !activeLayers.has('people')) toggleLayer('people');
+          if (result.type === 'circle' && !activeLayers.has('circle')) toggleLayer('circle');
+
+          if (action === 'detail' && isEntity) {
+            // FlyTo without pin, then show detail
+            if (result.lat && result.lng) {
+              window.dispatchEvent(new CustomEvent('gao-fly-to', {
+                detail: { lng: result.lng, lat: result.lat, zoom: 15, skipPin: true }
+              }));
+            }
+            // For people, open UserSheet directly (profile might not be loaded)
+            if (result.type === 'people') {
+              setSearchUser({ id: result.id, preview: { title: result.title, subtitle: result.subtitle, image: result.image } });
+            } else {
+              setTimeout(() => setSelectedMarker(result.id), 800);
+            }
+          } else {
+            // Place or flyto action — fly with pin label
+            if (result.lat && result.lng) {
+              const zoom = result.type === 'place' ? 14 : 15;
+              window.dispatchEvent(new CustomEvent('gao-fly-to', {
+                detail: { lng: result.lng, lat: result.lat, zoom, label: result.title }
+              }));
+            }
+          }
+        }}
+      />
     </div>
   );
 }

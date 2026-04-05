@@ -319,7 +319,7 @@ export default function WorldMap({
   // Listen for fly-to events from search
   useEffect(() => {
     function handleFlyTo(e: Event) {
-      const { lng, lat, zoom, label } = (e as CustomEvent).detail;
+      const { lng, lat, zoom, label, skipPin } = (e as CustomEvent).detail;
       if (!mapRef.current) return;
 
       // Remove old search pin
@@ -391,7 +391,8 @@ export default function WorldMap({
           map.flyTo({ center: [lng, lat], zoom: zoom || 14, duration: 2000, pitch: 0 });
         }
 
-        // Drop pin marker + address card after animation
+        // Drop pin marker + address card after animation (skip for entity selections)
+        if (skipPin) return;
         const pinDelay = isAddress ? 4000 : 2200;
         setTimeout(() => {
           if (!mapRef.current) return;

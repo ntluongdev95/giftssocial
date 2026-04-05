@@ -25,6 +25,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const logoutStorage = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
+  const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('access_token');
+  const isLoggedIn = !!user || hasToken;
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
   const [showLive, setShowLive] = useState(false);
@@ -105,7 +107,7 @@ export default function Sidebar() {
           </button>
 
           {/* Notifications */}
-          {user && (
+          {isLoggedIn && (
             <Link
               href="/notifications"
               title="Notifications"
@@ -129,7 +131,7 @@ export default function Sidebar() {
           )}
 
           {/* Profile / Login */}
-          {user ? (
+          {isLoggedIn ? (
             <>
               <Link
                 href="/me"
