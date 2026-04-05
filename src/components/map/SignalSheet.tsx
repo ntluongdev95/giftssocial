@@ -145,14 +145,14 @@ export default function SignalSheet({ signal, onClose }: Props) {
             )}
 
             {/* Author */}
-            <div className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.04)' }}>
-              <div onClick={() => !isOwner && authorId && setShowAuthorProfile(true)} className="h-9 w-9 rounded-full flex items-center justify-center overflow-hidden cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)' }}>
+            <div onClick={() => authorId && setShowAuthorProfile(true)} className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div className="h-9 w-9 rounded-full flex items-center justify-center overflow-hidden" style={{ background: 'rgba(0,212,255,0.1)' }}>
                 {signal.author_avatar
                   ? <img src={signal.author_avatar} alt="" className="h-full w-full rounded-full object-cover" />
                   : <User size={16} className="text-[#00d4ff]" />
                 }
               </div>
-              <div className="flex-1 min-w-0" onClick={() => !isOwner && authorId && setShowAuthorProfile(true)}>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate cursor-pointer">{signal.author_name || signal.author_username || 'Anonymous'}</p>
                 {signal.author_trust_level && (
                   <p className="text-[10px] capitalize" style={{ color: '#00d4ff' }}>{signal.author_trust_level}</p>
@@ -160,7 +160,8 @@ export default function SignalSheet({ signal, onClose }: Props) {
               </div>
               {!isOwner && authorId && (
                 <button
-                  onClick={async () => {
+                  onClick={async (e) => {
+                    e.stopPropagation();
                     if (!isLoggedIn) { setShowAuthGate(true); return; }
                     if (isFollowingAuthor) { await unfollow({ user_id: authorId }); toast('Unfollowed'); }
                     else { await follow({ user_id: authorId }); toast.success('Following!'); }
