@@ -400,7 +400,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
               <div className="flex items-start gap-2">
                 <span className="text-base">📍</span>
                 <p className="text-[11px] text-[#EAB308] leading-relaxed">
-                  This person hasn&apos;t shared their location. You can enter their address to see the flight, or send anyway — they&apos;ll just receive the gift without the map animation.
+                  This person hasn&apos;t shared their location. You can enter their address to see the flight, or send anyway — you will not see how it&apos;s delivered on the map.
                 </p>
               </div>
               <input
