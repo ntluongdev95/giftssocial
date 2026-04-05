@@ -172,8 +172,11 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     window.addEventListener('message', handler);
 
     // Cleanup if popup closed without completing
+    // try/catch needed: Google sets COOP header that blocks popup.closed access
     const timer = setInterval(() => {
-      if (popup?.closed) { clearInterval(timer); window.removeEventListener('message', handler); }
+      try {
+        if (!popup || popup.closed) { clearInterval(timer); window.removeEventListener('message', handler); setGoogleLoading(false); }
+      } catch { clearInterval(timer); window.removeEventListener('message', handler); setGoogleLoading(false); }
     }, 500);
   }, [googleLoading, handleOAuthSuccess]);
 
