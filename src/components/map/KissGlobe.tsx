@@ -58,13 +58,29 @@ function interpolateGreatCircle(from: [number, number], to: [number, number], st
 // ── Send Kiss Modal ──
 function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => void; onSent: () => void; defaultReceiverId?: string | null }) {
   const { friends, fetchFriends } = useFriendStore();
+  const [following, setFollowing] = useState<{ id: string; name: string }[]>([]);
   const [receiverId, setReceiverId] = useState(defaultReceiverId || '');
   const [message, setMessage] = useState('');
   const [emoji, setEmoji] = useState('💋');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [sending, setSending] = useState(false);
 
-  useEffect(() => { if (friends.length === 0) fetchFriends(); }, [friends.length, fetchFriends]);
+  useEffect(() => {
+    fetchFriends();
+    // Also fetch following users as fallback
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      fetch('/api/v1/follows?type=following', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => {
+          if (d.data) setFollowing(d.data.map((f: Record<string, unknown>) => ({
+            id: (f.following_user_id || f.id) as string,
+            name: (f.user_name || f.display_name || 'User') as string,
+          })));
+        })
+        .catch(() => {});
+    }
+  }, [fetchFriends]);
 
   const handleSend = async () => {
     if (!receiverId) { toast.error('Pick someone to send to'); return; }
@@ -150,9 +166,10 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
               style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
             >
               <option value="">Choose a friend…</option>
-              {friends.filter(f => f.location).map(f => (
-                <option key={f.id} value={f.id}>{f.display_name}</option>
-              ))}
+              {friends.length > 0
+                ? friends.map(f => <option key={f.id} value={f.id}>{f.display_name}</option>)
+                : following.map(f => <option key={f.id} value={f.id}>{f.name}</option>)
+              }
             </select>
           </div>
 
