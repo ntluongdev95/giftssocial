@@ -116,6 +116,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
   return (
     <AnimatePresence>
       <motion.div
+        key="user-sheet"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -374,6 +375,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
         {/* Photo viewer overlay */}
         {photoViewer && (
           <motion.div
+            key="photo-viewer"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
