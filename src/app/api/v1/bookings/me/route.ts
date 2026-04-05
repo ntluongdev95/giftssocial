@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
        FROM bookings b
        LEFT JOIN businesses biz ON biz.id = b.business_id
        LEFT JOIN events evt ON evt.id = b.event_id
-       WHERE b.user_id = $1
+       WHERE b.user_id = $1 AND b.status != 'cancelled'
        ORDER BY b.created_at DESC
        LIMIT 50`,
       [userId]
