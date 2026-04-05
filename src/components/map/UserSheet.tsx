@@ -392,7 +392,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
       {/* Private chat */}
       {showChat && (
         <PrivateChat
-          roomId={`dm_${userId}`}
+          roomId={`dm_${[useAuthStore.getState().user?.id, userId].sort().join('_')}`}
           title={displayName}
           subtitle={username ? `@${username}` : undefined}
           onClose={() => setShowChat(false)}

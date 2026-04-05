@@ -108,8 +108,10 @@ export async function POST(req: NextRequest) {
       console.log('[Messages] notify check:', { room_type, room_id, userId, participantCount: participants.rows.length });
       if (room_type === 'dm') {
         if (room_id.startsWith('dm_')) {
-          // User-to-user DM: room_id = dm_{targetUserId}
-          ownerId = room_id.replace('dm_', '');
+          // User-to-user DM: room_id = dm_{sortedId1}_{sortedId2}
+          // Extract the other user's ID
+          const dmParts = room_id.replace('dm_', '').split('_');
+          ownerId = dmParts.find(id => id !== userId) || dmParts[0] || null;
         } else {
           // Signal DM: room_id = signal_id
           const sigRes = await pgPool.query('SELECT author_id FROM signals WHERE id = $1', [room_id]);
