@@ -92,14 +92,23 @@ export async function POST(req: NextRequest) {
 
     const receiverHasLocation = !!receiver.rows[0].location_lat;
 
-    const result = await pgPool.query(
-      `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       RETURNING *`,
-      [userId, d.receiver_id, d.message, d.emoji, d.visibility,
-       sender.rows[0].location_lat, sender.rows[0].location_lng,
-       receiver.rows[0].location_lat || null, receiver.rows[0].location_lng || null]
-    );
+    const recLat = receiver.rows[0].location_lat ?? null;
+    const recLng = receiver.rows[0].location_lng ?? null;
+
+    // If receiver has no location, insert without receiver coordinates
+    const result = recLat && recLng
+      ? await pgPool.query(
+          `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          [userId, d.receiver_id, d.message, d.emoji, d.visibility,
+           sender.rows[0].location_lat, sender.rows[0].location_lng, recLat, recLng]
+        )
+      : await pgPool.query(
+          `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+          [userId, d.receiver_id, d.message, d.emoji, d.visibility,
+           sender.rows[0].location_lat, sender.rows[0].location_lng]
+        );
 
     // Notify receiver
     const senderName = sender.rows[0].display_name || 'Someone';
