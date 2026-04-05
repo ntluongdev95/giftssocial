@@ -264,7 +264,7 @@ export default function WorldPage() {
     if (itemLat && itemLng) {
       const zoom = itemType === 'place' ? 14 : 15;
       window.dispatchEvent(new CustomEvent('gao-fly-to', {
-        detail: { lng: itemLng, lat: itemLat, zoom, label: item.title }
+        detail: { lng: itemLng, lat: itemLat, zoom, label: item.title, entityId: isEntity ? item.id : undefined, entityType: isEntity ? itemType : undefined }
       }));
     }
     // For entities, fetch full data and show detail after marker lands
@@ -448,6 +448,18 @@ export default function WorldPage() {
       setSelectedMarker(id);
     }
   }, [setSelectedMarker]);
+
+  // Listen for pin label card clicks → open detail popup
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { entityId, entityType, label } = (e as CustomEvent).detail;
+      if (entityId && entityType) {
+        showSearchEntityDetail(entityId, entityType, { title: label || '' });
+      }
+    };
+    window.addEventListener('gao-pin-detail', handler);
+    return () => window.removeEventListener('gao-pin-detail', handler);
+  }, [showSearchEntityDetail]);
 
   // Handle summary card click — 1 item: fly + select, 2+: show list popup
   const handleSummaryClick = useCallback((type: 'signals' | 'events' | 'offers' | 'businesses') => {
@@ -1021,7 +1033,7 @@ export default function WorldPage() {
           if (result.lat && result.lng) {
             const zoom = result.type === 'place' ? 14 : 15;
             window.dispatchEvent(new CustomEvent('gao-fly-to', {
-              detail: { lng: result.lng, lat: result.lat, zoom, label: result.title }
+              detail: { lng: result.lng, lat: result.lat, zoom, label: result.title, entityId: isEntity ? result.id : undefined, entityType: isEntity ? result.type : undefined }
             }));
           }
 

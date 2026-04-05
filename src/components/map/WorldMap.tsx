@@ -319,7 +319,7 @@ export default function WorldMap({
   // Listen for fly-to events from search
   useEffect(() => {
     function handleFlyTo(e: Event) {
-      const { lng, lat, zoom, label, skipPin } = (e as CustomEvent).detail;
+      const { lng, lat, zoom, label, skipPin, entityId, entityType } = (e as CustomEvent).detail;
       if (!mapRef.current) return;
 
       // Remove old search pin
@@ -454,8 +454,8 @@ export default function WorldMap({
           // Close button
           const closeBtn = el.querySelector('.gao-pin-close');
           if (closeBtn) {
-            closeBtn.addEventListener('click', (e) => {
-              e.stopPropagation();
+            closeBtn.addEventListener('click', (ev) => {
+              ev.stopPropagation();
               if (searchPinRef.current) {
                 searchPinRef.current.remove();
                 searchPinRef.current = null;
@@ -465,6 +465,20 @@ export default function WorldMap({
               // Reset camera
               mapRef.current?.easeTo({ pitch: 0, bearing: 0, zoom: 15, duration: 800 });
             });
+          }
+
+          // Click label card → open detail popup
+          if (entityId && entityType) {
+            const labelCard = el.querySelector('.gao-pin-close')?.parentElement;
+            if (labelCard) {
+              labelCard.style.cursor = 'pointer';
+              labelCard.addEventListener('click', (ev) => {
+                if ((ev.target as HTMLElement).closest('.gao-pin-close')) return;
+                window.dispatchEvent(new CustomEvent('gao-pin-detail', {
+                  detail: { entityId, entityType, label }
+                }));
+              });
+            }
           }
 
           const pin = new maplibregl.Marker({ element: el, anchor: 'bottom' })
