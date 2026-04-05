@@ -6,9 +6,10 @@ import useSWR from 'swr';
 import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Check, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
+import EventDetailPage from '@/components/events/EventDetailPage';
 import SignInGateSheet from '@/components/auth/SignInGateSheet';
 import { useJoinedCircles } from '@/hooks/useJoinedCircles';
-import type { Circle } from '@/types';
+import type { Circle, Event } from '@/types';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -79,6 +80,7 @@ export default function CirclesPage() {
   const [activeTab, setActiveTab] = useState<string>('For You');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const { joinedCircleIds, pendingCircleIds, refresh: refreshCircles } = useJoinedCircles();
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [leavingId, setLeavingId] = useState<string | null>(null);
@@ -233,7 +235,7 @@ export default function CirclesPage() {
           ) : (
             <div className="space-y-3">
               {apiEvents.map((evt) => (
-                <div key={evt.id as string} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                <div key={evt.id as string} onClick={() => setSelectedEvent(evt as unknown as Event)} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
                   <div className="flex items-start gap-3">
                     <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.1)' }}>
                       <Calendar size={16} className="text-[#f87171]" />
@@ -376,7 +378,7 @@ export default function CirclesPage() {
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {apiEvents.map((evt) => (
-                    <div key={evt.id as string} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                    <div key={evt.id as string} onClick={() => setSelectedEvent(evt as unknown as Event)} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
                       <div className="flex items-start gap-3">
                         <div className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.1)' }}>
                           <Calendar size={18} className="text-[#f87171]" />
@@ -401,6 +403,7 @@ export default function CirclesPage() {
       </div>
 
       {selectedCircle && <CircleDetailSheet circle={selectedCircle} onClose={() => setSelectedCircle(null)} />}
+      {selectedEvent && <EventDetailPage event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
       <SignInGateSheet action="join" isOpen={showAuthGate} onClose={() => setShowAuthGate(false)} />
     </div>
   );
