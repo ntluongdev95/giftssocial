@@ -6,6 +6,7 @@ import useSWR from 'swr';
 import { ArrowLeft, Calendar, Camera, Check, Globe, Loader2, Lock, LogOut, MapPin, Tag, UserPlus, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow, format } from 'date-fns';
+import { useAuthStore } from '@/stores/auth-store';
 import type { Circle, Event, Signal } from '@/types';
 
 const fetcher = (url: string) => fetch(url, {
@@ -19,6 +20,7 @@ function memberName(m: Member) { return m.display_name || m.username || 'Unknown
 export default function CircleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const myUserId = useAuthStore(s => s.user?.id);
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -148,7 +150,9 @@ export default function CircleDetailPage() {
         {m.avatar_url ? <img src={m.avatar_url} alt={memberName(m)} className="w-full h-full object-cover" /> : memberName(m).charAt(0).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-semibold text-white truncate">{memberName(m)}</p>
+        <p className="text-[12px] font-semibold text-white truncate">
+          {m.user_id === myUserId ? 'You' : memberName(m)}
+        </p>
         <p className="text-[9px] text-[#4a5068]">
           {m.role !== 'member' && <span className="capitalize text-[#00d4ff] mr-1">{m.role}</span>}
           {m.status === 'pending' ? 'Requested' : 'Joined'} {formatDistanceToNow(new Date(m.joined_at), { addSuffix: true })}
