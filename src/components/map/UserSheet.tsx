@@ -77,12 +77,15 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
 
   const toggleFollow = async () => {
     if (!isAuthed) { setShowAuth(true); return; }
-    if (isFollowing) { await unfollow({ user_id: userId }); toast.info('Unfollowed'); }
-    else { await follow({ user_id: userId }); toast.success('Following!'); }
-  };
-
-  const handleAuthAction = () => {
-    if (!isAuthed) { setShowAuth(true); return; }
+    if (isFollowing) {
+      await unfollow({ user_id: userId });
+      setUser(prev => prev ? { ...prev, followers_count: Math.max(0, (prev.followers_count ?? 1) - 1) } : prev);
+      toast.info('Unfollowed');
+    } else {
+      await follow({ user_id: userId });
+      setUser(prev => prev ? { ...prev, followers_count: (prev.followers_count ?? 0) + 1 } : prev);
+      toast.success('Following!');
+    }
   };
 
   const displayName = user?.display_name || preview?.title || 'User';
