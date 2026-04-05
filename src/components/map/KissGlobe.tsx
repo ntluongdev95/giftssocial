@@ -58,8 +58,10 @@ function interpolateGreatCircle(from: [number, number], to: [number, number], st
 // ── Send Kiss Modal ──
 function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => void; onSent: () => void; defaultReceiverId?: string | null }) {
   const { friends, fetchFriends } = useFriendStore();
-  const [following, setFollowing] = useState<{ id: string; name: string }[]>([]);
+  const [following, setFollowing] = useState<{ id: string; name: string; avatar?: string }[]>([]);
   const [receiverId, setReceiverId] = useState(defaultReceiverId || '');
+  const [friendSearch, setFriendSearch] = useState('');
+  const [friendDropdownOpen, setFriendDropdownOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [emoji, setEmoji] = useState('💋');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
@@ -76,6 +78,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
           if (d.data) setFollowing(d.data.map((f: Record<string, unknown>) => ({
             id: (f.following_user_id || f.id) as string,
             name: (f.user_name || f.display_name || 'User') as string,
+            avatar: (f.user_avatar || f.avatar_url) as string | undefined,
           })));
         })
         .catch(() => {});
@@ -156,21 +159,78 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
         </div>
 
         <div className="px-5 pb-5 space-y-4">
-          {/* Pick friend */}
-          <div>
+          {/* Pick friend — searchable */}
+          <div className="relative">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">Send to</label>
-            <select
-              value={receiverId}
-              onChange={(e) => setReceiverId(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none cursor-pointer"
-              style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
-            >
-              <option value="">Choose a friend…</option>
-              {friends.length > 0
-                ? friends.map(f => <option key={f.id} value={f.id}>{f.display_name}</option>)
-                : following.map(f => <option key={f.id} value={f.id}>{f.name}</option>)
-              }
-            </select>
+            {(() => {
+              const allPeople = friends.length > 0
+                ? friends.map(f => ({ id: f.id, name: f.display_name, avatar: f.avatar_url }))
+                : following;
+              const selectedPerson = allPeople.find(p => p.id === receiverId);
+              const filtered = friendSearch
+                ? allPeople.filter(p => p.name.toLowerCase().includes(friendSearch.toLowerCase()))
+                : allPeople;
+
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setFriendDropdownOpen(!friendDropdownOpen)}
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-left cursor-pointer"
+                    style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  >
+                    {selectedPerson ? (
+                      <>
+                        <div className="h-6 w-6 rounded-full flex items-center justify-center shrink-0 overflow-hidden text-[10px] font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                          {selectedPerson.avatar ? <img src={selectedPerson.avatar} alt="" className="h-full w-full object-cover" /> : selectedPerson.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="text-white flex-1 truncate">{selectedPerson.name}</span>
+                      </>
+                    ) : (
+                      <span className="text-[#4a5068] flex-1">Choose a friend...</span>
+                    )}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a5068" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+
+                  {friendDropdownOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-50" style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', maxHeight: '200px' }}>
+                      {allPeople.length > 5 && (
+                        <div className="px-2.5 pt-2.5 pb-1">
+                          <input
+                            value={friendSearch}
+                            onChange={e => setFriendSearch(e.target.value)}
+                            placeholder="Search..."
+                            className="w-full rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-[#4a5068] outline-none"
+                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)' }}
+                            autoFocus
+                          />
+                        </div>
+                      )}
+                      <div className="overflow-y-auto" style={{ maxHeight: allPeople.length > 5 ? '155px' : '200px' }}>
+                        {filtered.length === 0 && (
+                          <p className="text-center text-[10px] text-[#4a5068] py-3">No matches</p>
+                        )}
+                        {filtered.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => { setReceiverId(p.id); setFriendDropdownOpen(false); setFriendSearch(''); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer transition-colors hover:bg-white/5"
+                            style={p.id === receiverId ? { background: 'rgba(0,212,255,0.08)' } : {}}
+                          >
+                            <div className="h-7 w-7 rounded-full flex items-center justify-center shrink-0 overflow-hidden text-[10px] font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+                              {p.avatar ? <img src={p.avatar} alt="" className="h-full w-full object-cover" /> : p.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-sm text-white truncate">{p.name}</span>
+                            {p.id === receiverId && <span className="ml-auto text-[#00d4ff] text-xs">✓</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Gift picker — TikTok style */}
