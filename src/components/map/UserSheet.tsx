@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useFollow } from '@/hooks/useFollow';
 import { useAuthStore } from '@/stores/auth-store';
 import AuthPopup from '@/components/ui/AuthPopup';
+import PrivateChat from '@/components/chat/PrivateChat';
 
 interface SignalItem { id: string; type: string; title: string; category?: string; created_at: string }
 interface ReviewItem { id: string; rating: number; title?: string; body?: string; created_at: string; verified_visit?: boolean; business_name?: string; business_avatar?: string }
@@ -58,6 +59,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [photoViewer, setPhotoViewer] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const { followingUserIds, follow, unfollow } = useFollow();
   const storeAuthed = useAuthStore((s) => s.isAuthed);
   const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
@@ -354,7 +356,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
               {isFollowing ? <><UserCheck size={15} /> Following</> : <><UserPlus size={15} /> Follow</>}
             </button>
             <button
-              onClick={() => isAuthed ? null : setShowAuth(true)}
+              onClick={() => isAuthed ? setShowChat(true) : setShowAuth(true)}
               className="btn-primary flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer"
             >
               {isAuthed ? (
@@ -386,6 +388,16 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
 
       {/* Auth popup */}
       <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
+
+      {/* Private chat */}
+      {showChat && (
+        <PrivateChat
+          roomId={`dm_${userId}`}
+          title={displayName}
+          subtitle={username ? `@${username}` : undefined}
+          onClose={() => setShowChat(false)}
+        />
+      )}
     </AnimatePresence>
   );
 }
