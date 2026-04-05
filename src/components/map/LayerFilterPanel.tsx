@@ -18,6 +18,7 @@ const ENTITY_LAYERS: { key: EntityType; icon: string }[] = [
 ];
 
 const SPECIAL_LAYERS = [
+  { key: 'hotels', icon: '🏨', label: 'Book Hotel', color: '#f59e0b' },
   // { key: 'landmarks', icon: '🏛', label: 'Landmarks', color: '#fbbf24' }, // TODO: re-enable later
   { key: 'friends', icon: '👥', label: 'Friends', color: '#00d4ff' },
   { key: 'gifts', icon: '🎁', label: 'Gifts', color: '#ec4899' },
@@ -35,6 +36,7 @@ export default function LayerFilterPanel() {
     friends: { active: showFriends, toggle: toggleFriends },
     gifts: { active: activeLayers.has('gift'), toggle: () => toggleLayer('gift') },
     developers: { active: showDevs, toggle: toggleDevs },
+    hotels: { active: activeLayers.has('hotel'), toggle: () => toggleLayer('hotel') },
   };
 
   return (
