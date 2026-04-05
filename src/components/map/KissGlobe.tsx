@@ -60,6 +60,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   const { friends, fetchFriends } = useFriendStore();
   const [following, setFollowing] = useState<{ id: string; name: string; avatar?: string }[]>([]);
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; avatar?: string }[]>([]);
+  const [selectedPerson, setSelectedPerson] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [receiverId, setReceiverId] = useState(defaultReceiverId || '');
   const [friendSearch, setFriendSearch] = useState('');
   const [friendDropdownOpen, setFriendDropdownOpen] = useState(false);
@@ -171,8 +172,8 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
                 ...following.filter(f => !friends.some(fr => fr.id === f.id)).map(f => ({ ...f, tag: 'Following' as const })),
                 ...searchResults.filter(s => !friends.some(fr => fr.id === s.id) && !following.some(f => f.id === s.id)).map(s => ({ ...s, tag: 'User' as const })),
               ];
-              const selectedPerson = allPeople.find(p => p.id === receiverId)
-                || searchResults.find(s => s.id === receiverId);
+              const displayPerson = selectedPerson
+                || allPeople.find(p => p.id === receiverId);
               const filtered = friendSearch
                 ? allPeople.filter(p => p.name.toLowerCase().includes(friendSearch.toLowerCase()))
                 : allPeople;
@@ -209,12 +210,12 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
                     className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-left cursor-pointer"
                     style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
                   >
-                    {selectedPerson ? (
+                    {displayPerson ? (
                       <>
                         <div className="h-6 w-6 rounded-full flex items-center justify-center shrink-0 overflow-hidden text-[10px] font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
-                          {selectedPerson.avatar ? <img src={selectedPerson.avatar} alt="" className="h-full w-full object-cover" /> : selectedPerson.name.charAt(0).toUpperCase()}
+                          {displayPerson.avatar ? <img src={displayPerson.avatar} alt="" className="h-full w-full object-cover" /> : displayPerson.name.charAt(0).toUpperCase()}
                         </div>
-                        <span className="text-white flex-1 truncate">{selectedPerson.name}</span>
+                        <span className="text-white flex-1 truncate">{displayPerson.name}</span>
                       </>
                     ) : (
                       <span className="text-[#4a5068] flex-1">Search anyone...</span>
@@ -246,7 +247,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => { setReceiverId(p.id); setFriendDropdownOpen(false); setFriendSearch(''); setSearchResults([]); }}
+                            onClick={() => { setReceiverId(p.id); setSelectedPerson({ id: p.id, name: p.name, avatar: p.avatar }); setFriendDropdownOpen(false); setFriendSearch(''); setSearchResults([]); }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer transition-colors hover:bg-white/5"
                             style={p.id === receiverId ? { background: 'rgba(0,212,255,0.08)' } : {}}
                           >
