@@ -92,23 +92,16 @@ export async function POST(req: NextRequest) {
 
     const receiverHasLocation = !!receiver.rows[0].location_lat;
 
-    const recLat = receiver.rows[0].location_lat ?? null;
-    const recLng = receiver.rows[0].location_lng ?? null;
+    // Use 0 as fallback for receiver without location (columns may be NOT NULL)
+    const recLat = receiver.rows[0].location_lat ?? 0;
+    const recLng = receiver.rows[0].location_lng ?? 0;
 
-    // If receiver has no location, insert without receiver coordinates
-    const result = recLat && recLng
-      ? await pgPool.query(
-          `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-          [userId, d.receiver_id, d.message, d.emoji, d.visibility,
-           sender.rows[0].location_lat, sender.rows[0].location_lng, recLat, recLng]
-        )
-      : await pgPool.query(
-          `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng)
-           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-          [userId, d.receiver_id, d.message, d.emoji, d.visibility,
-           sender.rows[0].location_lat, sender.rows[0].location_lng]
-        );
+    const result = await pgPool.query(
+      `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [userId, d.receiver_id, d.message, d.emoji, d.visibility,
+       sender.rows[0].location_lat, sender.rows[0].location_lng, recLat, recLng]
+    );
 
     // Notify receiver
     const senderName = sender.rows[0].display_name || 'Someone';
@@ -121,7 +114,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
   } catch (err) {
     console.error('[Kisses POST]', err);
-    return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to send kiss' } }, { status: 500 });
+    const msg = err instanceof Error ? err.message : 'Failed to send kiss';
+    return NextResponse.json({ error: { code: 'internal_error', message: msg } }, { status: 500 });
   }
 }
 
