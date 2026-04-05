@@ -100,18 +100,12 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <AnimatePresence mode="wait">
-        <motion.img
-          key={imgIdx}
-          src={images[imgIdx]}
-          alt={e.title}
-          initial={{ opacity: 0, scale: 1.05 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      </AnimatePresence>
+      <img
+        key={imgIdx}
+        src={images[imgIdx]}
+        alt={e.title}
+        className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
+      />
       {images.length > 1 && (
         <>
           <button onClick={prevImg} className="absolute left-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full cursor-pointer opacity-0 hover:opacity-100 transition-opacity" style={{ background: 'rgba(10,11,15,0.5)' }}>
