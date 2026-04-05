@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Bell, CheckCircle, Calendar, Shield, Star, Users, Wallet, Loader2, MessageCircle, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useNotifications } from '@/hooks/useNotifications';
 import PrivateChat from '@/components/chat/PrivateChat';
 import EventChat from '@/components/events/EventChat';
@@ -94,7 +95,31 @@ export default function NotificationsPage() {
                       router.push('/me/circles');
                     }
                     if (n.ref_type === 'kiss' && n.ref_id) {
-                      router.push(`/world?kiss=${n.ref_id}`);
+                      const body = (n.body as string) || '';
+                      if (body.includes('Enable location')) {
+                        // Receiver needs to share location first
+                        navigator.geolocation.getCurrentPosition(
+                          async (pos) => {
+                            const token = localStorage.getItem('access_token');
+                            if (token) {
+                              await fetch('/api/v1/users/me', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ location_lat: pos.coords.latitude, location_lng: pos.coords.longitude }),
+                              }).catch(() => {});
+                              toast.success('Location updated! Opening map...');
+                            }
+                            router.push(`/world?kiss=${n.ref_id}`);
+                          },
+                          () => {
+                            toast.error('Please enable location in browser settings to see kisses on the map');
+                            router.push(`/world?kiss=${n.ref_id}`);
+                          },
+                          { enableHighAccuracy: true, timeout: 10000 }
+                        );
+                      } else {
+                        router.push(`/world?kiss=${n.ref_id}`);
+                      }
                     }
                   }}
                 >
