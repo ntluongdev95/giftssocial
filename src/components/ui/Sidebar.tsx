@@ -32,16 +32,17 @@ export default function Sidebar() {
   const [showLive, setShowLive] = useState(false);
 
   const handleLogout = async () => {
+    // Clear client-readable cookie immediately (before any async)
+    document.cookie = 'gao_logged_in=; Max-Age=0; path=/';
     try {
       await logoutApi();
-    } finally {
-      // Clear httpOnly cookies via server endpoint
-      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
-      deleteAccessTokenFromLocal();
-      deleteRefreshTokenFromLocal();
-      clearLoginSessionStorage();
-      logoutStorage();
-    }
+    } catch { /* ignore external API failure */ }
+    // Clear httpOnly cookies via server endpoint
+    await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+    deleteAccessTokenFromLocal();
+    deleteRefreshTokenFromLocal();
+    clearLoginSessionStorage();
+    logoutStorage();
   };
 
   return (
