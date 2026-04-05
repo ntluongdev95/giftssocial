@@ -186,7 +186,7 @@ PayiiApiClient.interceptors.response.use(
         isRefreshing = false;
         deleteAccessTokenFromLocal();
         deleteRefreshTokenFromLocal();
-        window.location.href = '/login';
+        window.location.href = '/';
         return Promise.reject(error);
       }
 
@@ -220,7 +220,7 @@ PayiiApiClient.interceptors.response.use(
         }
         deleteAccessTokenFromLocal();
         deleteRefreshTokenFromLocal();
-        window.location.href = '/login';
+        window.location.href = '/';
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

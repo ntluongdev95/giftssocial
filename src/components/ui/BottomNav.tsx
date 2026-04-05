@@ -123,10 +123,10 @@ export default function BottomNav() {
           </button>
         )}
       </div>
-      <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
 
 
     </nav>
+    <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
     {showLive && <LivePanel isOpen={showLive} onClose={() => setShowLive(false)} />}
   </>
   );

@@ -12,9 +12,24 @@ import { X, ArrowRight, ShieldCheck, Fingerprint } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PasskeyOverlay } from './PasskeyOverlay';
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: Record<string, unknown>) => void;
+          prompt: (cb?: (notification: { isNotDisplayed: () => boolean; getNotDisplayedReason: () => string }) => void) => void;
+          renderButton: (el: HTMLElement, config: Record<string, unknown>) => void;
+          cancel: () => void;
+        };
+      };
+    };
+  }
+}
 
 interface AuthPopupProps {
   open: boolean;
@@ -23,334 +38,182 @@ interface AuthPopupProps {
 
 export default function AuthPopup({ open, onClose }: AuthPopupProps) {
   const router = useRouter();
-  const [selectedUser, setSelectedUser] = useState<SavedPasskeyUser | null>(null);
-  const [showPasskeyOverlay, setShowPasskeyOverlay] = useState(false);
+  // PASSKEY: temporarily disabled
+  // const [selectedUser, setSelectedUser] = useState<SavedPasskeyUser | null>(null);
+  // const [showPasskeyOverlay, setShowPasskeyOverlay] = useState(false);
+  const selectedUser = null;
+  const showPasskeyOverlay = false;
   const setTokens = useAuthStore((s) => s.setTokens);
   const setAccount = useAccountStore((s) => s.setAccount);
   const hydrateFromMe = useAuthStore((s) => s.hydrateFromMe);
   const setAccountLoaded = useAccountStore((s) => s.setLoaded);
-  const [savedUsers, setSavedUsers] = useState<SavedPasskeyUser[]>([]);
-  const [currentUserIndex, setCurrentUserIndex] = useState(0);
-  const currentUser = savedUsers[currentUserIndex];
-  const startX = useRef(0);
-  const endX = useRef(0);
-  const isSwiping = useRef(false);
-  const minSwipeDistance = 50;
-  const isMouseDown = useRef(false);
+  // PASSKEY: temporarily disabled
+  // const [savedUsers, setSavedUsers] = useState<SavedPasskeyUser[]>([]);
+  // const [currentUserIndex, setCurrentUserIndex] = useState(0);
+  // const currentUser = savedUsers[currentUserIndex];
+  // const startX = useRef(0);
+  // const endX = useRef(0);
+  // const isSwiping = useRef(false);
+  // const minSwipeDistance = 50;
+  // const isMouseDown = useRef(false);
+  const currentUser = null;
 
-  useEffect(() => {
-    const users = getSavedPasskeyUsers();
-    setSavedUsers(users);
-  }, []);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  if (!open) return null;
-  const handleTouchStart = (e: React.TouchEvent) => {
-    startX.current = e.touches[0].clientX;
-    endX.current = e.touches[0].clientX;
-    isSwiping.current = false;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    endX.current = e.touches[0].clientX;
-    // Mark as swiping if moved more than threshold
-    if (Math.abs(startX.current - endX.current) > minSwipeDistance) {
-      isSwiping.current = true;
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (isSwiping.current) {
-      const diff = startX.current - endX.current;
-      if (diff > 0 && currentUserIndex < savedUsers.length - 1) {
-        setCurrentUserIndex((prev) => prev + 1);
-      } else if (diff < 0 && currentUserIndex > 0) {
-        setCurrentUserIndex((prev) => prev - 1);
-      }
-    }
-    isSwiping.current = false;
-  };
-
-  // Mouse handlers (desktop)
-  const handleMouseDown = (e: React.MouseEvent) => {
-    isMouseDown.current = true;
-    startX.current = e.clientX;
-    endX.current = e.clientX;
-    isSwiping.current = false;
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isMouseDown.current) return;
-    endX.current = e.clientX;
-    if (Math.abs(startX.current - endX.current) > minSwipeDistance) {
-      isSwiping.current = true;
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (!isMouseDown.current) return;
-    isMouseDown.current = false;
-    if (isSwiping.current) {
-      const diff = startX.current - endX.current;
-      if (diff > 0 && currentUserIndex < savedUsers.length - 1) {
-        setCurrentUserIndex((prev) => prev + 1);
-      } else if (diff < 0 && currentUserIndex > 0) {
-        setCurrentUserIndex((prev) => prev - 1);
-      }
-    }
-    isSwiping.current = false;
-  };
-
-  const handleMouseLeave = () => {
-    if (isMouseDown.current) {
-      handleMouseUp();
-    }
-  };
-
-  const handleSignupWithPasskey = async () => {
-    if (!isWebAuthnSupported()) {
-      toast.error('Passkey is not supported in this browser');
-      return;
-    }
-
-    // Request FCM permission (Safari requires user gesture)
-    await requestFCMToken();
-
-    try {
-      // Step 1: Get nonce from server
-      const nonceRes = await getPasskeyNonceApi();
-      if (!nonceRes?.message || !nonceRes.userId || !nonceRes.username) {
-        throw new Error('Failed to get nonce');
-      }
-
-      // Step 2: Create passkey credential
-      const credential = await createPasskeyCredential(
-        nonceRes.message,
-        nonceRes.userId,
-        nonceRes.username,
-        true,
-      );
-
-      // Step 3: Get FCM token
-      const fcmToken = getFCMToken();
-
-      // Step 4: Register passkey on server
-      const registerRes = await passKeyRegisterApi({
-        attestationInfo: credential,
-        user_id: nonceRes.userId,
-        username: nonceRes.username,
-        platform: 'web',
-        fcmToken: fcmToken || undefined,
-      });
-
-      if (!registerRes?.access_token) {
-        throw new Error('Registration failed');
-      }
-
-      // Step 5: Save tokens
-      setAccessTokenToLocal(registerRes.access_token);
-      if (registerRes.refresh_token) {
-        setRefreshTokenToLocal(registerRes.refresh_token);
-      }
-      if (registerRes.access_token && registerRes.refresh_token) {
-        setTokens(registerRes.access_token, registerRes.refresh_token);
-      }
-      // Step 6: Save passkey user
-      savePasskeyUser({
-        credentialId: credential.id,
-        rawId: credential.rawId,
-        userId: nonceRes.userId,
-        username: nonceRes.username,
-        passkeyUsername: nonceRes.username,
-        displayName: nonceRes.username,
-        largeBlobSupported: credential.largeBlobSupported,
-      });
-
-      // Step 7: Get user info
-      const meRes = await getMe();
-      if (meRes) {
-        hydrateFromMe(meRes);
-      }
-
-      // Step 8: Set account
-      setAccount(null);
-      setAccountLoaded(true);
-
-      // Step 9: Navigate
-      toast.success('Account created successfully!');
-      onClose();
-      router.push('/');
-    } catch (error) {
-      if (!isPasskeyCancelError(error)) {
-        console.error('Registration error:', error);
-        toast.error(error instanceof Error ? error.message : 'Registration failed');
-      }
-    } finally {
-    }
-  };
-
-  const handleSelectUser = async (savedUser: SavedPasskeyUser) => {
-    if (!isWebAuthnSupported()) {
-      toast.error('Passkey is not supported in this browser');
-      return;
-    }
-    // Request FCM permission (Safari requires user gesture)
-    await requestFCMToken();
-    setSelectedUser(savedUser);
-  };
-  const handleUserClick = () => {
-    if (currentUser) {
-      handleSelectUser(currentUser);
-    }
-  };
-
-  const handlePasskeySuccess = async (
-    credential: Awaited<ReturnType<typeof getPasskeyCredential>>,
-  ) => {
-    try {
-      // Get FCM token (if any)
-      const fcmToken = getFCMToken();
-
-      const loginRes = await passKeyLoginApi({
-        assertionInfo: credential,
-        userId: credential.userId || '',
-        platform: 'web',
-        fcmToken: fcmToken || undefined,
-      });
-
-      if (loginRes?.access_token) {
-        await handleLoginSuccess(
-          loginRes.access_token,
-          loginRes.refresh_token,
-          credential,
-          loginRes.passkey_username,
-        );
-      } else {
-        throw new Error('Login failed');
-      }
-    } catch (err) {
-      console.error('Login error:', err);
-      toast.error(err instanceof Error ? err.message : 'An error occurred');
-      setSelectedUser(null);
-    }
-  };
-
-  const handlePasskeyCancel = () => {
-    setSelectedUser(null);
-    setShowPasskeyOverlay(false);
-  };
-
-  // Error is displayed in PasskeyOverlay, don't close it
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handlePasskeyError = (_error: string) => {
-    // Error is shown in overlay, user can tap to retry or cancel
-  };
-
-  const handleLoginSuccess = async (
-    accessToken: string,
-    refreshToken?: string,
-    credential?: { id: string; rawId: string; userId?: string; largeBlobData?: string },
-    passkeyUsernameFromLogin?: string,
-  ) => {
+  // Handle OAuth login success (Google/Apple)
+  const handleOAuthSuccess = useCallback(async (accessToken: string, refreshToken?: string) => {
     setAccessTokenToLocal(accessToken);
     if (refreshToken) setRefreshTokenToLocal(refreshToken);
     setTokens(accessToken, refreshToken);
 
-    const user = await getMe();
-    if (user) {
-      hydrateFromMe(user);
-      // Get display name: full_name > first_name + last_name > display_name
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userAny = user as any;
-      let displayName = userAny.full_name;
-      if (!displayName) {
-        const firstName = userAny.first_name || '';
-        const lastName = userAny.last_name || '';
-        displayName = `${firstName} ${lastName}`.trim() || userAny.display_name;
-      }
-      // Save or update passkey user info
-      if (credential) {
-        const existingUser = findPasskeyUserByCredentialId(credential.id);
-        console.log('[Login] credential:', credential);
-        console.log('[Login] user:', user);
-        console.log('[Login] existingUser:', existingUser);
-        console.log('[Login] passkeyUsernameFromLogin:', passkeyUsernameFromLogin);
-        if (existingUser) {
-          // Update existing user info
-          updatePasskeyUserInfo(credential.id, {
-            username: user.username,
-            displayName,
-            avatarUrl: user.avatar_url,
-          });
-        } else {
-          // Save new passkey user (first time login with this passkey)
-          // Use passkey_username from login response (faster, no extra API call)
-          const passkeyUsername = passkeyUsernameFromLogin || user.username || '';
-          console.log('[Login] Saving new passkey user, passkeyUsername:', passkeyUsername);
-          savePasskeyUser({
-            credentialId: credential.id,
-            rawId: credential.rawId,
-            userId: credential.userId || user.id || '',
-            username: user.username || '',
-            passkeyUsername: passkeyUsername,
-            displayName,
-            avatarUrl: user.avatar_url,
-          });
-        }
-        // Update lastLoginAt for sorting recently used
-        updatePasskeyUserLastLogin(credential.id);
-      }
-    } else {
-      console.warn('[Login] getMe() returned null');
-    }
-
-    // Check KYB status immediately after login
+    // Fetch user profile from local DB
     try {
-      const accountRes = await checkAccountApi();
-      if (accountRes?.id) {
-        setAccount({
-          id: accountRes.id,
-          name: accountRes.name || '',
-          email: accountRes.email || '',
-          isVerified: accountRes.is_verified || false,
-          kybStatus: accountRes.kyb_status as 'pending' | 'rejected' | 'complete' | undefined,
-          status: accountRes.status as 'pending' | 'rejected' | 'complete' | undefined,
-        });
-      } else {
-        setAccount(null);
+      const res = await fetch('/api/v1/users/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.data) {
+          hydrateFromMe(data.data);
+          // Save last user for "Welcome back" UX
+          try {
+            localStorage.setItem('gao_last_user', JSON.stringify({
+              display_name: data.data.display_name || data.data.fullName || data.data.username || '',
+              avatar_url: data.data.avatar_url || data.data.avatarUrl || '',
+              email: data.data.email || '',
+            }));
+          } catch { /* ignore */ }
+        }
       }
-    } catch {
-      setAccount(null);
-    } finally {
-      setAccountLoaded(true);
-    }
+    } catch { /* ignore */ }
 
-    // Sync user to local DB
-    fetch('/api/v1/users/sync', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).catch(() => {});
+    setAccount(null);
+    setAccountLoaded(true);
 
     toast.success('Login successful!');
     onClose();
-    router.push('/');
-  };
+  }, [setTokens, hydrateFromMe, setAccount, setAccountLoaded, onClose, router]);
 
-  const loginWithOtherPasskey = async () => {
-    // Request FCM permission (Safari requires user gesture)
-    await requestFCMToken();
+  // Google Sign-In handler
+  const handleGoogleCredential = useCallback(async (response: { credential: string }) => {
+    setGoogleLoading(true);
+    try {
+      const res = await fetch('/api/v1/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential }),
+      });
 
-    setSelectedUser(null);
-    setShowPasskeyOverlay(true);
-  };
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || 'Google login failed');
+      }
+
+      const data = await res.json();
+      if (data.is_new_user) {
+        toast.success('Welcome to Gao!');
+      }
+      await handleOAuthSuccess(data.access_token, data.refresh_token);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Google login failed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [handleOAuthSuccess]);
+
+  // Google Sign-In via popup OAuth flow (no GSI library needed)
+  const handleGoogleClick = useCallback(() => {
+    if (googleLoading) return;
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) { toast.error('Google not configured'); return; }
+
+    const redirectUri = window.location.origin + '/auth/google/callback';
+    const scope = 'openid email profile';
+    const state = Math.random().toString(36).slice(2);
+    sessionStorage.setItem('gao_google_state', state);
+
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}&prompt=select_account&access_type=offline`;
+
+    // Open popup
+    const w = 500, h = 600;
+    const left = (screen.width - w) / 2, top = (screen.height - h) / 2;
+    const popup = window.open(url, 'google-signin', `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`);
+
+    // Listen for callback message from popup
+    const handler = async (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type !== 'google-auth') return;
+      window.removeEventListener('message', handler);
+      popup?.close();
+
+      const { code, error } = e.data;
+      if (error || !code) { toast.error('Google sign-in cancelled'); return; }
+
+      setGoogleLoading(true);
+      try {
+        const res = await fetch('/api/v1/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, redirect_uri: redirectUri }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error?.message || 'Google login failed');
+        }
+        const data = await res.json();
+        if (data.is_new_user) toast.success('Welcome to Gao!');
+        await handleOAuthSuccess(data.access_token, data.refresh_token);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Google login failed');
+      } finally {
+        setGoogleLoading(false);
+      }
+    };
+    window.addEventListener('message', handler);
+
+    // Cleanup if popup closed without completing
+    const timer = setInterval(() => {
+      if (popup?.closed) { clearInterval(timer); window.removeEventListener('message', handler); }
+    }, 500);
+  }, [googleLoading, handleOAuthSuccess]);
+
+  // PASSKEY: temporarily disabled
+  // useEffect(() => {
+  //   const users = getSavedPasskeyUsers();
+  //   setSavedUsers(users);
+  // }, []);
+
+  if (!open) return null;
+
+  // ═══════════════════════════════════════════════════════════
+  // PASSKEY: temporarily disabled — all handlers commented out
+  // To re-enable: uncomment this block and the state variables above
+  // ═══════════════════════════════════════════════════════════
+  // const handleTouchStart = (e: React.TouchEvent) => { startX.current = e.touches[0].clientX; endX.current = e.touches[0].clientX; isSwiping.current = false; };
+  // const handleTouchMove = (e: React.TouchEvent) => { endX.current = e.touches[0].clientX; if (Math.abs(startX.current - endX.current) > minSwipeDistance) { isSwiping.current = true; } };
+  // const handleTouchEnd = () => { if (isSwiping.current) { const diff = startX.current - endX.current; if (diff > 0 && currentUserIndex < savedUsers.length - 1) { setCurrentUserIndex((prev) => prev + 1); } else if (diff < 0 && currentUserIndex > 0) { setCurrentUserIndex((prev) => prev - 1); } } isSwiping.current = false; };
+  // const handleMouseDown = (e: React.MouseEvent) => { isMouseDown.current = true; startX.current = e.clientX; endX.current = e.clientX; isSwiping.current = false; };
+  // const handleMouseMove = (e: React.MouseEvent) => { if (!isMouseDown.current) return; endX.current = e.clientX; if (Math.abs(startX.current - endX.current) > minSwipeDistance) { isSwiping.current = true; } };
+  // const handleMouseUp = () => { if (!isMouseDown.current) return; isMouseDown.current = false; if (isSwiping.current) { const diff = startX.current - endX.current; if (diff > 0 && currentUserIndex < savedUsers.length - 1) { setCurrentUserIndex((prev) => prev + 1); } else if (diff < 0 && currentUserIndex > 0) { setCurrentUserIndex((prev) => prev - 1); } } isSwiping.current = false; };
+  // const handleMouseLeave = () => { if (isMouseDown.current) { handleMouseUp(); } };
+  // const handleSignupWithPasskey = async () => { ... };
+  // const handleSelectUser = async (savedUser: SavedPasskeyUser) => { ... };
+  // const handleUserClick = () => { if (currentUser) { handleSelectUser(currentUser); } };
+  // const handlePasskeySuccess = async (credential) => { ... };
+  // const handlePasskeyCancel = () => { setSelectedUser(null); setShowPasskeyOverlay(false); };
+  // const handlePasskeyError = (_error: string) => {};
+  // const handleLoginSuccess = async (accessToken, refreshToken, credential, passkeyUsernameFromLogin) => { ... };
+  // const loginWithOtherPasskey = async () => { await requestFCMToken(); setSelectedUser(null); setShowPasskeyOverlay(true); };
+  // ═══════════════════════════════════════════════════════════
 
   return (
-    <div className="fixed inset-0 z-[9000] flex items-end sm:items-center justify-center px-0 sm:px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[9000]" onClick={onClose}>
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
-      {/* Modal */}
+      {/* Modal — absolute center */}
       <div
-        className="relative w-full max-w-sm rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[90dvh] overflow-y-auto animate-[popIn_0.25s_ease-out]"
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-[calc(100%-40px)] max-w-sm rounded-3xl overflow-hidden max-h-[85vh] overflow-y-auto animate-[popIn_0.25s_ease-out]"
         style={{
           background: '#0a0b0f',
           boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
@@ -368,30 +231,42 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
 
         <div className="relative px-6 pt-10 pb-8">
 
-        {/* Logo + Title */}
-        {!currentUser && (
-          <div className="mb-8 text-center">
-            <div className="relative mx-auto mb-5">
-              <div className="absolute inset-0 scale-150 rounded-full opacity-30 blur-xl" style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.3), transparent)' }} />
-              <div className="relative mx-auto h-14 w-14 rounded-[1.2rem] flex items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a0b0f, #111318)', border: '1px solid rgba(0,212,255,0.15)', boxShadow: '0 0 30px rgba(0,212,255,0.1)' }}>
-                <Image src="/images/gao-logo.png" alt="Gao" width={36} height={36} />
+        {/* Logo + Title — check for returning user */}
+        {!currentUser && (() => {
+          let lastUser: { display_name?: string; avatar_url?: string; email?: string } | null = null;
+          try { lastUser = JSON.parse(localStorage.getItem('gao_last_user') || 'null'); } catch { /* ignore */ }
+          const isReturning = !!lastUser?.display_name;
+
+          return (
+            <div className="mb-8 text-center">
+              <div className="relative mx-auto mb-5">
+                <div className="absolute inset-0 scale-150 rounded-full opacity-30 blur-xl" style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.3), transparent)' }} />
+                {isReturning && lastUser?.avatar_url ? (
+                  <div className="relative mx-auto h-16 w-16 rounded-full overflow-hidden" style={{ border: '2px solid rgba(0,212,255,0.2)', boxShadow: '0 0 30px rgba(0,212,255,0.1)' }}>
+                    <img src={lastUser.avatar_url} alt="" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="relative mx-auto h-14 w-14 rounded-[1.2rem] flex items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a0b0f, #111318)', border: '1px solid rgba(0,212,255,0.15)', boxShadow: '0 0 30px rgba(0,212,255,0.1)' }}>
+                    <Image src="/images/gao-logo.png" alt="Gao" width={36} height={36} />
+                  </div>
+                )}
               </div>
+              <h3 className="text-xl font-bold text-white tracking-tight">
+                {isReturning ? `Welcome back, ${lastUser!.display_name!.split(' ')[0]}` : 'Welcome to Gao'}
+              </h3>
+              <p className="mt-1.5 text-[11px] text-[#4a5068]">
+                {isReturning ? 'Tap below to sign in again' : 'Sign in to discover, connect and act'}
+              </p>
             </div>
-            <h3 className="text-xl font-bold text-white tracking-tight">
-              Welcome to Gao
-            </h3>
-            <p className="mt-1.5 text-[11px] text-[#4a5068]">
-              Sign in to discover, connect and act
-            </p>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Social login — always visible on top */}
         {!currentUser && (
           <>
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <button
-                onClick={() => toast.info('Google Sign-In coming soon')}
+                onClick={handleGoogleClick}
                 className="flex items-center justify-center gap-2.5 rounded-2xl py-3.5 cursor-pointer transition-all active:scale-[0.97]"
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
               >
@@ -401,7 +276,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
-                <span className="text-[12px] font-semibold text-white">Google</span>
+                <span className="text-[12px] font-semibold text-white">{googleLoading ? 'Signing in...' : 'Google'}</span>
               </button>
 
               <button
@@ -425,17 +300,10 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
           </>
         )}
 
-        <div
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
-          className="space-y-4"
-        >
-          {currentUser ? (
+        {/* PASSKEY: carousel disabled — only showing passkey buttons */}
+        <div className="space-y-4">
+          {/* PASSKEY: user carousel commented out — to re-enable, restore currentUser state + handlers */}
+          {false ? (
             <>
               {/* USER PROFILE */}
               <motion.div
@@ -631,9 +499,10 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
             </>
           ) : (
             <>
+              {/* PASSKEY: buttons disabled, using toast placeholder */}
               <div className="grid grid-cols-2 gap-2.5">
                 <button
-                  onClick={handleSignupWithPasskey}
+                  onClick={() => toast.info('Passkey coming soon')}
                   className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
                 >
@@ -644,7 +513,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
                   </div>
                 </button>
                 <button
-                  onClick={loginWithOtherPasskey}
+                  onClick={() => toast.info('Passkey restore coming soon')}
                   className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
                 >
@@ -667,9 +536,6 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
               Secured Authentication
             </span>
           </div>
-          <p className="text-[10px] text-[#3a3f4f] text-center">
-            No passwords stored. OAuth 2.0 &amp; on-device biometric only.
-          </p>
         </div>
 
         {/* Guest option */}
@@ -685,6 +551,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
         </div>
       </div>
       </div>
+        {/* PASSKEY: overlay disabled
         {(selectedUser || showPasskeyOverlay) && (
           <PasskeyOverlay
             userId={selectedUser?.userId}
@@ -693,6 +560,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
             onError={handlePasskeyError}
           />
         )}
+        */}
       <style>{`
         @keyframes popIn {
           from { transform: scale(0.95); opacity: 0; }

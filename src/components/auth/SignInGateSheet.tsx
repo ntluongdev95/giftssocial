@@ -98,12 +98,6 @@ export default function SignInGateSheet({
                   Sign In
                 </button>
                 <button
-                  onClick={() => { onClose(); setShowAuth(true); }}
-                  className="w-full rounded-xl border border-[#181c24] py-3 text-sm font-medium text-[#f0f4ff] cursor-pointer"
-                >
-                  Create Account
-                </button>
-                <button
                   onClick={onClose}
                   className="w-full py-2 text-sm text-[#4a5068] cursor-pointer"
                 >

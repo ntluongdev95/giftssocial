@@ -95,6 +95,7 @@ export default function WorldPage() {
     useMapStore();
   const { developers } = useDeveloperStore();
   const [showLayers, setShowLayers] = useState(true);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
@@ -561,15 +562,76 @@ export default function WorldPage() {
           {showLayers && <LayerFilterPanel />}
         </div>
 
-        {/* ── Bottom Summary Grid ─────────────────────── */}
-        <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+12px)] lg:bottom-4 left-0 right-0 z-30 max-w-sm lg:max-w-md mx-auto">
+        {/* ── Bottom Summary ─────────────────────── */}
+        {/* Mobile: collapsed button, tap to expand */}
+        <div className="lg:hidden fixed bottom-[64px] left-0 right-0 z-40 pb-[env(safe-area-inset-bottom,0px)]">
+          {!summaryOpen ? (
+            <div>
+              <button
+                onClick={() => setSummaryOpen(true)}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 cursor-pointer transition-all"
+                style={{ background: 'rgba(10,11,15,0.85)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <div className="flex items-center gap-2">
+                  {[
+                    { count: counts.signals, color: '#3B82F6' },
+                    { count: counts.events, color: '#EF4444' },
+                    { count: counts.offers, color: '#EAB308' },
+                    { count: counts.businesses, color: '#22C55E' },
+                  ].map(({ count, color }, i) => (
+                    <div key={i} className="flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+                      <span className="text-[11px] font-semibold text-white tabular-nums">{count}</span>
+                    </div>
+                  ))}
+                </div>
+                <span className="text-[10px] text-[#4a5068]">Nearby</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a5068" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div
+                className="px-4 py-3"
+                style={{ background: 'rgba(10,11,15,0.92)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-[10px] font-semibold text-[#4a5068] uppercase tracking-wider">Nearby</span>
+                  <button onClick={() => setSummaryOpen(false)} className="text-[#4a5068] cursor-pointer">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {[
+                    { label: 'Live Signals', sub: `${counts.signals} nearby`, count: counts.signals, color: '#3B82F6', type: 'signals' as const },
+                    { label: 'Events Nearby', sub: `${counts.events} upcoming`, count: counts.events, color: '#EF4444', type: 'events' as const },
+                    { label: 'Active Deals', sub: `${counts.offers} offers`, count: counts.offers, color: '#EAB308', type: 'offers' as const },
+                    { label: 'Businesses', sub: `${counts.businesses} open`, count: counts.businesses, color: '#22C55E', type: 'businesses' as const },
+                  ].map(({ label, sub, count, color, type }) => (
+                    <button
+                      key={label}
+                      onClick={() => { handleSummaryClick(type); setSummaryOpen(false); }}
+                      disabled={count === 0}
+                      className="flex items-center gap-2.5 rounded-lg px-1 py-1 -mx-1 transition-colors active:bg-white/5 disabled:opacity-40 disabled:cursor-default cursor-pointer"
+                    >
+                      <span className="text-xl font-light tabular-nums w-6 text-right" style={{ color }}>{count}</span>
+                      <div className="min-w-0 text-left">
+                        <p className="text-[11px] font-medium text-[#f0f4ff] truncate">{label}</p>
+                        <p className="text-[9px] text-[#4a5068] truncate">{sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop: always show full grid */}
+        <div className="hidden lg:block absolute bottom-4 left-4 z-30 w-[360px]">
           <div
-            className="mx-3 rounded-2xl px-3 py-3 lg:px-4 lg:py-4"
-            style={{
-              background: 'rgba(10,11,15,0.88)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              backdropFilter: 'blur(20px)',
-            }}
+            className="mx-3 rounded-2xl px-4 py-4"
+            style={{ background: 'rgba(10,11,15,0.88)', border: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(20px)' }}
           >
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
               {[

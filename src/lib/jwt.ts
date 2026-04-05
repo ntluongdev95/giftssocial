@@ -3,8 +3,8 @@ import { SignJWT, jwtVerify } from 'jose';
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'gao-social-dev-secret-change-in-production'
 );
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
-const REFRESH_EXPIRES_IN = '30d';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
+const REFRESH_EXPIRES_IN = '90d';
 
 export interface TokenPayload {
   sub: string; // user_id

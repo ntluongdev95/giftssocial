@@ -33,14 +33,14 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 604800,
+      expires_in: 2592000,
     });
 
     response.cookies.set('gao_token', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 604800,
+      maxAge: 2592000,
       path: '/',
     });
 
