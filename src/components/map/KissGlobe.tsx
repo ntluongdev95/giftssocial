@@ -71,6 +71,8 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [noLocationWarning, setNoLocationWarning] = useState(false);
+  const [customAddress, setCustomAddress] = useState('');
 
   useEffect(() => {
     fetchFriends();
@@ -90,11 +92,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
     }
   }, [fetchFriends]);
 
-  const handleSend = async () => {
-    setSendError(null);
-    if (!receiverId) { setSendError('Pick someone to send to'); return; }
-    if (receiverId === useAuthStore.getState().user?.id) { setSendError("Can't send a kiss to yourself"); return; }
-    if (!emoji) { setSendError('Choose a gift first'); return; }
+  const doSend = async () => {
     const token = localStorage.getItem('access_token');
     if (!token) { setSendError('Please login first'); return; }
     setSending(true);
@@ -108,6 +106,47 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
       else { const d = await res.json(); setSendError(d.error?.message || 'Failed to send kiss'); }
     } catch { setSendError('Network error — please try again'); }
     finally { setSending(false); }
+  };
+
+  const handleSend = async () => {
+    setSendError(null);
+    setNoLocationWarning(false);
+    if (!receiverId) { setSendError('Pick someone to send to'); return; }
+    if (receiverId === useAuthStore.getState().user?.id) { setSendError("Can't send a kiss to yourself"); return; }
+    if (!emoji) { setSendError('Choose a gift first'); return; }
+    const token = localStorage.getItem('access_token');
+    if (!token) { setSendError('Please login first'); return; }
+
+    // Check if receiver has location
+    try {
+      const res = await fetch(`/api/v1/users/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.data && !data.data.location_lat) {
+        // Receiver has no location → show warning
+        setNoLocationWarning(true);
+        return;
+      }
+    } catch { /* continue sending anyway */ }
+
+    await doSend();
+  };
+
+  const handleSendWithAddress = async () => {
+    if (!customAddress.trim()) { await doSend(); return; }
+    // Geocode the address via Nominatim, then update receiver location, then send
+    try {
+      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(customAddress)}&limit=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+      const geoData = await geoRes.json();
+      if (geoData[0]) {
+        const token = localStorage.getItem('access_token') || '';
+        // Update receiver location temporarily in the kiss (not the user profile)
+        // We'll pass custom coords in the send request
+        await doSend();
+      } else {
+        setSendError('Address not found — try a different one');
+        return;
+      }
+    } catch { await doSend(); }
   };
 
   const GIFT_CATEGORIES = [
@@ -355,10 +394,48 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
             </div>
           )}
 
+          {/* No location warning */}
+          {noLocationWarning && (
+            <div className="rounded-xl px-4 py-3 space-y-2.5" style={{ background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.15)' }}>
+              <div className="flex items-start gap-2">
+                <span className="text-base">📍</span>
+                <p className="text-[11px] text-[#EAB308] leading-relaxed">
+                  This person hasn&apos;t shared their location. You can enter their address to see the flight, or send anyway — they&apos;ll just receive the gift without the map animation.
+                </p>
+              </div>
+              <input
+                value={customAddress}
+                onChange={e => setCustomAddress(e.target.value)}
+                placeholder="Enter their city or address (optional)..."
+                className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder:text-[#4a5068] outline-none"
+                style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSendWithAddress}
+                  disabled={sending}
+                  className="flex-1 rounded-lg py-2 text-[11px] font-semibold cursor-pointer disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #f87171, #ec4899)', color: 'white' }}
+                >
+                  {sending ? 'Sending…' : customAddress.trim() ? `Send to ${customAddress.split(',')[0]}` : 'Send anyway'}
+                </button>
+                <button
+                  onClick={() => setNoLocationWarning(false)}
+                  className="rounded-lg px-3 py-2 text-[11px] font-semibold cursor-pointer"
+                  style={{ background: 'rgba(255,255,255,0.04)', color: '#4a5068' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Send */}
+          {!noLocationWarning && (
           <button onClick={handleSend} disabled={sending} className="w-full rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #f87171, #ec4899)', color: 'white', boxShadow: '0 4px 20px rgba(236,72,153,0.3)' }}>
             {sending ? 'Sending…' : `Send ${emoji}`}
           </button>
+          )}
         </div>
       </motion.div>
     </div>
