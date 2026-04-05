@@ -957,6 +957,22 @@ export default function KissGlobe() {
           <circle cx="22" cy="5" r="2" fill="#fbbf24" opacity="0.7">
             <animate attributeName="opacity" values="0.5;1;0.5" dur="0.6s" repeatCount="indefinite"/>
           </circle>
+          <!-- Exhaust smoke puffs -->
+          <circle cx="20" cy="40" r="2" fill="#94a3b8" opacity="0">
+            <animate attributeName="cy" values="40;48;56" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="r" values="1;3;5" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.5;0.3;0" dur="1.2s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="24" cy="40" r="2" fill="#94a3b8" opacity="0">
+            <animate attributeName="cy" values="40;50;58" dur="1.5s" repeatCount="indefinite" begin="0.3s"/>
+            <animate attributeName="r" values="1;2.5;4" dur="1.5s" repeatCount="indefinite" begin="0.3s"/>
+            <animate attributeName="opacity" values="0.4;0.2;0" dur="1.5s" repeatCount="indefinite" begin="0.3s"/>
+          </circle>
+          <circle cx="22" cy="40" r="1.5" fill="#cbd5e1" opacity="0">
+            <animate attributeName="cy" values="40;46;54" dur="1s" repeatCount="indefinite" begin="0.6s"/>
+            <animate attributeName="r" values="0.5;2;3.5" dur="1s" repeatCount="indefinite" begin="0.6s"/>
+            <animate attributeName="opacity" values="0.6;0.25;0" dur="1s" repeatCount="indefinite" begin="0.6s"/>
+          </circle>
         </g>
       </svg>`;
     } else {
@@ -1064,7 +1080,7 @@ export default function KissGlobe() {
     const isFollowing = () => activeFollowRef.current === kiss.id;
 
     // ── Buttery smooth flight — direct camera control each frame ──
-    const flightMs = isSameCity ? 3000 : isGlobe ? 25000 : 25000; // globe 1 orbit ~25s
+    const flightMs = isSameCity ? 8000 : isGlobe ? 25000 : 25000; // motorbike 8s, plane ~25s
     let t0 = 0;
     // Camera state — lerped every frame for zero jitter
     let camLng = from[0], camLat = from[1], camZoom = 9, camPitch = 0, camBearing = 0;
