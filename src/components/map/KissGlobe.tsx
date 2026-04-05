@@ -59,9 +59,12 @@ function interpolateGreatCircle(from: [number, number], to: [number, number], st
 function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => void; onSent: () => void; defaultReceiverId?: string | null }) {
   const { friends, fetchFriends } = useFriendStore();
   const [following, setFollowing] = useState<{ id: string; name: string; avatar?: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<{ id: string; name: string; avatar?: string }[]>([]);
   const [receiverId, setReceiverId] = useState(defaultReceiverId || '');
   const [friendSearch, setFriendSearch] = useState('');
   const [friendDropdownOpen, setFriendDropdownOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [message, setMessage] = useState('');
   const [emoji, setEmoji] = useState('💋');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
@@ -159,17 +162,44 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
         </div>
 
         <div className="px-5 pb-5 space-y-4">
-          {/* Pick friend — searchable */}
+          {/* Pick recipient — search anyone */}
           <div className="relative">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">Send to</label>
             {(() => {
-              const allPeople = friends.length > 0
-                ? friends.map(f => ({ id: f.id, name: f.display_name, avatar: f.avatar_url }))
-                : following;
-              const selectedPerson = allPeople.find(p => p.id === receiverId);
+              const allPeople = [
+                ...friends.map(f => ({ id: f.id, name: f.display_name, avatar: f.avatar_url, tag: 'Friend' as const })),
+                ...following.filter(f => !friends.some(fr => fr.id === f.id)).map(f => ({ ...f, tag: 'Following' as const })),
+                ...searchResults.filter(s => !friends.some(fr => fr.id === s.id) && !following.some(f => f.id === s.id)).map(s => ({ ...s, tag: 'User' as const })),
+              ];
+              const selectedPerson = allPeople.find(p => p.id === receiverId)
+                || searchResults.find(s => s.id === receiverId);
               const filtered = friendSearch
                 ? allPeople.filter(p => p.name.toLowerCase().includes(friendSearch.toLowerCase()))
                 : allPeople;
+
+              const handleSearchInput = (q: string) => {
+                setFriendSearch(q);
+                if (searchTimer.current) clearTimeout(searchTimer.current);
+                if (q.length >= 2) {
+                  setSearching(true);
+                  searchTimer.current = setTimeout(async () => {
+                    try {
+                      const res = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}&tab=people&limit=10`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        setSearchResults((data.data?.people || []).map((r: Record<string, unknown>) => ({
+                          id: r.id as string, name: r.title as string, avatar: r.image as string | undefined,
+                        })));
+                      }
+                    } catch {}
+                    setSearching(false);
+                  }, 300);
+                } else {
+                  setSearchResults([]);
+                }
+              };
+
+              const tagColor = { Friend: '#34d399', Following: '#00d4ff', User: '#4a5068' };
 
               return (
                 <>
@@ -187,42 +217,45 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
                         <span className="text-white flex-1 truncate">{selectedPerson.name}</span>
                       </>
                     ) : (
-                      <span className="text-[#4a5068] flex-1">Choose a friend...</span>
+                      <span className="text-[#4a5068] flex-1">Search anyone...</span>
                     )}
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a5068" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
                   </button>
 
                   {friendDropdownOpen && (
-                    <div className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-50" style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', maxHeight: '200px' }}>
-                      {allPeople.length > 5 && (
-                        <div className="px-2.5 pt-2.5 pb-1">
-                          <input
-                            value={friendSearch}
-                            onChange={e => setFriendSearch(e.target.value)}
-                            placeholder="Search..."
-                            className="w-full rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-[#4a5068] outline-none"
-                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)' }}
-                            autoFocus
-                          />
-                        </div>
-                      )}
-                      <div className="overflow-y-auto" style={{ maxHeight: allPeople.length > 5 ? '155px' : '200px' }}>
-                        {filtered.length === 0 && (
-                          <p className="text-center text-[10px] text-[#4a5068] py-3">No matches</p>
+                    <div className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-50" style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', maxHeight: '240px' }}>
+                      <div className="px-2.5 pt-2.5 pb-1">
+                        <input
+                          value={friendSearch}
+                          onChange={e => handleSearchInput(e.target.value)}
+                          placeholder="Search people..."
+                          className="w-full rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-[#4a5068] outline-none"
+                          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)' }}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="overflow-y-auto" style={{ maxHeight: '195px' }}>
+                        {searching && <p className="text-center text-[10px] text-[#00d4ff] py-2">Searching...</p>}
+                        {!searching && filtered.length === 0 && friendSearch.length >= 2 && (
+                          <p className="text-center text-[10px] text-[#4a5068] py-3">No results</p>
+                        )}
+                        {!searching && filtered.length === 0 && friendSearch.length < 2 && allPeople.length === 0 && (
+                          <p className="text-center text-[10px] text-[#4a5068] py-3">Type to search people</p>
                         )}
                         {filtered.map(p => (
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => { setReceiverId(p.id); setFriendDropdownOpen(false); setFriendSearch(''); }}
+                            onClick={() => { setReceiverId(p.id); setFriendDropdownOpen(false); setFriendSearch(''); setSearchResults([]); }}
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer transition-colors hover:bg-white/5"
                             style={p.id === receiverId ? { background: 'rgba(0,212,255,0.08)' } : {}}
                           >
                             <div className="h-7 w-7 rounded-full flex items-center justify-center shrink-0 overflow-hidden text-[10px] font-bold" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
                               {p.avatar ? <img src={p.avatar} alt="" className="h-full w-full object-cover" /> : p.name.charAt(0).toUpperCase()}
                             </div>
-                            <span className="text-sm text-white truncate">{p.name}</span>
-                            {p.id === receiverId && <span className="ml-auto text-[#00d4ff] text-xs">✓</span>}
+                            <span className="text-sm text-white truncate flex-1">{p.name}</span>
+                            {'tag' in p && <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: `${tagColor[p.tag as keyof typeof tagColor]}15`, color: tagColor[p.tag as keyof typeof tagColor] }}>{p.tag}</span>}
+                            {p.id === receiverId && <span className="text-[#00d4ff] text-xs shrink-0">✓</span>}
                           </button>
                         ))}
                       </div>
