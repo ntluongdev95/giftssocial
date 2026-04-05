@@ -129,24 +129,37 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const { id, receiver_lat, receiver_lng } = body;
 
-    // If receiver location provided → update kiss coords + mark opened
-    if (receiver_lat && receiver_lng) {
-      const result = await pgPool.query(
-        `UPDATE kisses SET opened = true, opened_at = NOW(), receiver_lat = $3, receiver_lng = $4
-         WHERE id = $1 AND receiver_id = $2 RETURNING *`,
-        [id, userId, receiver_lat, receiver_lng]
-      );
-      if (result.rows.length === 0) return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found' } }, { status: 404 });
-      return NextResponse.json({ data: result.rows[0] });
-    }
-
-    // Just mark as opened
-    const result = await pgPool.query(
-      "UPDATE kisses SET opened = true, opened_at = NOW() WHERE id = $1 AND receiver_id = $2 AND opened = false RETURNING *",
+    // Check kiss exists and belongs to receiver
+    const kiss = await pgPool.query(
+      'SELECT * FROM kisses WHERE id = $1 AND receiver_id = $2',
       [id, userId]
     );
 
-    if (result.rows.length === 0) return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found or already opened' } }, { status: 404 });
+    if (kiss.rows.length === 0) {
+      return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found' } }, { status: 404 });
+    }
+
+    // Check 24h expiry
+    const createdAt = new Date(kiss.rows[0].created_at).getTime();
+    const hoursElapsed = (Date.now() - createdAt) / (1000 * 60 * 60);
+    if (hoursElapsed > 24) {
+      return NextResponse.json({ error: { code: 'expired', message: 'This kiss has expired (24h limit)' } }, { status: 410 });
+    }
+
+    // Update: set opened + optionally update receiver coords
+    const updates = ['opened = true', 'opened_at = NOW()'];
+    const values: unknown[] = [id, userId];
+    let idx = 3;
+
+    if (receiver_lat && receiver_lng) {
+      updates.push(`receiver_lat = $${idx++}`, `receiver_lng = $${idx++}`);
+      values.push(receiver_lat, receiver_lng);
+    }
+
+    const result = await pgPool.query(
+      `UPDATE kisses SET ${updates.join(', ')} WHERE id = $1 AND receiver_id = $2 RETURNING *`,
+      values
+    );
 
     return NextResponse.json({ data: result.rows[0] });
   } catch (err) {
