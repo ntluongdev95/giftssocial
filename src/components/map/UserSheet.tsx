@@ -62,7 +62,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
   const storeAuthed = useAuthStore((s) => s.isAuthed);
   const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
   const isAuthed = storeAuthed || hasCookie;
-  const isFollowing = followingUserIds.has(userId);
+  const isFollowing = isAuthed && followingUserIds.has(userId);
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
