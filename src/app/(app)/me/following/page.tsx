@@ -6,6 +6,8 @@ import { ArrowLeft, Loader2, UserCheck, UserMinus, MessageCircle, Store, Search,
 import { toast } from 'sonner';
 import { useState } from 'react';
 import UserProfileSheet from '@/components/profiles/UserProfileSheet';
+import PrivateChat from '@/components/chat/PrivateChat';
+import { useAuthStore } from '@/stores/auth-store';
 import { useFollow } from '@/hooks/useFollow';
 
 const fetcher = (url: string) => fetch(url, {
@@ -18,6 +20,8 @@ export default function FollowingPage() {
   const follows = (data?.data || []) as Record<string, unknown>[];
   const { follow, unfollow, isFriend } = useFollow();
   const [selectedUser, setSelectedUser] = useState<Record<string, unknown> | null>(null);
+  const [chatUser, setChatUser] = useState<Record<string, unknown> | null>(null);
+  const myUserId = useAuthStore(s => s.user?.id);
   const [search, setSearch] = useState('');
 
   const userFollows = follows.filter(f => f.following_user_id);
@@ -134,7 +138,7 @@ export default function FollowingPage() {
                       onClick={() => setSelectedUser(f)}
                       actions={
                         <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => setSelectedUser(f)} className="h-9 w-9 rounded-xl flex items-center justify-center cursor-pointer" style={{ background: 'rgba(0,212,255,0.08)', color: '#00d4ff' }}>
+                          <button onClick={() => setChatUser(f)} className="h-9 w-9 rounded-xl flex items-center justify-center cursor-pointer" style={{ background: 'rgba(0,212,255,0.08)', color: '#00d4ff' }}>
                             <MessageCircle size={14} />
                           </button>
                           <button onClick={() => handleUnfollowUser(f.following_user_id as string)} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(239,68,68,0.06)', color: '#f87171', border: '1px solid rgba(239,68,68,0.1)' }}>
@@ -170,6 +174,16 @@ export default function FollowingPage() {
           onFollow={() => { follow({ user_id: (selectedUser.following_user_id || selectedUser.id) as string }); mutate(); }}
           onUnfollow={() => { handleUnfollowUser((selectedUser.following_user_id || selectedUser.id) as string); }}
           onClose={() => setSelectedUser(null)}
+        />
+      )}
+
+      {chatUser && (
+        <PrivateChat
+          roomId={`dm_${[myUserId, (chatUser.following_user_id || chatUser.id) as string].sort().join('_')}`}
+          title={(chatUser.user_name || chatUser.display_name || 'User') as string}
+          subtitle={chatUser.user_username ? `@${chatUser.user_username as string}` : 'Direct message'}
+          avatar={(chatUser.user_avatar || chatUser.avatar_url) as string}
+          onClose={() => setChatUser(null)}
         />
       )}
     </div>
