@@ -325,11 +325,31 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
               </div>
               {sendError.includes('location sharing') && (
                 <button
-                  onClick={() => { onClose(); window.location.href = '/me/edit'; }}
+                  onClick={async () => {
+                    setSendError(null);
+                    try {
+                      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
+                      );
+                      const token = localStorage.getItem('access_token');
+                      if (!token) return;
+                      const res = await fetch('/api/v1/users/me', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ location_lat: pos.coords.latitude, location_lng: pos.coords.longitude }),
+                      });
+                      if (res.ok) {
+                        toast.success('Location updated!');
+                        setSendError(null);
+                      } else { setSendError('Failed to save location'); }
+                    } catch {
+                      setSendError('Location permission denied. Please enable it in browser settings.');
+                    }
+                  }}
                   className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-semibold cursor-pointer"
                   style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.15)' }}
                 >
-                  📍 Share your location
+                  📍 Share my location now
                 </button>
               )}
             </div>
