@@ -62,9 +62,11 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
   const [showChat, setShowChat] = useState(false);
   const { followingUserIds, follow, unfollow } = useFollow();
   const storeAuthed = useAuthStore((s) => s.isAuthed);
+  const myUserId = useAuthStore((s) => s.user?.id);
   const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
   const isAuthed = storeAuthed || hasCookie;
-  const isFollowing = isAuthed && followingUserIds.has(userId);
+  const isMe = isAuthed && myUserId === userId;
+  const isFollowing = isAuthed && !isMe && followingUserIds.has(userId);
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
@@ -351,7 +353,8 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
             )}
           </div>
 
-          {/* Footer CTA */}
+          {/* Footer CTA — hide for own profile */}
+          {!isMe && (
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <button
               onClick={toggleFollow}
@@ -371,6 +374,7 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
               )}
             </button>
           </div>
+          )}
         </motion.div>
 
         {/* Photo viewer overlay */}
