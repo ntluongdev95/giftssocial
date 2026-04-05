@@ -421,34 +421,43 @@ export default function WorldPage() {
       }
     }
 
-    // Check for kiss URL param (from notification click)
+    // Kiss handled in separate useEffect below
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle ?kiss= URL param (from notification click) — runs on every navigation
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const kissId = params.get('kiss');
+    if (!kissId) return;
+
     const nofly = params.get('nofly');
-    if (kissId) {
-      const token = localStorage.getItem('access_token') || '';
+    const token = localStorage.getItem('access_token') || '';
+
+    // Delay to let map initialize
+    const timer = setTimeout(() => {
       fetch(`/api/v1/kisses?mine=true&limit=50`, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.json())
         .then(data => {
           const kiss = (data.data || []).find((k: Record<string, unknown>) => k.id === kissId);
-          if (kiss) {
-            if (!nofly && kiss.sender_lat && kiss.receiver_lat) {
-              // FlyTo sender position, then animate to receiver
-              window.dispatchEvent(new CustomEvent('gao-fly-to', {
-                detail: { lng: kiss.sender_lng, lat: kiss.sender_lat, zoom: 4, label: `${kiss.emoji || '💋'} Kiss from ${kiss.sender_name || 'someone'}` }
-              }));
-            }
-            // Mark as opened
-            fetch('/api/v1/kisses', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ id: kissId }),
-            }).catch(() => {});
+          if (kiss && !nofly && kiss.sender_lat && kiss.receiver_lat) {
+            window.dispatchEvent(new CustomEvent('gao-fly-to', {
+              detail: { lng: kiss.sender_lng, lat: kiss.sender_lat, zoom: 4, label: `${kiss.emoji || '💋'} Kiss from ${kiss.sender_name || 'someone'}` }
+            }));
           }
+          // Mark as opened
+          fetch('/api/v1/kisses', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ id: kissId }),
+          }).catch(() => {});
         })
         .catch(() => {});
+
       window.history.replaceState(null, '', '/world');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, []);
 
   // Fetch full entity from API and show detail popup (for search results)
