@@ -406,20 +406,47 @@ export default function WorldPage() {
     : null;
 
   const handleMapReady = useCallback(() => {
-    // Check for flyTo URL param (from business save, event create, etc.)
     const params = new URLSearchParams(window.location.search);
+
+    // Check for flyTo URL param (from business save, event create, etc.)
     const flyTo = params.get('flyTo');
     if (flyTo) {
       const [fLng, fLat, fZoom] = flyTo.split(',').map(Number);
       if (fLng && fLat) {
-        // Enable business layer and fly
         if (!activeLayers.has('business')) toggleLayer('business');
         setTimeout(() => {
           window.dispatchEvent(new CustomEvent('gao-fly-to', { detail: { lng: fLng, lat: fLat, zoom: fZoom || 16 } }));
         }, 500);
-        // Clean URL
         window.history.replaceState(null, '', '/world');
       }
+    }
+
+    // Check for kiss URL param (from notification click)
+    const kissId = params.get('kiss');
+    const nofly = params.get('nofly');
+    if (kissId) {
+      const token = localStorage.getItem('access_token') || '';
+      fetch(`/api/v1/kisses?mine=true&limit=50`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+          const kiss = (data.data || []).find((k: Record<string, unknown>) => k.id === kissId);
+          if (kiss) {
+            if (!nofly && kiss.sender_lat && kiss.receiver_lat) {
+              // FlyTo sender position, then animate to receiver
+              window.dispatchEvent(new CustomEvent('gao-fly-to', {
+                detail: { lng: kiss.sender_lng, lat: kiss.sender_lat, zoom: 4, label: `${kiss.emoji || '💋'} Kiss from ${kiss.sender_name || 'someone'}` }
+              }));
+            }
+            // Mark as opened
+            fetch('/api/v1/kisses', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ id: kissId }),
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+      window.history.replaceState(null, '', '/world');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

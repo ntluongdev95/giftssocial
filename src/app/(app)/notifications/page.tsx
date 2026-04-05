@@ -96,24 +96,35 @@ export default function NotificationsPage() {
                     }
                     if (n.ref_type === 'kiss' && n.ref_id) {
                       const body = (n.body as string) || '';
-                      if (body.includes('Enable location')) {
-                        // Receiver needs to share location first
+                      const needsLocation = body.includes('share your location') || body.includes('Tap here');
+
+                      if (needsLocation) {
+                        // Receiver needs to share location → ask browser → update user + kiss → flyTo
                         navigator.geolocation.getCurrentPosition(
                           async (pos) => {
                             const token = localStorage.getItem('access_token');
                             if (token) {
+                              const lat = pos.coords.latitude;
+                              const lng = pos.coords.longitude;
+                              // Update user location
                               await fetch('/api/v1/users/me', {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ location_lat: pos.coords.latitude, location_lng: pos.coords.longitude }),
+                                body: JSON.stringify({ location_lat: lat, location_lng: lng }),
                               }).catch(() => {});
-                              toast.success('Location updated! Opening map...');
+                              // Update kiss with real receiver location
+                              await fetch('/api/v1/kisses', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ id: n.ref_id, receiver_lat: lat, receiver_lng: lng }),
+                              }).catch(() => {});
+                              toast.success('Location shared! Opening map...');
                             }
                             router.push(`/world?kiss=${n.ref_id}`);
                           },
                           () => {
-                            toast.error('Please enable location in browser settings to see kisses on the map');
-                            router.push(`/world?kiss=${n.ref_id}`);
+                            // Denied → still open kiss but just show the gift, no flyTo
+                            router.push(`/world?kiss=${n.ref_id}&nofly=1`);
                           },
                           { enableHighAccuracy: true, timeout: 10000 }
                         );

@@ -92,9 +92,9 @@ export async function POST(req: NextRequest) {
 
     const receiverHasLocation = !!receiver.rows[0].location_lat;
 
-    // Use 0 as fallback for receiver without location (columns may be NOT NULL)
-    const recLat = receiver.rows[0].location_lat ?? 0;
-    const recLng = receiver.rows[0].location_lng ?? 0;
+    // If receiver has no location, use sender location as placeholder (will be updated when receiver shares location)
+    const recLat = receiver.rows[0].location_lat || sender.rows[0].location_lat;
+    const recLng = receiver.rows[0].location_lng || sender.rows[0].location_lng;
 
     const result = await pgPool.query(
       `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
@@ -106,9 +106,9 @@ export async function POST(req: NextRequest) {
     // Notify receiver
     const senderName = sender.rows[0].display_name || 'Someone';
     if (receiverHasLocation) {
-      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'A top-secret surprise is waiting for you! Open it on the map 🎁✨', 'kiss', result.rows[0].id);
+      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Open it on the map 🎁✨', 'kiss', result.rows[0].id);
     } else {
-      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Enable location sharing to see it fly across the globe! 📍🌍', 'kiss', result.rows[0].id);
+      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Tap here to share your location and see it fly to you! 📍✈️', 'kiss', result.rows[0].id);
     }
 
     return NextResponse.json({ data: result.rows[0] }, { status: 201 });
@@ -126,7 +126,21 @@ export async function PATCH(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized' } }, { status: 401 });
 
-    const { id } = await req.json();
+    const body = await req.json();
+    const { id, receiver_lat, receiver_lng } = body;
+
+    // If receiver location provided → update kiss coords + mark opened
+    if (receiver_lat && receiver_lng) {
+      const result = await pgPool.query(
+        `UPDATE kisses SET opened = true, opened_at = NOW(), receiver_lat = $3, receiver_lng = $4
+         WHERE id = $1 AND receiver_id = $2 RETURNING *`,
+        [id, userId, receiver_lat, receiver_lng]
+      );
+      if (result.rows.length === 0) return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found' } }, { status: 404 });
+      return NextResponse.json({ data: result.rows[0] });
+    }
+
+    // Just mark as opened
     const result = await pgPool.query(
       "UPDATE kisses SET opened = true, opened_at = NOW() WHERE id = $1 AND receiver_id = $2 AND opened = false RETURNING *",
       [id, userId]
