@@ -42,11 +42,11 @@ export function validateCsrf(req: NextRequest): boolean {
   const cookieToken = req.cookies.get(CSRF_COOKIE)?.value;
   const headerToken = req.headers.get(CSRF_HEADER);
 
-  // No CSRF cookie yet (first visit) — skip validation
-  if (!cookieToken) return true;
+  // No CSRF cookie or no header sent — skip (gradual rollout, enforce once frontend sends header)
+  if (!cookieToken || !headerToken) return true;
 
-  // Cookie exists but header missing or mismatch
-  if (!headerToken || headerToken !== cookieToken) return false;
+  // Both present — must match
+  if (headerToken !== cookieToken) return false;
 
   return true;
 }
