@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useFollow } from '@/hooks/useFollow';
 import PrivateChat from '@/components/chat/PrivateChat';
 import SignInGateSheet from '@/components/auth/SignInGateSheet';
-import UserProfileSheet from '@/components/profiles/UserProfileSheet';
+import UserSheet from '@/components/map/UserSheet';
 
 interface SignalData {
   id: string;
@@ -224,17 +224,9 @@ export default function SignalSheet({ signal, onClose }: Props) {
     )}
     <SignInGateSheet action="default" isOpen={showAuthGate} onClose={() => setShowAuthGate(false)} />
     {showAuthorProfile && authorId && (
-      <UserProfileSheet
-        user={{
-          id: authorId,
-          display_name: signal.author_name,
-          username: signal.author_username,
-          avatar_url: signal.author_avatar,
-        }}
-        isFollowing={isFollowingAuthor}
-        isFriend={isAuthorFriend}
-        onFollow={() => { follow({ user_id: authorId }); toast.success('Following!'); }}
-        onUnfollow={() => { unfollow({ user_id: authorId }); toast('Unfollowed'); }}
+      <UserSheet
+        userId={authorId}
+        preview={{ title: signal.author_name || 'User', subtitle: signal.author_username ? `@${signal.author_username}` : undefined, image: signal.author_avatar }}
         onClose={() => setShowAuthorProfile(false)}
       />
     )}
