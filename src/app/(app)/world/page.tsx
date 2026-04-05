@@ -442,7 +442,7 @@ export default function WorldPage() {
           const kiss = (data.data || []).find((k: Record<string, unknown>) => k.id === kissId);
           if (kiss && !nofly && kiss.sender_lat && kiss.receiver_lat) {
             window.dispatchEvent(new CustomEvent('gao-fly-to', {
-              detail: { lng: kiss.sender_lng, lat: kiss.sender_lat, zoom: 4, label: `${kiss.emoji || '💋'} Kiss from ${kiss.sender_name || 'someone'}` }
+              detail: { lng: kiss.sender_lng, lat: kiss.sender_lat, zoom: 4, skipPin: true }
             }));
           }
           // Mark as opened
