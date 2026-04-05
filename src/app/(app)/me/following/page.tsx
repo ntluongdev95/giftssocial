@@ -5,7 +5,7 @@ import useSWR from 'swr';
 import { ArrowLeft, Loader2, UserCheck, UserMinus, MessageCircle, Store, Search, Users, Heart } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
-import UserProfileSheet from '@/components/profiles/UserProfileSheet';
+import UserSheet from '@/components/map/UserSheet';
 import PrivateChat from '@/components/chat/PrivateChat';
 import { useAuthStore } from '@/stores/auth-store';
 import { useFollow } from '@/hooks/useFollow';
@@ -160,19 +160,13 @@ export default function FollowingPage() {
       </div>
 
       {selectedUser && (
-        <UserProfileSheet
-          user={{
-            id: (selectedUser.following_user_id || selectedUser.id) as string,
-            display_name: (selectedUser.user_name || selectedUser.display_name) as string,
-            username: (selectedUser.user_username || selectedUser.username) as string,
-            avatar_url: (selectedUser.user_avatar || selectedUser.avatar_url) as string,
-            bio: (selectedUser.user_bio || selectedUser.bio) as string,
-            photos: (selectedUser.user_photos || selectedUser.photos) as string[],
+        <UserSheet
+          userId={(selectedUser.following_user_id || selectedUser.id) as string}
+          preview={{
+            title: (selectedUser.user_name || selectedUser.display_name || 'User') as string,
+            subtitle: selectedUser.user_username ? `@${selectedUser.user_username as string}` : undefined,
+            image: (selectedUser.user_avatar || selectedUser.avatar_url) as string,
           }}
-          isFollowing={true}
-          isFriend={isFriend((selectedUser.following_user_id || selectedUser.id) as string)}
-          onFollow={() => { follow({ user_id: (selectedUser.following_user_id || selectedUser.id) as string }); mutate(); }}
-          onUnfollow={() => { handleUnfollowUser((selectedUser.following_user_id || selectedUser.id) as string); }}
           onClose={() => setSelectedUser(null)}
         />
       )}
