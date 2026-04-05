@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -25,7 +25,11 @@ export default function Sidebar() {
   const pathname = usePathname();
   const logoutStorage = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
-  const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+  const hasCookie = useSyncExternalStore(
+    (cb) => { const id = setInterval(cb, 1000); return () => clearInterval(id); },
+    () => document.cookie.includes('gao_logged_in=1'),
+    () => false // server snapshot — always false to match SSR
+  );
   const isLoggedIn = !!user || hasCookie;
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
