@@ -56,7 +56,7 @@ export default function AgentTaskSheet({
     try {
       const res = await fetch(`/api/v1/agents/${agentId}/tasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({
           instruction,
           mode: 'execute_with_approval',
@@ -97,7 +97,7 @@ export default function AgentTaskSheet({
     try {
       const res = await fetch(`/api/v1/agents/${agentId}/tasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({
           instruction,
           mode: 'execute',

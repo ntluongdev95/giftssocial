@@ -83,7 +83,7 @@ export default function BookingModal({
     try {
       await fetch('/api/v1/bookings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
         body: JSON.stringify({
           business_id: businessId,
           timeslot: selectedSlot.toISOString(),
