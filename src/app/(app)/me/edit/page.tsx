@@ -146,7 +146,7 @@ export default function EditProfilePage() {
   return (
     <div className="h-full overflow-y-auto">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 lg:px-8 py-3" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-3" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <button onClick={() => router.back()} className="flex items-center gap-2 text-sm text-[#a3adc3] cursor-pointer">
           <ArrowLeft size={18} /> Cancel
         </button>
