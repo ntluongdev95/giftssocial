@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, parseRow } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/profiles/:id ────────────────────────────────────────────
@@ -7,17 +7,18 @@ import { resolveUserId } from '@/lib/resolveUser';
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const db = getDB();
 
-    const result = await pgPool.query('SELECT * FROM profiles WHERE id = $1', [id]);
+    const raw = await db.prepare('SELECT * FROM profiles WHERE id = ?').bind(id).first<Record<string, unknown>>();
 
-    if (result.rows.length === 0 || result.rows[0].status === 'suspended') {
+    if (!raw || raw.status === 'suspended') {
       return NextResponse.json(
         { error: { code: 'not_found', message: 'Profile not found' } },
         { status: 404 }
       );
     }
 
-    const row = result.rows[0];
+    const row = parseRow(raw) as Record<string, unknown>;
     const data: Record<string, unknown> = {
       _id: row.id,
       user_id: row.user_id,
@@ -67,24 +68,25 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     const { id } = await params;
+    const db = getDB();
 
-    const result = await pgPool.query('SELECT user_id FROM profiles WHERE id = $1', [id]);
+    const row = await db.prepare('SELECT user_id FROM profiles WHERE id = ?').bind(id).first<{ user_id: string }>();
 
-    if (result.rows.length === 0) {
+    if (!row) {
       return NextResponse.json(
         { error: { code: 'not_found', message: 'Profile not found' } },
         { status: 404 }
       );
     }
 
-    if (result.rows[0].user_id !== userId) {
+    if (row.user_id !== userId) {
       return NextResponse.json(
         { error: { code: 'forbidden', message: 'Not your profile' } },
         { status: 403 }
       );
     }
 
-    await pgPool.query("UPDATE profiles SET status = 'hidden', updated_at = NOW() WHERE id = $1", [id]);
+    await db.prepare("UPDATE profiles SET status = 'hidden', updated_at = datetime('now') WHERE id = ?").bind(id).run();
 
     return NextResponse.json({ data: { id, status: 'hidden' } });
   } catch (err) {

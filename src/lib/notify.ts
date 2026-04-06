@@ -1,4 +1,4 @@
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 
 /**
  * Create a notification for a user.
@@ -13,11 +13,14 @@ export async function notify(
   refId?: string
 ): Promise<void> {
   try {
-    await pgPool.query(
-      `INSERT INTO notifications (user_id, type, title, body, ref_type, ref_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId, type, title, body, refType || null, refId || null]
-    );
+    const db = getDB();
+    await db
+      .prepare(
+        `INSERT INTO notifications (id, user_id, type, title, body, ref_type, ref_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(genId('ntf_'), userId, type, title, body, refType ?? null, refId ?? null)
+      .run();
   } catch (err) {
     console.error('[Notify]', err);
   }

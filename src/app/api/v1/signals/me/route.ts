@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/signals/me — My signals ─────────────────────────────────
@@ -11,12 +11,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ data: [] });
     }
 
-    const result = await pgPool.query(
-      `SELECT * FROM signals WHERE author_id = $1 AND status != 'hidden' ORDER BY created_at DESC LIMIT 50`,
-      [userId]
-    );
+    const db = getDB();
+    const result = await db.prepare(
+      `SELECT * FROM signals WHERE author_id = ? AND status != 'hidden' ORDER BY created_at DESC LIMIT 50`
+    ).bind(userId).all<Record<string, unknown>>();
 
-    const data = result.rows.map(r => ({
+    const data = result.results.map(r => ({
       ...r,
       location: { type: 'Point', coordinates: [r.location_lng, r.location_lat] },
     }));

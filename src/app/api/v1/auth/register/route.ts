@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
 import { setCsrfCookie } from '@/lib/csrf';
@@ -26,9 +26,11 @@ export async function POST(req: NextRequest) {
 
     const { email, display_name } = parsed.data;
 
+    const db = getDB();
+
     // Check existing
-    const existing = await pgPool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing.rows.length > 0) {
+    const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
+    if (existing) {
       return NextResponse.json(
         { error: { code: 'email_exists', message: 'Email already registered' } },
         { status: 409 }
@@ -36,12 +38,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Insert user
-    const userId = `user_${crypto.randomUUID().replace(/-/g, '')}`;
-    await pgPool.query(
+    const userId = genId('user_');
+    await db.prepare(
       `INSERT INTO users (id, email, display_name, trust_score, trust_level, status)
-       VALUES ($1, $2, $3, 0, 'new', 'active')`,
-      [userId, email, display_name]
-    );
+       VALUES (?, ?, ?, 0, 'new', 'active')`
+    ).bind(userId, email, display_name).run();
 
     // Generate tokens
     const accessToken = await signAccessToken(userId);

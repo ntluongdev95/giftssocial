@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/notifications — List my notifications ───────────────────
@@ -9,12 +9,12 @@ export async function GET(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ data: [] });
 
-    const result = await pgPool.query(
-      `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
-      [userId]
-    );
+    const db = getDB();
+    const result = await db.prepare(
+      `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`
+    ).bind(userId).all<Record<string, unknown>>();
 
-    return NextResponse.json({ data: result.rows });
+    return NextResponse.json({ data: result.results });
   } catch (err) {
     console.error('[Notifications GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch' } }, { status: 500 });
@@ -29,13 +29,14 @@ export async function PATCH(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized' } }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
+    const db = getDB();
 
     if (body.id) {
       // Mark single
-      await pgPool.query('UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2', [body.id, userId]);
+      await db.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').bind(body.id, userId).run();
     } else {
       // Mark all
-      await pgPool.query('UPDATE notifications SET read = true WHERE user_id = $1 AND read = false', [userId]);
+      await db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0').bind(userId).run();
     }
 
     return NextResponse.json({ data: { success: true } });
@@ -52,7 +53,8 @@ export async function DELETE(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized' } }, { status: 401 });
 
-    await pgPool.query('DELETE FROM notifications WHERE user_id = $1', [userId]);
+    const db = getDB();
+    await db.prepare('DELETE FROM notifications WHERE user_id = ?').bind(userId).run();
 
     return NextResponse.json({ data: { success: true } });
   } catch (err) {

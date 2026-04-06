@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, signAccessToken, signRefreshToken } from '@/lib/jwt';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { setAuthCookies, clearAuthCookies } from '@/lib/auth-cookies';
 import { validateRefreshToken, rotateRefreshToken } from '@/lib/session';
 import { setCsrfCookie } from '@/lib/csrf';
@@ -60,13 +60,14 @@ export async function GET(req: NextRequest) {
     const newRefresh = await signRefreshToken(userId);
     await rotateRefreshToken(refreshTokenCookie, newRefresh, userId).catch(() => {});
 
-    const result = await pgPool.query(`SELECT ${USER_FIELDS} FROM users WHERE id = $1`, [userId]);
-    if (result.rows.length === 0) {
+    const db = getDB();
+    const row = await db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).bind(userId).first();
+    if (!row) {
       const response = NextResponse.json({ data: null });
       return clearAuthCookies(response);
     }
 
-    let response = NextResponse.json({ data: result.rows[0] });
+    let response = NextResponse.json({ data: row });
     response = setAuthCookies(response, newAccess, newRefresh);
     return setCsrfCookie(response);
   }
@@ -77,11 +78,12 @@ export async function GET(req: NextRequest) {
   }
 
   // Access token valid — fetch user
-  const result = await pgPool.query(`SELECT ${USER_FIELDS} FROM users WHERE id = $1`, [userId]);
-  if (result.rows.length === 0) {
+  const db = getDB();
+  const row = await db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).bind(userId).first();
+  if (!row) {
     return NextResponse.json({ data: null });
   }
 
-  const response = NextResponse.json({ data: result.rows[0] });
+  const response = NextResponse.json({ data: row });
   return setCsrfCookie(response);
 }

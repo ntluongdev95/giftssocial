@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { z } from 'zod';
 
@@ -8,15 +8,16 @@ import { z } from 'zod';
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const result = await pgPool.query(
+    const db = getDB();
+    const r = await db.prepare(
       `SELECT s.*, u.username AS author_username, u.display_name AS author_name, u.avatar_url AS author_avatar
        FROM signals s LEFT JOIN users u ON u.id = s.author_id
-       WHERE s.id = $1`, [id]
-    );
-    if (result.rows.length === 0) {
+       WHERE s.id = ?`
+    ).bind(id).first<Record<string, unknown>>();
+
+    if (!r) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Signal not found' } }, { status: 404 });
     }
-    const r = result.rows[0];
     return NextResponse.json({ data: { ...r, location: { type: 'Point', coordinates: [r.location_lng, r.location_lat] } } });
   } catch (err) {
     console.error('[Signal GET]', err);
@@ -42,16 +43,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { id } = await params;
+    const db = getDB();
 
     // Check ownership
-    const check = await pgPool.query('SELECT author_id, status, expires_at FROM signals WHERE id = $1', [id]);
-    if (check.rows.length === 0) {
+    const check = await db.prepare('SELECT author_id, status, expires_at FROM signals WHERE id = ?').bind(id).first<{ author_id: string; status: string; expires_at: string }>();
+    if (!check) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Signal not found' } }, { status: 404 });
     }
-    if (check.rows[0].author_id !== userId) {
+    if (check.author_id !== userId) {
       return NextResponse.json({ error: { code: 'forbidden', message: 'Not your signal' } }, { status: 403 });
     }
-    if (check.rows[0].status !== 'active' || new Date(check.rows[0].expires_at) < new Date()) {
+    if (check.status !== 'active' || new Date(check.expires_at) < new Date()) {
       return NextResponse.json({ error: { code: 'expired', message: 'Cannot edit expired signal' } }, { status: 400 });
     }
 
@@ -64,27 +66,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const d = parsed.data;
     const sets: string[] = [];
     const values: unknown[] = [];
-    let idx = 1;
 
-    if (d.title) { sets.push(`title = $${idx++}`); values.push(d.title); }
-    if (d.description !== undefined) { sets.push(`description = $${idx++}`); values.push(d.description); }
-    if (d.category) { sets.push(`category = $${idx++}`); values.push(d.category); }
-    if (d.visibility) { sets.push(`visibility = $${idx++}`); values.push(d.visibility); }
-    if (d.expires_at) { sets.push(`expires_at = $${idx++}`); values.push(d.expires_at); }
+    if (d.title) { sets.push(`title = ?`); values.push(d.title); }
+    if (d.description !== undefined) { sets.push(`description = ?`); values.push(d.description); }
+    if (d.category) { sets.push(`category = ?`); values.push(d.category); }
+    if (d.visibility) { sets.push(`visibility = ?`); values.push(d.visibility); }
+    if (d.expires_at) { sets.push(`expires_at = ?`); values.push(d.expires_at); }
 
     if (sets.length === 0) {
       return NextResponse.json({ error: { code: 'invalid_request', message: 'Nothing to update' } }, { status: 400 });
     }
 
-    sets.push(`updated_at = NOW()`);
+    sets.push(`updated_at = datetime('now')`);
     values.push(id);
 
-    const result = await pgPool.query(
-      `UPDATE signals SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, title, status, updated_at`,
-      values
-    );
+    const row = await db.prepare(
+      `UPDATE signals SET ${sets.join(', ')} WHERE id = ? RETURNING id, title, status, updated_at`
+    ).bind(...values).first();
 
-    return NextResponse.json({ data: result.rows[0] });
+    return NextResponse.json({ data: row });
   } catch (err) {
     console.error('[Signal PATCH]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to update signal' } }, { status: 500 });
@@ -101,18 +101,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     const { id } = await params;
+    const db = getDB();
 
     // Check ownership
-    const check = await pgPool.query('SELECT author_id FROM signals WHERE id = $1', [id]);
-    if (check.rows.length === 0) {
+    const check = await db.prepare('SELECT author_id FROM signals WHERE id = ?').bind(id).first<{ author_id: string }>();
+    if (!check) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Signal not found' } }, { status: 404 });
     }
-    if (check.rows[0].author_id !== userId) {
+    if (check.author_id !== userId) {
       return NextResponse.json({ error: { code: 'forbidden', message: 'Not your signal' } }, { status: 403 });
     }
 
     // Soft delete
-    await pgPool.query("UPDATE signals SET status = 'hidden', updated_at = NOW() WHERE id = $1", [id]);
+    await db.prepare("UPDATE signals SET status = 'hidden', updated_at = datetime('now') WHERE id = ?").bind(id).run();
 
     return NextResponse.json({ data: { id, status: 'hidden' } });
   } catch (err) {

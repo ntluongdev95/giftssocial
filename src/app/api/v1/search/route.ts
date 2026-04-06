@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 
 /**
  * GET /api/v1/search?q=keyword&lat=...&lng=...&tab=top|people|businesses|events|places&limit=20
  *
- * Unified search across all entity types using PostgreSQL ILIKE + distance ranking.
+ * Unified search across all entity types using SQLite LIKE + distance ranking.
  * Returns grouped results for "top" tab, or filtered results for specific tabs.
  */
 export async function GET(req: NextRequest) {
@@ -21,39 +21,37 @@ export async function GET(req: NextRequest) {
   const pattern = `%${q}%`;
   const hasGeo = lat !== 0 && lng !== 0;
 
-  // Distance formula (approximate km using Haversine shortcut)
+  // Distance formula inlined with literal values (SQLite can't use $params in expressions used in ORDER BY)
   const distExpr = hasGeo
-    ? `(6371 * acos(LEAST(1, cos(radians($lat)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($lng)) + sin(radians($lat)) * sin(radians(location_lat)))))`
+    ? `(6371 * acos(LEAST(1, cos(radians(${lat})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(location_lat)))))`
     : '0';
 
-  const distReplace = (sql: string) => sql.replace(/\$lat/g, String(lat)).replace(/\$lng/g, String(lng));
+  const db = getDB();
 
   try {
     const results: Record<string, unknown[]> = { people: [], businesses: [], events: [], circles: [], places: [] };
 
-    // Build queries in parallel for speed (especially important for "top" tab)
     const queries: Promise<void>[] = [];
 
     // ── People (users table) ──
     if (tab === 'top' || tab === 'people') {
       const pLimit = tab === 'top' ? 5 : limit;
       queries.push(
-        pgPool.query(
+        db.prepare(
           `SELECT id, display_name, username, avatar_url, bio, location_lat, location_lng,
-                  ${distReplace(distExpr)} AS distance
+                  ${distExpr} AS distance
            FROM users
            WHERE status = 'active'
-             AND (display_name ILIKE $1 OR username ILIKE $1 OR bio ILIKE $1)
-           ORDER BY ${hasGeo ? 'distance ASC,' : ''} trust_score DESC NULLS LAST
-           LIMIT $2`,
-          [pattern, pLimit]
-        ).then(({ rows }) => {
+             AND (display_name LIKE ? OR username LIKE ? OR bio LIKE ?)
+           ORDER BY ${hasGeo ? 'distance ASC,' : ''} trust_score DESC
+           LIMIT ?`
+        ).bind(pattern, pattern, pattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.people = rows.map(r => ({
             id: r.id, type: 'people',
             title: r.display_name || r.username || 'User',
-            subtitle: r.username ? `@${r.username}` : r.bio?.slice(0, 60) || '',
+            subtitle: r.username ? `@${r.username}` : (r.bio as string)?.slice(0, 60) || '',
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
-            distance: r.distance ? Math.round(r.distance * 10) / 10 : null,
+            distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
           }));
         }).catch(() => {})
       );
@@ -63,20 +61,19 @@ export async function GET(req: NextRequest) {
     if (tab === 'top' || tab === 'businesses') {
       const bLimit = tab === 'top' ? 5 : limit;
       queries.push(
-        pgPool.query(
+        db.prepare(
           `SELECT id, name, category, address, city, avatar_url, location_lat, location_lng, rating, review_count,
-                  ${distReplace(distExpr)} AS distance
+                  ${distExpr} AS distance
            FROM businesses
-           WHERE (name ILIKE $1 OR category ILIKE $1 OR address ILIKE $1 OR city ILIKE $1)
-           ORDER BY ${hasGeo ? 'distance ASC,' : ''} rating DESC NULLS LAST
-           LIMIT $2`,
-          [pattern, bLimit]
-        ).then(({ rows }) => {
+           WHERE (name LIKE ? OR category LIKE ? OR address LIKE ? OR city LIKE ?)
+           ORDER BY ${hasGeo ? 'distance ASC,' : ''} rating DESC
+           LIMIT ?`
+        ).bind(pattern, pattern, pattern, pattern, bLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.businesses = rows.map(r => ({
             id: r.id, type: 'business', title: r.name,
             subtitle: [r.category, r.city].filter(Boolean).join(' · '),
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
-            distance: r.distance ? Math.round(r.distance * 10) / 10 : null,
+            distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             rating: r.rating, reviewCount: r.review_count,
           }));
         }).catch(() => {})
@@ -87,21 +84,20 @@ export async function GET(req: NextRequest) {
     if (tab === 'top' || tab === 'events') {
       const eLimit = tab === 'top' ? 5 : limit;
       queries.push(
-        pgPool.query(
+        db.prepare(
           `SELECT id, title, description, location_name, city, location_lat, location_lng, start_time, status,
-                  ${distReplace(distExpr)} AS distance
+                  ${distExpr} AS distance
            FROM events
-           WHERE (title ILIKE $1 OR description ILIKE $1 OR location_name ILIKE $1 OR city ILIKE $1)
-             AND end_time > NOW()
+           WHERE (title LIKE ? OR description LIKE ? OR location_name LIKE ? OR city LIKE ?)
+             AND end_time > datetime('now')
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} start_time ASC
-           LIMIT $2`,
-          [pattern, eLimit]
-        ).then(({ rows }) => {
+           LIMIT ?`
+        ).bind(pattern, pattern, pattern, pattern, eLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.events = rows.map(r => ({
             id: r.id, type: 'event', title: r.title,
             subtitle: [r.location_name, r.city].filter(Boolean).join(' · '),
             lat: r.location_lat, lng: r.location_lng,
-            distance: r.distance ? Math.round(r.distance * 10) / 10 : null,
+            distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             startTime: r.start_time, status: r.status,
           }));
         }).catch(() => {})
@@ -112,21 +108,20 @@ export async function GET(req: NextRequest) {
     if (tab === 'top' || tab === 'circles') {
       const cLimit = tab === 'top' ? 5 : limit;
       queries.push(
-        pgPool.query(
+        db.prepare(
           `SELECT id, name, slug, category, city, avatar_url, description, member_count, location_lat, location_lng,
-                  ${distReplace(distExpr)} AS distance
+                  ${distExpr} AS distance
            FROM circles
            WHERE status = 'active'
-             AND (name ILIKE $1 OR category ILIKE $1 OR city ILIKE $1 OR description ILIKE $1)
-           ORDER BY ${hasGeo ? 'distance ASC,' : ''} member_count DESC NULLS LAST
-           LIMIT $2`,
-          [pattern, cLimit]
-        ).then(({ rows }) => {
+             AND (name LIKE ? OR category LIKE ? OR city LIKE ? OR description LIKE ?)
+           ORDER BY ${hasGeo ? 'distance ASC,' : ''} member_count DESC
+           LIMIT ?`
+        ).bind(pattern, pattern, pattern, pattern, cLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.circles = rows.map(r => ({
             id: r.id, type: 'circle', title: r.name,
             subtitle: [r.category, r.city].filter(Boolean).join(' · '),
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
-            distance: r.distance ? Math.round(r.distance * 10) / 10 : null,
+            distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             memberCount: r.member_count,
           }));
         }).catch(() => {})

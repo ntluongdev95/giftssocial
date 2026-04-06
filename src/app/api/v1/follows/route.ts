@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 
@@ -15,18 +15,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: { code: 'invalid_request', message: 'Provide user_id, business_id, or circle_id' } }, { status: 400 });
     }
 
-    await pgPool.query(
-      `INSERT INTO follows (follower_id, following_user_id, following_business_id, following_circle_id)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT DO NOTHING`,
-      [userId, user_id || null, business_id || null, circle_id || null]
-    );
+    const db = getDB();
 
-    // Update counts
-    if (user_id) {
-      await pgPool.query('UPDATE users SET followers_count = followers_count + 1 WHERE id = $1', [user_id]).catch(() => {});
-      await pgPool.query('UPDATE users SET following_count = following_count + 1 WHERE id = $1', [userId]).catch(() => {});
-      notify(user_id, 'follow_new', 'New follower!', 'Someone started following you', 'user', userId);
+    // Check if already following to avoid duplicate
+    const existing = await db.prepare(
+      'SELECT id FROM follows WHERE follower_id = ? AND following_user_id IS ? AND following_business_id IS ? AND following_circle_id IS ?'
+    ).bind(userId, user_id || null, business_id || null, circle_id || null).first();
+
+    if (!existing) {
+      const id = genId('fol_');
+      await db.prepare(
+        `INSERT INTO follows (id, follower_id, following_user_id, following_business_id, following_circle_id)
+         VALUES (?, ?, ?, ?, ?)`
+      ).bind(id, userId, user_id || null, business_id || null, circle_id || null).run();
+
+      // Update counts
+      if (user_id) {
+        await db.prepare('UPDATE users SET followers_count = followers_count + 1 WHERE id = ?').bind(user_id).run().catch(() => {});
+        await db.prepare('UPDATE users SET following_count = following_count + 1 WHERE id = ?').bind(userId).run().catch(() => {});
+        notify(user_id, 'follow_new', 'New follower!', 'Someone started following you', 'user', userId);
+      }
     }
 
     return NextResponse.json({ data: { following: true } }, { status: 201 });
@@ -45,19 +53,22 @@ export async function DELETE(req: NextRequest) {
 
     const { user_id, business_id, circle_id } = await req.json();
 
-    let condition = 'follower_id = $1';
-    const values: unknown[] = [userId];
+    const db = getDB();
+    let result;
 
-    if (user_id) { condition += ' AND following_user_id = $2'; values.push(user_id); }
-    else if (business_id) { condition += ' AND following_business_id = $2'; values.push(business_id); }
-    else if (circle_id) { condition += ' AND following_circle_id = $2'; values.push(circle_id); }
-    else return NextResponse.json({ error: { code: 'invalid_request' } }, { status: 400 });
+    if (user_id) {
+      result = await db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_user_id = ?').bind(userId, user_id).run();
+    } else if (business_id) {
+      result = await db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_business_id = ?').bind(userId, business_id).run();
+    } else if (circle_id) {
+      result = await db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_circle_id = ?').bind(userId, circle_id).run();
+    } else {
+      return NextResponse.json({ error: { code: 'invalid_request' } }, { status: 400 });
+    }
 
-    const result = await pgPool.query(`DELETE FROM follows WHERE ${condition} RETURNING id`, values);
-
-    if (result.rows.length > 0 && user_id) {
-      await pgPool.query('UPDATE users SET followers_count = GREATEST(followers_count - 1, 0) WHERE id = $1', [user_id]).catch(() => {});
-      await pgPool.query('UPDATE users SET following_count = GREATEST(following_count - 1, 0) WHERE id = $1', [userId]).catch(() => {});
+    if ((result.meta?.changes ?? 0) > 0 && user_id) {
+      await db.prepare('UPDATE users SET followers_count = MAX(followers_count - 1, 0) WHERE id = ?').bind(user_id).run().catch(() => {});
+      await db.prepare('UPDATE users SET following_count = MAX(following_count - 1, 0) WHERE id = ?').bind(userId).run().catch(() => {});
     }
 
     return NextResponse.json({ data: { following: false } });
@@ -76,17 +87,17 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = req.nextUrl;
     const type = searchParams.get('type') || 'following';
+    const db = getDB();
 
     if (type === 'followers') {
-      const result = await pgPool.query(
+      const result = await db.prepare(
         `SELECT f.*, u.username, u.display_name, u.avatar_url, u.bio, u.photos, u.trust_level
          FROM follows f LEFT JOIN users u ON u.id = f.follower_id
-         WHERE f.following_user_id = $1 ORDER BY f.created_at DESC LIMIT 100`,
-        [userId]
-      );
-      return NextResponse.json({ data: result.rows });
+         WHERE f.following_user_id = ? ORDER BY f.created_at DESC LIMIT 100`
+      ).bind(userId).all<Record<string, unknown>>();
+      return NextResponse.json({ data: result.results });
     } else {
-      const result = await pgPool.query(
+      const result = await db.prepare(
         `SELECT f.*, u.username AS user_username, u.display_name AS user_name, u.avatar_url AS user_avatar, u.bio AS user_bio, u.photos AS user_photos,
                 b.name AS biz_name, b.category AS biz_category,
                 c.name AS circle_name, c.category AS circle_category
@@ -94,10 +105,9 @@ export async function GET(req: NextRequest) {
          LEFT JOIN users u ON u.id = f.following_user_id
          LEFT JOIN businesses b ON b.id = f.following_business_id
          LEFT JOIN circles c ON c.id = f.following_circle_id
-         WHERE f.follower_id = $1 ORDER BY f.created_at DESC LIMIT 100`,
-        [userId]
-      );
-      return NextResponse.json({ data: result.rows });
+         WHERE f.follower_id = ? ORDER BY f.created_at DESC LIMIT 100`
+      ).bind(userId).all<Record<string, unknown>>();
+      return NextResponse.json({ data: result.results });
     }
   } catch (err) {
     console.error('[Follows GET]', err);

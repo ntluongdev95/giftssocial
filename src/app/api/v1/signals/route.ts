@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
-
-// ─── Visibility filter helper ───────────────────────────────────────────
-// public → everyone sees
-// circle → only members of target_circle_id
-// private → only the author
-// trusted_only → only users with trust_score >= 30
 
 // ─── Default durations per signal type ───────────────────────────────────
 
@@ -30,53 +24,50 @@ export async function GET(req: NextRequest) {
     // Resolve caller for visibility filtering
     const userId = await resolveUserId(req).catch(() => null);
 
-    const conditions: string[] = ["s.status = 'active'", 's.expires_at > NOW()'];
+    const conditions: string[] = ["s.status = 'active'", "s.expires_at > datetime('now')"];
     const values: unknown[] = [];
-    let idx = 1;
 
     // Visibility filter: only show signals the user is allowed to see
     if (userId) {
       conditions.push(`(
         s.visibility = 'public'
         OR (s.visibility = 'circle' AND s.target_circle_id IN (
-          SELECT circle_id FROM circle_members WHERE user_id = $${idx} AND status = 'active'
+          SELECT circle_id FROM circle_members WHERE user_id = ? AND status = 'active'
         ))
-        OR s.author_id = $${idx}
+        OR s.author_id = ?
         OR (s.visibility = 'trusted_only' AND EXISTS (
-          SELECT 1 FROM users WHERE id = $${idx} AND trust_score >= 30
+          SELECT 1 FROM users WHERE id = ? AND trust_score >= 30
         ))
       )`);
-      values.push(userId);
-      idx++;
+      values.push(userId, userId, userId);
     } else {
       // Not logged in → only public signals
       conditions.push("s.visibility = 'public'");
     }
 
     if (types && types.length > 0) {
-      conditions.push(`s.type = ANY($${idx++})`);
-      values.push(types);
+      conditions.push(`s.type IN (${types.map(() => '?').join(',')})`);
+      values.push(...types);
     }
 
     if (lat !== 0 || lng !== 0) {
-      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians($${idx})) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(s.location_lat))))) < $${idx + 2}`);
-      values.push(lat, lng, radiusKm);
-      idx += 3;
+      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(s.location_lat))))) < ?`);
+      values.push(lat, lng, lat, radiusKm);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
-    const result = await pgPool.query(
+    const db = getDB();
+    const result = await db.prepare(
       `SELECT s.*, u.username AS author_username, u.display_name AS author_name, u.avatar_url AS author_avatar, u.trust_level AS author_trust_level
        FROM signals s
        LEFT JOIN users u ON u.id = s.author_id
        ${where}
        ORDER BY s.created_at DESC
-       LIMIT $${idx}`,
-      [...values, limit]
-    );
+       LIMIT ?`
+    ).bind(...values, limit).all<Record<string, unknown>>();
 
     // Transform to frontend format
-    const data = result.rows.map(r => ({
+    const data = result.results.map(r => ({
       ...r,
       location: { type: 'Point', coordinates: [r.location_lng, r.location_lat] },
     }));
@@ -147,48 +138,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const db = getDB();
+
     // Get trust score from local users table
     let trustScore = 0;
     try {
-      const userRes = await pgPool.query('SELECT trust_score FROM users WHERE id = $1', [userId]);
-      if (userRes.rows.length > 0) trustScore = userRes.rows[0].trust_score;
+      const userRow = await db.prepare('SELECT trust_score FROM users WHERE id = ?').bind(userId).first<{ trust_score: number }>();
+      if (userRow) trustScore = userRow.trust_score;
     } catch {}
 
-    const result = await pgPool.query(
-      `INSERT INTO signals (author_id, type, title, description, category, location_lat, location_lng, radius, visibility, target_circle_id, target_business_id, trust_score_snapshot, verified, expires_at, metadata)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       RETURNING id, type, title, status, created_at, expires_at`,
-      [
-        userId, d.type, d.title, d.description || '', d.category,
-        latVal, lngVal, d.radius, d.visibility,
-        d.target_circle_id || null, d.target_business_id || null,
-        trustScore, trustScore >= 30, expiresAt,
-        JSON.stringify(d.metadata),
-      ]
-    );
+    const id = genId('sig_');
+    const row = await db.prepare(
+      `INSERT INTO signals (id, author_id, type, title, description, category, location_lat, location_lng, radius, visibility, target_circle_id, target_business_id, trust_score_snapshot, verified, expires_at, metadata)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       RETURNING id, type, title, status, created_at, expires_at`
+    ).bind(
+      id, userId, d.type, d.title, d.description || '', d.category,
+      latVal, lngVal, d.radius, d.visibility,
+      d.target_circle_id || null, d.target_business_id || null,
+      trustScore, trustScore >= 30 ? 1 : 0, expiresAt.toISOString(),
+      JSON.stringify(d.metadata),
+    ).first<Record<string, unknown>>();
 
     // Notify circle members if signal is for a circle
     if (d.visibility === 'circle' && d.target_circle_id) {
       try {
-        const authorName = await pgPool.query('SELECT display_name, username FROM users WHERE id = $1', [userId]);
-        const name = authorName.rows[0]?.display_name || authorName.rows[0]?.username || 'Someone';
-        const circleName = await pgPool.query('SELECT name FROM circles WHERE id = $1', [d.target_circle_id]);
-        const cName = circleName.rows[0]?.name || 'your circle';
+        const authorRow = await db.prepare('SELECT display_name, username FROM users WHERE id = ?').bind(userId).first<{ display_name: string; username: string }>();
+        const name = authorRow?.display_name || authorRow?.username || 'Someone';
+        const circleRow = await db.prepare('SELECT name FROM circles WHERE id = ?').bind(d.target_circle_id).first<{ name: string }>();
+        const cName = circleRow?.name || 'your circle';
         const typeLabel = d.type === 'event' ? 'event' : 'signal';
 
         // Get all active members except the author
-        const members = await pgPool.query(
-          "SELECT user_id FROM circle_members WHERE circle_id = $1 AND status = 'active' AND user_id != $2",
-          [d.target_circle_id, userId]
-        );
+        const members = await db.prepare(
+          "SELECT user_id FROM circle_members WHERE circle_id = ? AND status = 'active' AND user_id != ?"
+        ).bind(d.target_circle_id, userId).all<{ user_id: string }>();
 
-        for (const m of members.rows) {
+        for (const m of members.results) {
           notify(m.user_id, 'circle_activity', `New ${typeLabel} in ${cName}`, `${name}: ${d.title}`, 'circle', d.target_circle_id);
         }
       } catch {}
     }
 
-    return NextResponse.json({ data: result.rows[0] }, { status: 201 });
+    return NextResponse.json({ data: row }, { status: 201 });
   } catch (err) {
     console.error('[Signals POST]', err);
     return NextResponse.json(

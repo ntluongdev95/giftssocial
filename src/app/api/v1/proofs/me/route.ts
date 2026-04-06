@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 export async function GET(req: NextRequest) {
@@ -7,12 +7,12 @@ export async function GET(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ data: [] });
 
-    const result = await pgPool.query(
-      'SELECT * FROM proofs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
-      [userId]
-    );
+    const db = getDB();
+    const result = await db.prepare(
+      'SELECT * FROM proofs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+    ).bind(userId).all<Record<string, unknown>>();
 
-    return NextResponse.json({ data: result.rows });
+    return NextResponse.json({ data: result.results });
   } catch (err) {
     console.error('[Proofs Me GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch' } }, { status: 500 });

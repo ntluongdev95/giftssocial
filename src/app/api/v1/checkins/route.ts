@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 
@@ -16,39 +16,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: { code: 'invalid_request', message: 'target_type, location_lat, location_lng required' } }, { status: 400 });
     }
 
-    // Create checkin
-    const result = await pgPool.query(
-      `INSERT INTO checkins (user_id, target_type, target_id, location_lat, location_lng, method, booking_id, verified)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
-      [userId, target_type, target_id || null, location_lat, location_lng, method || 'location', booking_id || null]
-    );
+    const db = getDB();
+    const id = genId('ci_');
 
-    const checkin = result.rows[0];
+    // Create checkin
+    const checkin = await db.prepare(
+      `INSERT INTO checkins (id, user_id, target_type, target_id, location_lat, location_lng, method, booking_id, verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1) RETURNING *`
+    ).bind(id, userId, target_type, target_id || null, location_lat, location_lng, method || 'location', booking_id || null).first<Record<string, unknown>>();
 
     // Auto-create proof
-    await pgPool.query(
-      `INSERT INTO proofs (user_id, proof_type, target_type, target_id, evidence_type, trust_points, verified)
-       VALUES ($1, 'checkin_verified', $2, $3, $4, 1, true)`,
-      [userId, target_type, target_id || null, method || 'location']
-    ).catch(() => {});
-
-    // Recalculate trust
-    await pgPool.query('SELECT recalculate_trust_score($1)', [userId]).catch(() => {});
+    const proofId = genId('prf_');
+    await db.prepare(
+      `INSERT INTO proofs (id, user_id, proof_type, target_type, target_id, evidence_type, trust_points, verified)
+       VALUES (?, ?, 'checkin_verified', ?, ?, ?, 1, 1)`
+    ).bind(proofId, userId, target_type, target_id || null, method || 'location').run().catch(() => {});
 
     // Earn Gao points
-    await pgPool.query('UPDATE users SET gao_points = gao_points + 5, updated_at = NOW() WHERE id = $1', [userId]).catch(() => {});
-    await pgPool.query(
-      `INSERT INTO wallet_transactions (user_id, type, amount, balance_after, source, ref_type, ref_id, description)
-       VALUES ($1, 'earn', 5, (SELECT gao_points FROM users WHERE id = $1), 'checkin', 'checkin', $2, 'Check-in reward')`,
-      [userId, checkin.id]
-    ).catch(() => {});
+    await db.prepare("UPDATE users SET gao_points = gao_points + 5, updated_at = datetime('now') WHERE id = ?").bind(userId).run().catch(() => {});
+    const userRow = await db.prepare('SELECT gao_points FROM users WHERE id = ?').bind(userId).first<{ gao_points: number }>();
+    const newBalance = userRow?.gao_points ?? 0;
+    const txId = genId('tx_');
+    await db.prepare(
+      `INSERT INTO wallet_transactions (id, user_id, type, amount, balance_after, source, ref_type, ref_id, description)
+       VALUES (?, ?, 'earn', 5, ?, 'checkin', 'checkin', ?, 'Check-in reward')`
+    ).bind(txId, userId, newBalance, checkin?.id || id).run().catch(() => {});
 
     // Notification
-    notify(userId, 'proof_earned', 'Check-in verified! +5 Gao Points', `Earned proof at ${target_type}`, 'checkin', checkin.id);
+    notify(userId, 'proof_earned', 'Check-in verified! +5 Gao Points', `Earned proof at ${target_type}`, 'checkin', checkin?.id as string || id);
 
     // If business checkin, update business proof count
     if (target_type === 'business' && target_id) {
-      await pgPool.query('UPDATE businesses SET proof_count = proof_count + 1 WHERE id = $1', [target_id]).catch(() => {});
+      await db.prepare('UPDATE businesses SET proof_count = proof_count + 1 WHERE id = ?').bind(target_id).run().catch(() => {});
     }
 
     return NextResponse.json({ data: { ...checkin, points_earned: 5 } }, { status: 201 });
@@ -65,11 +64,11 @@ export async function GET(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ data: [] });
 
-    const result = await pgPool.query(
-      'SELECT * FROM checkins WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
-      [userId]
-    );
-    return NextResponse.json({ data: result.rows });
+    const db = getDB();
+    const result = await db.prepare(
+      'SELECT * FROM checkins WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+    ).bind(userId).all<Record<string, unknown>>();
+    return NextResponse.json({ data: result.results });
   } catch (err) {
     console.error('[Checkins GET]', err);
     return NextResponse.json({ error: { code: 'internal_error' } }, { status: 500 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { USER_API_URL, APP_TYPE_GAO_DOMAINS } from '@/types/constants';
 
 // ─── POST /api/v1/users/sync — Sync external user to local DB ───────────
@@ -44,37 +44,58 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Upsert into local users table
-    const result = await pgPool.query(
-      `INSERT INTO users (id, username, display_name, email, phone, avatar_url, bio, location_lat, location_lng, city, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         username = COALESCE(EXCLUDED.username, users.username),
-         display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-         email = COALESCE(EXCLUDED.email, users.email),
-         phone = COALESCE(EXCLUDED.phone, users.phone),
-         avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
-         bio = COALESCE(EXCLUDED.bio, users.bio),
-         last_seen_at = NOW(),
-         updated_at = NOW()
-       RETURNING id, username, display_name, avatar_url, trust_score, trust_level, badges, gao_points, gao_domain,
-                 proofs_count, bookings_count, reviews_count, circles_count, followers_count, following_count,
-                 created_at`,
-      [
+    const db = getDB();
+
+    // SELECT+INSERT/UPDATE upsert pattern (no ON CONFLICT on id needed)
+    const existing = await db.prepare('SELECT id FROM users WHERE id = ?').bind(u.id).first<{ id: string }>();
+
+    const displayName = u.full_name || u.display_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || null;
+
+    if (existing) {
+      await db.prepare(
+        `UPDATE users SET
+           username = COALESCE(?, username),
+           display_name = COALESCE(?, display_name),
+           email = COALESCE(?, email),
+           phone = COALESCE(?, phone),
+           avatar_url = COALESCE(?, avatar_url),
+           bio = COALESCE(?, bio),
+           last_seen_at = datetime('now'),
+           updated_at = datetime('now')
+         WHERE id = ?`
+      ).bind(
+        u.username || null,
+        displayName,
+        u.email || null,
+        u.phone_number || null,
+        u.avatar_url || null,
+        u.bio || null,
+        u.id
+      ).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO users (id, username, display_name, email, phone, avatar_url, bio, location_lat, location_lng, city, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(
         u.id,
         u.username || null,
-        u.full_name || u.display_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || null,
+        displayName,
         u.email || null,
         u.phone_number || null,
         u.avatar_url || null,
         u.bio || null,
         u.location_lat || null,
         u.location_lng || null,
-        u.city || null,
-      ]
-    );
+        u.city || null
+      ).run();
+    }
 
-    const localUser = result.rows[0];
+    const localUser = await db.prepare(
+      `SELECT id, username, display_name, avatar_url, trust_score, trust_level, badges, gao_points, gao_domain,
+              proofs_count, bookings_count, reviews_count, circles_count, followers_count, following_count,
+              created_at
+       FROM users WHERE id = ?`
+    ).bind(u.id).first();
 
     return NextResponse.json({ data: localUser });
   } catch (err) {

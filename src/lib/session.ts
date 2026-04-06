@@ -1,10 +1,7 @@
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 
 const REFRESH_TTL_DAYS = 90;
 
-/**
- * Hash a refresh token for storage (never store raw tokens).
- */
 async function hashToken(token: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(token);
@@ -12,135 +9,120 @@ async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Create a new session when user logs in.
- */
 export async function createSession(
   userId: string,
   refreshToken: string,
   req?: { headers: { get(name: string): string | null } }
 ): Promise<string> {
+  const db = getDB();
   const hash = await hashToken(refreshToken);
   const deviceInfo = req?.headers.get('user-agent')?.slice(0, 255) || null;
   const ip = req?.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     || req?.headers.get('x-real-ip')
     || null;
-  const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 86400_000);
+  const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 86400_000).toISOString();
+  const id = genId('sess_');
 
-  const { rows } = await pgPool.query(
-    `INSERT INTO sessions (user_id, refresh_token_hash, device_info, ip_address, expires_at)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id`,
-    [userId, hash, deviceInfo, ip, expiresAt]
-  );
-  return rows[0].id;
+  await db.prepare(
+    `INSERT INTO sessions (id, user_id, refresh_token_hash, device_info, ip_address, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(id, userId, hash, deviceInfo, ip, expiresAt).run();
+
+  return id;
 }
 
-/**
- * Validate a refresh token against the sessions table.
- * Returns the session if valid, null if revoked/expired/not found.
- */
 export async function validateRefreshToken(
   refreshToken: string
 ): Promise<{ session_id: string; user_id: string } | null> {
+  const db = getDB();
   const hash = await hashToken(refreshToken);
-  const { rows } = await pgPool.query(
-    `SELECT id, user_id FROM sessions
-     WHERE refresh_token_hash = $1
-       AND is_revoked = false
-       AND expires_at > NOW()`,
-    [hash]
-  );
-  if (rows.length === 0) return null;
 
-  // Update last_active
-  pgPool.query('UPDATE sessions SET last_active_at = NOW() WHERE id = $1', [rows[0].id]).catch(() => {});
+  const row = await db
+    .prepare(
+      `SELECT id, user_id FROM sessions
+       WHERE refresh_token_hash = ?
+         AND is_revoked = 0
+         AND expires_at > datetime('now')`
+    )
+    .bind(hash)
+    .first<{ id: string; user_id: string }>();
 
-  return { session_id: rows[0].id, user_id: rows[0].user_id };
+  if (!row) return null;
+
+  // Fire-and-forget: update last_active
+  db.prepare(`UPDATE sessions SET last_active_at = datetime('now') WHERE id = ?`)
+    .bind(row.id).run().catch(() => {});
+
+  return { session_id: row.id, user_id: row.user_id };
 }
 
-/**
- * Rotate refresh token: revoke old, create new session entry.
- * This prevents replay attacks with stolen refresh tokens.
- */
 export async function rotateRefreshToken(
   oldRefreshToken: string,
   newRefreshToken: string,
   userId: string
 ): Promise<void> {
+  const db = getDB();
   const oldHash = await hashToken(oldRefreshToken);
   const newHash = await hashToken(newRefreshToken);
-  const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 86400_000);
+  const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 86400_000).toISOString();
+  const newId = genId('sess_');
 
-  // Revoke old + create new in a transaction
-  const client = await pgPool.connect();
-  try {
-    await client.query('BEGIN');
+  // Get device info from old session before revoking
+  const old = await db
+    .prepare('SELECT device_info, ip_address FROM sessions WHERE refresh_token_hash = ? AND is_revoked = 0')
+    .bind(oldHash)
+    .first<{ device_info: string | null; ip_address: string | null }>();
 
-    // Get old session info to copy device_info/ip
-    const { rows } = await client.query(
-      'UPDATE sessions SET is_revoked = true WHERE refresh_token_hash = $1 RETURNING device_info, ip_address',
-      [oldHash]
-    );
-    const old = rows[0] || {};
-
-    await client.query(
-      `INSERT INTO sessions (user_id, refresh_token_hash, device_info, ip_address, expires_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [userId, newHash, old.device_info, old.ip_address, expiresAt]
-    );
-
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  // Revoke old + create new atomically via batch
+  await db.batch([
+    db.prepare('UPDATE sessions SET is_revoked = 1 WHERE refresh_token_hash = ?').bind(oldHash),
+    db.prepare(
+      `INSERT INTO sessions (id, user_id, refresh_token_hash, device_info, ip_address, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(newId, userId, newHash, old?.device_info ?? null, old?.ip_address ?? null, expiresAt),
+  ]);
 }
 
-/**
- * Revoke a specific session (single device logout).
- */
 export async function revokeSession(sessionId: string, userId: string): Promise<boolean> {
-  const { rowCount } = await pgPool.query(
-    'UPDATE sessions SET is_revoked = true WHERE id = $1 AND user_id = $2',
-    [sessionId, userId]
-  );
-  return (rowCount ?? 0) > 0;
+  const db = getDB();
+  const result = await db
+    .prepare('UPDATE sessions SET is_revoked = 1 WHERE id = ? AND user_id = ?')
+    .bind(sessionId, userId)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
 }
 
-/**
- * Revoke all sessions for a user (logout all devices).
- */
 export async function revokeAllSessions(userId: string): Promise<number> {
-  const { rowCount } = await pgPool.query(
-    'UPDATE sessions SET is_revoked = true WHERE user_id = $1 AND is_revoked = false',
-    [userId]
-  );
-  return rowCount ?? 0;
+  const db = getDB();
+  const result = await db
+    .prepare('UPDATE sessions SET is_revoked = 1 WHERE user_id = ? AND is_revoked = 0')
+    .bind(userId)
+    .run();
+  return result.meta?.changes ?? 0;
 }
 
-/**
- * List active sessions for a user (for "manage devices" UI).
- */
 export async function listActiveSessions(userId: string) {
-  const { rows } = await pgPool.query(
-    `SELECT id, device_info, ip_address, last_active_at, created_at
-     FROM sessions
-     WHERE user_id = $1 AND is_revoked = false AND expires_at > NOW()
-     ORDER BY last_active_at DESC`,
-    [userId]
-  );
-  return rows;
+  const db = getDB();
+  const result = await db
+    .prepare(
+      `SELECT id, device_info, ip_address, last_active_at, created_at
+       FROM sessions
+       WHERE user_id = ? AND is_revoked = 0 AND expires_at > datetime('now')
+       ORDER BY last_active_at DESC`
+    )
+    .bind(userId)
+    .all<Record<string, unknown>>();
+  return result.results;
 }
 
-/**
- * Cleanup expired/revoked sessions (call periodically).
- */
 export async function cleanupSessions(): Promise<number> {
-  const { rowCount } = await pgPool.query(
-    'DELETE FROM sessions WHERE expires_at < NOW() OR (is_revoked = true AND last_active_at < NOW() - INTERVAL \'7 days\')'
-  );
-  return rowCount ?? 0;
+  const db = getDB();
+  const result = await db
+    .prepare(
+      `DELETE FROM sessions
+       WHERE expires_at < datetime('now')
+          OR (is_revoked = 1 AND last_active_at < datetime('now', '-7 days'))`
+    )
+    .run();
+  return result.meta?.changes ?? 0;
 }

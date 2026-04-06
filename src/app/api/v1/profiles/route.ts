@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB, genId, parseRows } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/profiles — Search profiles by location / industry / skills ──
@@ -21,71 +21,69 @@ export async function GET(req: NextRequest) {
 
     const conditions: string[] = ["status = 'active'"];
     const values: unknown[] = [];
-    let paramIdx = 1;
 
     if (q) {
-      conditions.push(`(headline ILIKE $${paramIdx} OR bio ILIKE $${paramIdx} OR city ILIKE $${paramIdx} OR industry ILIKE $${paramIdx})`);
-      values.push(`%${q}%`);
-      paramIdx++;
+      conditions.push(`(headline LIKE ? OR bio LIKE ? OR city LIKE ? OR industry LIKE ?)`);
+      values.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
 
     if (availableOnly && !q) {
-      conditions.push('available = true');
+      conditions.push('available = 1');
     }
 
     if (industry) {
-      conditions.push(`industry = $${paramIdx++}`);
+      conditions.push(`industry = ?`);
       values.push(industry);
     }
 
     if (skills && skills.length > 0) {
-      conditions.push(`skills && $${paramIdx++}`);
-      values.push(skills);
+      // Simplified text search for each skill
+      const skillConditions = skills.map(() => `skills LIKE ?`);
+      conditions.push(`(${skillConditions.join(' AND ')})`);
+      for (const s of skills) {
+        values.push(`%${s}%`);
+      }
     }
 
     if (workType) {
-      conditions.push(`work_type = $${paramIdx++}`);
+      conditions.push(`work_type = ?`);
       values.push(workType);
     }
 
     if (cursor) {
-      conditions.push(`id > $${paramIdx++}`);
+      conditions.push(`id > ?`);
       values.push(cursor);
     }
 
-    // Order by distance if location provided
+    // Order by distance if location provided, otherwise created_at DESC
     let orderBy = 'created_at DESC';
     if (lat !== 0 || lng !== 0) {
-      // Haversine approx filter + sort
       conditions.push(`
         (6371 * acos(
-          cos(radians($${paramIdx})) * cos(radians(lat)) *
-          cos(radians(lng) - radians($${paramIdx + 1})) +
-          sin(radians($${paramIdx})) * sin(radians(lat))
-        )) < $${paramIdx + 2}
+          cos(radians(?)) * cos(radians(lat)) *
+          cos(radians(lng) - radians(?)) +
+          sin(radians(?)) * sin(radians(lat))
+        )) < ?
       `);
-      values.push(lat, lng, radiusKm);
-      orderBy = `(6371 * acos(
-        cos(radians($${paramIdx})) * cos(radians(lat)) *
-        cos(radians(lng) - radians($${paramIdx + 1})) +
-        sin(radians($${paramIdx})) * sin(radians(lat))
-      ))`;
-      paramIdx += 3;
+      values.push(lat, lng, lat, radiusKm);
+      orderBy = `(6371 * acos(cos(radians(${lat})) * cos(radians(lat)) * cos(radians(lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(lat))))`;
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     values.push(limit + 1);
-    const query = `SELECT * FROM profiles ${where} ORDER BY ${orderBy} LIMIT $${paramIdx}`;
 
-    const result = await pgPool.query(query, values);
-    const rows = result.rows;
+    const db = getDB();
+    const result = await db.prepare(
+      `SELECT * FROM profiles ${where} ORDER BY ${orderBy} LIMIT ?`
+    ).bind(...values).all<Record<string, unknown>>();
 
+    const rows = result.results;
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
     const nextCursor = hasMore ? items[items.length - 1].id : null;
 
-    // Transform rows to API format
-    const data = items.map(profileRowToApi);
+    // Parse JSON fields and transform to API format
+    const data = parseRows(items).map(profileRowToApi);
 
     return NextResponse.json({
       data,
@@ -166,46 +164,65 @@ export async function POST(req: NextRequest) {
 
     const data = parsed.data;
     const [lng, lat] = data.location.coordinates;
+    const db = getDB();
 
-    // Upsert
-    const result = await pgPool.query(
-      `INSERT INTO profiles (user_id, headline, bio, industry, skills, experience, education, languages, lat, lng, city, available, work_type, salary_min, salary_max, salary_currency, portfolio_url, contact_visible, status, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'active',NOW())
-       ON CONFLICT (user_id) DO UPDATE SET
-         headline=EXCLUDED.headline, bio=EXCLUDED.bio, industry=EXCLUDED.industry,
-         skills=EXCLUDED.skills, experience=EXCLUDED.experience, education=EXCLUDED.education,
-         languages=EXCLUDED.languages, lat=EXCLUDED.lat, lng=EXCLUDED.lng, city=EXCLUDED.city,
-         available=EXCLUDED.available, work_type=EXCLUDED.work_type,
-         salary_min=EXCLUDED.salary_min, salary_max=EXCLUDED.salary_max, salary_currency=EXCLUDED.salary_currency,
-         portfolio_url=EXCLUDED.portfolio_url, contact_visible=EXCLUDED.contact_visible,
-         status='active', updated_at=NOW()
-       RETURNING id, status, updated_at`,
-      [
-        userId,
-        data.headline,
-        data.bio || '',
-        data.industry,
-        data.skills || [],
+    // SELECT + INSERT/UPDATE pattern (no ON CONFLICT on user_id)
+    const existing = await db.prepare('SELECT id FROM profiles WHERE user_id = ?').bind(userId).first<{ id: string }>();
+
+    let row: Record<string, unknown> | null;
+    if (existing) {
+      row = await db.prepare(
+        `UPDATE profiles SET
+           headline=?, bio=?, industry=?,
+           skills=?, experience=?, education=?,
+           languages=?, lat=?, lng=?, city=?,
+           available=?, work_type=?,
+           salary_min=?, salary_max=?, salary_currency=?,
+           portfolio_url=?, contact_visible=?,
+           status='active', updated_at=datetime('now')
+         WHERE user_id=? RETURNING id, status, updated_at`
+      ).bind(
+        data.headline, data.bio || '', data.industry,
+        JSON.stringify(data.skills || []),
         JSON.stringify(data.experience || []),
         JSON.stringify(data.education || []),
-        data.languages || [],
-        lat,
-        lng,
-        data.city || '',
-        data.available ?? true,
+        JSON.stringify(data.languages || []),
+        lat, lng, data.city || '',
+        data.available ?? true ? 1 : 0,
         data.work_type || 'onsite',
         data.salary_range?.min || null,
         data.salary_range?.max || null,
         data.salary_range?.currency || 'USD',
         data.portfolio_url || null,
-        data.contact_visible ?? false,
-      ]
-    );
-
-    const row = result.rows[0];
+        data.contact_visible ?? false ? 1 : 0,
+        userId
+      ).first<Record<string, unknown>>();
+    } else {
+      const id = genId('pro_');
+      row = await db.prepare(
+        `INSERT INTO profiles (id, user_id, headline, bio, industry, skills, experience, education, languages, lat, lng, city, available, work_type, salary_min, salary_max, salary_currency, portfolio_url, contact_visible, status, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',datetime('now'))
+         RETURNING id, status, updated_at`
+      ).bind(
+        id, userId,
+        data.headline, data.bio || '', data.industry,
+        JSON.stringify(data.skills || []),
+        JSON.stringify(data.experience || []),
+        JSON.stringify(data.education || []),
+        JSON.stringify(data.languages || []),
+        lat, lng, data.city || '',
+        data.available ?? true ? 1 : 0,
+        data.work_type || 'onsite',
+        data.salary_range?.min || null,
+        data.salary_range?.max || null,
+        data.salary_range?.currency || 'USD',
+        data.portfolio_url || null,
+        data.contact_visible ?? false ? 1 : 0
+      ).first<Record<string, unknown>>();
+    }
 
     return NextResponse.json(
-      { data: { id: row.id, status: row.status, updated_at: row.updated_at } },
+      { data: { id: row?.id, status: row?.status, updated_at: row?.updated_at } },
       { status: 201 }
     );
   } catch (err) {

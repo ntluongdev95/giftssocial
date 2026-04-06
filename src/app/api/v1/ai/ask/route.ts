@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
-import { pgPool, redis } from '@/lib/db';
+import { getDB, getKV } from '@/lib/db';
 
 const schema = z.object({
   query: z.string().min(1).max(500),
@@ -35,62 +35,63 @@ export async function POST(req: NextRequest) {
 
     const { query, context } = parsed.data;
 
-    // Rate limit: 30/hour
-    const rateLimitKey = `rate_limit:user:${userId}:ai`;
+    // Rate limit: 30/hour via KV
     try {
-      const count = await redis.get(rateLimitKey);
-      if (count && parseInt(count) >= 30) {
+      const kv = getKV();
+      const countStr = await kv.get(`rate:ai:${userId}`);
+      const count = countStr ? parseInt(countStr as string) : 0;
+      if (count >= 30) {
         return NextResponse.json(
           { error: { code: 'rate_limited', message: 'Max 30 AI queries per hour' } },
           { status: 429 }
         );
       }
     } catch {
-      // Redis down — allow through
+      // KV down — allow through
     }
 
-    // Fetch trusted entities from PostgreSQL
+    const db = getDB();
+
+    // Fetch trusted entities from D1
     const [bizResult, eventResult] = await Promise.all([
-      pgPool.query(
+      db.prepare(
         `SELECT id, name, category, trust_score, trust_level, rating_avg, booking_enabled,
                 location_lat, location_lng,
                 (6371000 * acos(
-                  cos(radians($1)) * cos(radians(location_lat)) *
-                  cos(radians(location_lng) - radians($2)) +
-                  sin(radians($1)) * sin(radians(location_lat))
+                  cos(radians(?)) * cos(radians(location_lat)) *
+                  cos(radians(location_lng) - radians(?)) +
+                  sin(radians(?)) * sin(radians(location_lat))
                 )) AS distance_meters
          FROM businesses
          WHERE status = 'active' AND trust_score >= 60
            AND location_lat IS NOT NULL
            AND (6371000 * acos(
-             cos(radians($1)) * cos(radians(location_lat)) *
-             cos(radians(location_lng) - radians($2)) +
-             sin(radians($1)) * sin(radians(location_lat))
+             cos(radians(?)) * cos(radians(location_lat)) *
+             cos(radians(location_lng) - radians(?)) +
+             sin(radians(?)) * sin(radians(location_lat))
            )) < 10000
          ORDER BY trust_score DESC
-         LIMIT 10`,
-        [context.lat, context.lng]
-      ).catch(() => ({ rows: [] })),
+         LIMIT 10`
+      ).bind(context.lat, context.lng, context.lat, context.lat, context.lng, context.lat).all<Record<string, unknown>>().catch(() => ({ results: [] })),
 
-      pgPool.query(
+      db.prepare(
         `SELECT id, title, host_type, host_id, location_name, start_time, end_time, joined_count, capacity,
                 location_lat, location_lng
          FROM events
-         WHERE status IN ('scheduled', 'live') AND start_time > NOW()
+         WHERE status IN ('scheduled', 'live') AND start_time > datetime('now')
            AND location_lat IS NOT NULL
            AND (6371000 * acos(
-             cos(radians($1)) * cos(radians(location_lat)) *
-             cos(radians(location_lng) - radians($2)) +
-             sin(radians($1)) * sin(radians(location_lat))
+             cos(radians(?)) * cos(radians(location_lat)) *
+             cos(radians(location_lng) - radians(?)) +
+             sin(radians(?)) * sin(radians(location_lat))
            )) < 10000
          ORDER BY start_time ASC
-         LIMIT 5`,
-        [context.lat, context.lng]
-      ).catch(() => ({ rows: [] })),
+         LIMIT 5`
+      ).bind(context.lat, context.lng, context.lat).all<Record<string, unknown>>().catch(() => ({ results: [] })),
     ]);
 
-    const trustedBusinesses = bizResult.rows;
-    const upcomingEvents = eventResult.rows;
+    const trustedBusinesses = bizResult.results;
+    const upcomingEvents = eventResult.results;
 
     const nearbyContext = JSON.stringify({
       businesses: trustedBusinesses,
@@ -135,19 +136,22 @@ Respond ONLY with valid JSON in this format:
     const enrichedResults = [];
     for (const r of aiResult.results.slice(0, 3)) {
       if (r.type === 'business') {
-        const biz = trustedBusinesses.find((b: { id: string }) => b.id === r.id);
+        const biz = trustedBusinesses.find((b: Record<string, unknown>) => b.id === r.id);
         if (biz) enrichedResults.push({ ...biz, _reason: r.reason });
       } else if (r.type === 'event') {
-        const evt = upcomingEvents.find((e: { id: string }) => e.id === r.id);
+        const evt = upcomingEvents.find((e: Record<string, unknown>) => e.id === r.id);
         if (evt) enrichedResults.push({ ...evt, _reason: r.reason });
       }
     }
 
-    // Increment rate limit
+    // Increment rate limit in KV
     try {
-      await redis.multi().incr(rateLimitKey).expire(rateLimitKey, 3600).exec();
+      const kv = getKV();
+      const countStr = await kv.get(`rate:ai:${userId}`);
+      const count = countStr ? parseInt(countStr as string) : 0;
+      await kv.put(`rate:ai:${userId}`, String(count + 1), { expirationTtl: 3600 });
     } catch {
-      // Redis down — skip
+      // KV down — skip
     }
 
     return NextResponse.json({
