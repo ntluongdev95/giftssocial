@@ -317,7 +317,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
                   <div className="absolute inset-0 scale-150 rounded-full bg-cyan-500/20 opacity-0 blur-xl transition-opacity duration-700 group-hover:opacity-100" />
 
                   <div className="relative h-20 w-20 overflow-hidden rounded-[2rem] border-2 border-white bg-neutral-100 shadow-2xl">
-                    {currentUser.avatarUrl ? (
+                    {currentUser?.avatarUrl ? (
                       <Image
                         src={currentUser?.avatarUrl}
                         alt={currentUser?.passkeyUsername}
