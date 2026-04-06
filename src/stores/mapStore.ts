@@ -27,7 +27,7 @@ export const useMapStore = create<MapStore>((set) => ({
   activeLayers: new Set(DEFAULT_LAYERS),
   timeFilter: 'live',
   selectedMarkerId: null,
-  viewMode: '2d',
+  viewMode: '3d',
   mapCenter: null,
   mapZoom: 13,
 
