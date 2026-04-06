@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Share2, Download, Copy, Check } from 'lucide-react';
+import { X, Share2, Download, Copy, Check, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  playIntroSound, playFlyingSound, playHeartbeat, playCelebration,
+  playMessageChime, playRomanticBg, playProposalSound, playYesSound,
+} from '@/lib/kiss-audio';
 
 interface Kiss {
   id: string;
@@ -83,7 +87,9 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   const [senderCity, setSenderCity] = useState('');
   const [receiverCity, setReceiverCity] = useState('');
   const [copied, setCopied] = useState(false);
+  const [muted, setMuted] = useState(false);
   const shareCardRef = useRef<HTMLDivElement>(null);
+  const stopBgMusicRef = useRef<(() => void) | null>(null);
   const hasFlownRef = useRef(false);
 
   // Fetch city names
@@ -91,6 +97,39 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
     getCity(kiss.sender_lat, kiss.sender_lng).then(setSenderCity);
     getCity(kiss.receiver_lat, kiss.receiver_lng).then(setReceiverCity);
   }, [kiss]);
+
+  // Sound effects per step
+  useEffect(() => {
+    if (muted) return;
+    if (step === 'intro') {
+      playIntroSound();
+      stopBgMusicRef.current = playRomanticBg();
+    } else if (step === 'flying') {
+      playFlyingSound();
+    } else if (step === 'arrive') {
+      playHeartbeat();
+      setTimeout(() => {
+        if (muted) return;
+        if (kiss.kiss_type === 'declaration') {
+          playProposalSound();
+          setTimeout(() => !muted && playYesSound(), 2500);
+        } else {
+          playCelebration();
+        }
+      }, 500);
+    } else if (step === 'message') {
+      playMessageChime();
+    } else if (step === 'share') {
+      // Stop background music
+      stopBgMusicRef.current?.();
+      stopBgMusicRef.current = null;
+    }
+  }, [step, muted, kiss.kiss_type]);
+
+  // Cleanup music on unmount
+  useEffect(() => {
+    return () => { stopBgMusicRef.current?.(); };
+  }, []);
 
   // Step progression
   useEffect(() => {
@@ -193,10 +232,19 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
         className="fixed inset-0 z-[999] flex items-center justify-center"
         style={{ background: step === 'flying' ? 'transparent' : 'rgba(0,0,0,0.85)', backdropFilter: step === 'flying' ? 'none' : 'blur(12px)', transition: 'background 1s, backdrop-filter 1s' }}
       >
-        {/* Close button — always visible */}
-        <button onClick={onClose} className="absolute top-6 right-6 z-[1000] h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white cursor-pointer transition-colors" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <X size={18} />
-        </button>
+        {/* Controls — always visible */}
+        <div className="absolute top-6 right-6 z-[1000] flex items-center gap-2">
+          <button
+            onClick={() => { setMuted(!muted); if (!muted) stopBgMusicRef.current?.(); }}
+            className="h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white cursor-pointer transition-colors"
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+          >
+            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          </button>
+          <button onClick={onClose} className="h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white cursor-pointer transition-colors" style={{ background: 'rgba(0,0,0,0.5)' }}>
+            <X size={18} />
+          </button>
+        </div>
 
         {/* ── Step 1: Cinematic Intro ── */}
         {step === 'intro' && (
