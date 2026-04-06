@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pgPool } from '@/lib/db';
+import { redis } from '@/lib/db';
 
 /**
  * GET /api/v1/kisses/:id — Public: get a single kiss for share/replay
- * Only returns public kisses, or private kisses if the requester is sender/receiver.
+ * Cached in Redis for 1 hour to handle viral sharing.
  */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+
+    // Check Redis cache first
+    try {
+      const cached = await redis.get(`kiss:${id}`);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data._private) return NextResponse.json({ error: { code: 'private', message: 'This kiss is private' } }, { status: 403 });
+        return NextResponse.json({ data }, {
+          headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=600' },
+        });
+      }
+    } catch { /* Redis down, continue to DB */ }
 
     const result = await pgPool.query(
       `SELECT k.*,
@@ -26,12 +39,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const kiss = result.rows[0];
 
-    // Private kisses: don't expose to public
     if (kiss.visibility === 'private') {
+      // Cache private flag too (avoid repeated DB hits)
+      redis.setex(`kiss:${id}`, 3600, JSON.stringify({ _private: true })).catch(() => {});
       return NextResponse.json({ error: { code: 'private', message: 'This kiss is private' } }, { status: 403 });
     }
 
-    return NextResponse.json({ data: kiss });
+    // Cache for 1 hour
+    redis.setex(`kiss:${id}`, 3600, JSON.stringify(kiss)).catch(() => {});
+
+    return NextResponse.json({ data: kiss }, {
+      headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=600' },
+    });
   } catch (err) {
     console.error('[Kiss GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch' } }, { status: 500 });
