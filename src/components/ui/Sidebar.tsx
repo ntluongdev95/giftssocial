@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut, Bell, Radio } from 'lucide-react';
@@ -74,11 +73,11 @@ export default function Sidebar() {
       >
         {/* Logo — collapsed */}
         <div className="lg:block xl:hidden mb-4">
-          <Image src="/images/gao-logo.png" alt="Gao" width={32} height={32} />
+          <img src="/images/gao-logo.png" alt="Gao" width={32} height={32} />
         </div>
         {/* Logo — expanded */}
         <div className="hidden xl:flex items-center gap-3 px-5 py-5">
-          <Image src="/images/gao-logo.png" alt="Gao" width={36} height={36} className="shrink-0" />
+          <img src="/images/gao-logo.png" alt="Gao" width={36} height={36} className="shrink-0" />
           <div>
             <span className="text-base font-bold text-white">Gao Social</span>
             <div className="mt-0.5">
