@@ -32,7 +32,7 @@ interface Props {
 type Step = 'intro' | 'flying' | 'arrive' | 'message' | 'share';
 
 const STEP_DURATIONS: Record<Step, number> = {
-  intro: 3000,
+  intro: 7000, // cinematic intro sequence
   flying: 0, // controlled by map animation callback
   arrive: 5000, // chibi hug animation takes ~3.5s + buffer
   message: 3500,
@@ -212,68 +212,127 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           <X size={18} />
         </button>
 
-        {/* ── Step 1: Intro ── */}
+        {/* ── Step 1: Cinematic Intro ── */}
         {step === 'intro' && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 1.1 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            className="flex flex-col items-center gap-5 text-center px-6"
+            className="flex flex-col items-center text-center px-6 relative"
           >
-            {/* Sender avatar */}
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.3, type: 'spring', damping: 15 }}
-              className="h-24 w-24 rounded-full flex items-center justify-center text-4xl font-bold overflow-hidden"
-              style={{ background: 'linear-gradient(135deg, #ec4899, #f87171)', border: '3px solid rgba(236,72,153,0.4)', boxShadow: '0 0 40px rgba(236,72,153,0.3)' }}
+            {/* Background particles floating */}
+            {Array.from({ length: 8 }).map((_, i) => (
+              <motion.span
+                key={`bg-${i}`}
+                className="absolute text-xl pointer-events-none"
+                style={{ left: `${15 + Math.random() * 70}%`, top: `${10 + Math.random() * 80}%` }}
+                animate={{ y: [0, -20, 0], opacity: [0, 0.3, 0] }}
+                transition={{ duration: 3, delay: i * 0.4, repeat: Infinity }}
+              >
+                {['✨', '💫', '⭐', '🌟', '💖', kiss.emoji, '🌙', '🪐'][i]}
+              </motion.span>
+            ))}
+
+            {/* Phase 1: "Somewhere in {city}..." (0-2s) */}
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 1, 0] }}
+              transition={{ duration: 2.5, times: [0, 0.2, 0.7, 1] }}
+              className="text-sm tracking-[0.3em] uppercase text-[#4a5068] absolute top-[20%]"
             >
-              {kiss.sender_avatar
-                ? <img src={kiss.sender_avatar} alt="" className="h-full w-full object-cover" />
-                : (kiss.sender_name || '?').charAt(0).toUpperCase()
-              }
+              Somewhere in {senderCity || '...'}
+            </motion.p>
+
+            {/* Phase 2: Sender avatar appears (1.5-4s) */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.5, y: 20 }}
+              animate={{ opacity: [0, 0, 1, 1], scale: [0.5, 0.5, 1, 1], y: [20, 20, 0, 0] }}
+              transition={{ duration: 4, times: [0, 0.2, 0.35, 1] }}
+              className="flex flex-col items-center gap-3"
+            >
+              {/* Avatar with pulsing ring */}
+              <div className="relative">
+                <motion.div
+                  animate={{ scale: [1, 1.15, 1] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute inset-0 rounded-full"
+                  style={{ border: '2px solid rgba(236,72,153,0.3)', margin: '-6px' }}
+                />
+                <div className="h-24 w-24 rounded-full flex items-center justify-center text-4xl font-bold overflow-hidden"
+                  style={{ background: 'linear-gradient(135deg, #ec4899, #f87171)', border: '3px solid rgba(236,72,153,0.5)', boxShadow: '0 0 50px rgba(236,72,153,0.3)' }}
+                >
+                  {kiss.sender_avatar
+                    ? <img src={kiss.sender_avatar} alt="" className="h-full w-full object-cover" />
+                    : (kiss.sender_name || '?').charAt(0).toUpperCase()
+                  }
+                </div>
+              </div>
+
+              {/* Sender name */}
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 0, 1] }}
+                transition={{ duration: 3, times: [0, 0.4, 0.55] }}
+                className="text-xl font-bold text-white"
+              >
+                {kiss.sender_name || 'Someone'}
+              </motion.p>
             </motion.div>
 
-            {/* Emoji */}
-            <motion.div
-              initial={{ scale: 0, rotate: -30 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ delay: 0.5, type: 'spring', damping: 12 }}
-              className="text-6xl"
-            >
-              {kiss.emoji}
-            </motion.div>
-
-            {/* Text */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8 }}
-            >
-              <p className="text-2xl font-bold text-white">{kiss.sender_name || 'Someone'}</p>
-              <p className="text-sm text-[#ec4899] mt-1">sent you a kiss</p>
-              {senderCity && (
-                <p className="text-xs text-[#4a5068] mt-2">from {senderCity}</p>
-              )}
-            </motion.div>
-
-            {/* Loading dots */}
+            {/* Phase 3: "decided to send something special" (3-5s) */}
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.5 }}
-              className="flex gap-1.5 mt-4"
+              animate={{ opacity: [0, 0, 0, 1, 1] }}
+              transition={{ duration: 5, times: [0, 0.4, 0.55, 0.65, 1] }}
+              className="flex flex-col items-center gap-3 mt-4"
             >
-              {[0, 1, 2].map(i => (
-                <motion.div
-                  key={i}
-                  className="h-2 w-2 rounded-full bg-[#ec4899]"
-                  animate={{ opacity: [0.3, 1, 0.3] }}
-                  transition={{ duration: 1, delay: i * 0.2, repeat: Infinity }}
-                />
-              ))}
+              <p className="text-sm text-[#a3adc3]">decided to send something special</p>
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
+                animate={{ scale: [0, 0, 0, 1.3, 1], rotate: [-30, -30, -30, 5, 0] }}
+                transition={{ duration: 5, times: [0, 0.4, 0.6, 0.72, 0.8] }}
+                className="text-5xl"
+              >
+                {kiss.emoji}
+              </motion.div>
             </motion.div>
+
+            {/* Phase 4: Route card (4.5-7s) */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: [0, 0, 0, 0, 1], y: [20, 20, 20, 20, 0] }}
+              transition={{ duration: 6, times: [0, 0.5, 0.6, 0.72, 0.82] }}
+              className="mt-5 flex items-center gap-3 px-5 py-3 rounded-2xl"
+              style={{ background: 'rgba(236,72,153,0.06)', border: '1px solid rgba(236,72,153,0.12)' }}
+            >
+              <div className="text-center">
+                <p className="text-xs font-semibold text-white">{senderCity || '...'}</p>
+                <p className="text-[9px] text-[#4a5068]">Origin</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <motion.div className="h-px w-6" style={{ background: 'rgba(236,72,153,0.3)' }} />
+                <motion.span
+                  animate={{ x: [0, 4, 0] }}
+                  transition={{ duration: 1, repeat: Infinity }}
+                  className="text-sm"
+                >✈️</motion.span>
+                <motion.div className="h-px w-6" style={{ background: 'rgba(0,212,255,0.3)' }} />
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-semibold text-white">{receiverCity || '...'}</p>
+                <p className="text-[9px] text-[#4a5068]">Destination</p>
+              </div>
+            </motion.div>
+
+            {/* Phase 5: "Preparing for takeoff..." (5.5-7s) */}
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0, 0, 0, 0, 1] }}
+              transition={{ duration: 6.5, times: [0, 0.5, 0.6, 0.7, 0.82, 0.9] }}
+              className="text-[11px] text-[#ec4899] mt-4 tracking-wider"
+            >
+              Preparing for takeoff...
+            </motion.p>
           </motion.div>
         )}
 
