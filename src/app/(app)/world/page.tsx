@@ -23,6 +23,7 @@ import FriendSidePanel from '@/components/map/FriendSidePanel';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import UserSheet from '@/components/map/UserSheet';
 import KissGlobe from '@/components/map/KissGlobe';
+import KissReplayOverlay from '@/components/map/KissReplayOverlay';
 import SearchOverlay from '@/components/map/SearchOverlay';
 import type { Signal, Agent, Profile, Business, Event, Circle, EntityType } from '@/types';
 
@@ -133,6 +134,7 @@ export default function WorldPage() {
   const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [searchUser, setSearchUser] = useState<{ id: string; preview: { title: string; subtitle?: string; image?: string } } | null>(null);
+  const [replayKiss, setReplayKiss] = useState<Record<string, unknown> | null>(null);
   const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
 
   // ── Search ──────────────────────────────────────────────────────────────
@@ -425,13 +427,12 @@ export default function WorldPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle ?kiss= URL param (from notification click) — runs on every navigation
+  // Handle ?kiss= URL param (from notification click) → cinematic replay
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const kissId = params.get('kiss');
     if (!kissId) return;
 
-    const nofly = params.get('nofly');
     const token = localStorage.getItem('access_token') || '';
 
     // Delay to let map initialize
@@ -440,17 +441,16 @@ export default function WorldPage() {
         .then(r => r.json())
         .then(data => {
           const kiss = (data.data || []).find((k: Record<string, unknown>) => k.id === kissId);
-          if (kiss && !nofly && kiss.sender_lat && kiss.receiver_lat) {
-            window.dispatchEvent(new CustomEvent('gao-fly-to', {
-              detail: { lng: kiss.sender_lng, lat: kiss.sender_lat, zoom: 4, skipPin: true }
-            }));
+          if (kiss) {
+            // Open cinematic replay overlay
+            setReplayKiss(kiss);
+            // Mark as opened
+            fetch('/api/v1/kisses', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ id: kissId }),
+            }).catch(() => {});
           }
-          // Mark as opened
-          fetch('/api/v1/kisses', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ id: kissId }),
-          }).catch(() => {});
         })
         .catch(() => {});
 
@@ -1079,6 +1079,22 @@ export default function WorldPage() {
           }
         }}
       />
+
+      {/* Kiss Replay Cinematic */}
+      {replayKiss && (
+        <KissReplayOverlay
+          kiss={replayKiss as Parameters<typeof KissReplayOverlay>[0]['kiss']}
+          onClose={() => setReplayKiss(null)}
+          onFlyStart={() => {
+            const k = replayKiss;
+            if (k && k.sender_lat && k.receiver_lat) {
+              window.dispatchEvent(new CustomEvent('gao-fly-to', {
+                detail: { lng: k.sender_lng, lat: k.sender_lat, zoom: 4, skipPin: true }
+              }));
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
