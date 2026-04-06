@@ -6,7 +6,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
 
     const result = await pgPool.query(
-      `SELECT id, username, display_name, avatar_url, bio, photos, city, trust_level, trust_score, followers_count, following_count, created_at
+      `SELECT id, username, display_name, avatar_url, bio, photos, city, trust_level, trust_score, followers_count, following_count, location_lat, location_lng, created_at
        FROM users WHERE id = $1`,
       [id]
     );
