@@ -980,6 +980,8 @@ export default function KissGlobe() {
   // ── Play flight animation (only when explicitly triggered) ──
   const playFlightAnimation = useCallback(async (kiss: Kiss) => {
     if (!map) return;
+    // Skip animation if no valid destination (receiver_lat = 0 means "send anyway")
+    if (!kiss.receiver_lat || !kiss.receiver_lng) { placeGiftMarker(kiss); return; }
 
     // Cancel ALL existing flights first — only 1 flight at a time
     animFrameRef.current.forEach(f => { clearTimeout(f); cancelAnimationFrame(f); });

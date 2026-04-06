@@ -100,9 +100,9 @@ export async function POST(req: NextRequest) {
     const senderProvidedAddress = !!(d.receiver_lat && d.receiver_lng);
     const hasValidDestination = receiverHasLocation || senderProvidedAddress;
 
-    // Priority: 1) sender-provided address coords, 2) receiver's actual location, 3) sender location as fallback
-    const recLat = d.receiver_lat || receiver.rows[0].location_lat || sender.rows[0].location_lat;
-    const recLng = d.receiver_lng || receiver.rows[0].location_lng || sender.rows[0].location_lng;
+    // If no valid destination, store 0 so frontend knows not to animate
+    const recLat = hasValidDestination ? (d.receiver_lat || receiver.rows[0].location_lat) : 0;
+    const recLng = hasValidDestination ? (d.receiver_lng || receiver.rows[0].location_lng) : 0;
 
     const result = await pgPool.query(
       `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
