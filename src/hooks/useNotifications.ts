@@ -8,8 +8,10 @@ const fetcher = (url: string) => fetch(url, {
 
 export function useNotifications() {
   const { data, mutate } = useSWR('/api/v1/notifications', fetcher, {
-    refreshInterval: 30000,
+    refreshInterval: 10000,
     revalidateOnFocus: true,
+    revalidateOnMount: true,
+    revalidateOnReconnect: true,
   });
 
   const notifications = (data?.data || []) as Record<string, unknown>[];
