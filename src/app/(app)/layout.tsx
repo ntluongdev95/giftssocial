@@ -3,6 +3,10 @@
 import BottomNav from '@/components/ui/BottomNav';
 import Sidebar from '@/components/ui/Sidebar';
 import AuthHydrator from '@/components/AuthHydrator';
+import { installCsrfInterceptor } from '@/lib/csrf-interceptor';
+
+// Auto-inject CSRF token on all mutation fetch calls to /api/
+installCsrfInterceptor();
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
 
