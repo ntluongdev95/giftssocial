@@ -10,13 +10,40 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Gao Social',
-  description: 'The world, not the feed.',
+  title: {
+    default: 'Gao Social — Map-First Social Platform',
+    template: '%s | Gao Social',
+  },
+  description: 'Discover people, businesses, and events on a live world map. Connect, act, and explore — not scroll. The world, not the feed.',
+  keywords: ['social network', 'map', 'discover', 'events', 'businesses', 'signals', 'real-time', 'location', 'PWA'],
   manifest: '/manifest.json',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://app.gao.social'),
+  openGraph: {
+    title: 'Gao Social — Map-First Social Platform',
+    description: 'Discover people, businesses, and events on a live world map.',
+    siteName: 'Gao Social',
+    type: 'website',
+    locale: 'en_US',
+    images: [{ url: '/icons/icon-512.png', width: 512, height: 512, alt: 'Gao Social' }],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Gao Social',
+    description: 'The world, not the feed.',
+    images: ['/icons/icon-512.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Gao Social',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
   },
 };
 

@@ -6,6 +6,9 @@ const withPWA = withPWAInit({
   disable: process.env.NODE_ENV === 'development',
   register: true,
   skipWaiting: true,
+  fallbacks: {
+    document: '/offline',
+  },
   runtimeCaching: [
     {
       urlPattern: /^https?.*\/v1\/.*/i,
@@ -26,6 +29,28 @@ const withPWA = withPWAInit({
         cacheName: 'image-cache',
         expiration: {
           maxEntries: 100,
+          maxAgeSeconds: 30 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      urlPattern: /^https:\/\/api\.maptiler\.com\/.*/i,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'map-tile-cache',
+        expiration: {
+          maxEntries: 500,
+          maxAgeSeconds: 7 * 24 * 60 * 60,
+        },
+      },
+    },
+    {
+      urlPattern: /\.(?:mp3|ogg|wav)$/i,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'audio-cache',
+        expiration: {
+          maxEntries: 20,
           maxAgeSeconds: 30 * 24 * 60 * 60,
         },
       },
