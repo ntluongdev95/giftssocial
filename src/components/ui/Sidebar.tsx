@@ -35,18 +35,31 @@ export default function Sidebar() {
   const [showAuth, setShowAuth] = useState(false);
   const [showLive, setShowLive] = useState(false);
 
-  const handleLogout = () => {
-    // 1. Clear everything synchronously FIRST — UI updates instantly
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+
+    // 1. Server-side: revoke sessions + clear httpOnly cookies
+    try {
+      await Promise.race([
+        Promise.all([
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }),
+          logoutApi(),
+        ]),
+        new Promise(r => setTimeout(r, 3000)), // 3s timeout — don't hang forever
+      ]);
+    } catch { /* proceed with local cleanup regardless */ }
+
+    // 2. Local cleanup — always runs even if server fails
     document.cookie = 'gao_logged_in=; Max-Age=0; path=/';
     document.cookie = 'gao_csrf=; Max-Age=0; path=/';
     deleteAccessTokenFromLocal();
     deleteRefreshTokenFromLocal();
     clearLoginSessionStorage();
     logoutStorage();
-
-    // 2. Best-effort async cleanup (don't await — UI already logged out)
-    fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
-    logoutApi().catch(() => {});
+    setLoggingOut(false);
   };
 
   return (
