@@ -547,7 +547,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
 
                 {/* Branding */}
                 <div className="flex items-center gap-1.5 mt-2">
-                  <div className="h-4 w-4 rounded-full" style={{ background: 'linear-gradient(135deg, #00d4ff, #6366f1)' }} />
+                  <img src="/images/gao-logo.png" alt="Gao" className="h-5 w-5 rounded-full" />
                   <span className="text-[10px] font-semibold text-[#4a5068]">Gao Social</span>
                 </div>
               </div>
