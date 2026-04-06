@@ -62,25 +62,24 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
 
   // Handle OAuth login success (Google/Apple)
   const handleOAuthSuccess = useCallback(async (accessToken: string, refreshToken?: string) => {
+    // Store in localStorage for backward compat (external API clients that need Authorization header)
+    // httpOnly cookies are the primary auth mechanism — localStorage is supplementary
     setAccessTokenToLocal(accessToken);
     if (refreshToken) setRefreshTokenToLocal(refreshToken);
     setTokens(accessToken, refreshToken);
 
-    // Fetch user profile from local DB
+    // Hydrate user from cookie-based session (primary) or token fallback
     try {
-      const res = await fetch('/api/v1/users/me', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const res = await fetch('/api/v1/auth/session', { credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
         if (data?.data) {
-          hydrateFromMe(data.data);
-          // Save last user for "Welcome back" UX
+          hydrateFromMe(data);
+          // Save last user for "Welcome back" UX (non-sensitive only)
           try {
             localStorage.setItem('gao_last_user', JSON.stringify({
               display_name: data.data.display_name || data.data.fullName || data.data.username || '',
               avatar_url: data.data.avatar_url || data.data.avatarUrl || '',
-              email: data.data.email || '',
             }));
           } catch { /* ignore */ }
         }
@@ -129,7 +128,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
 
     const redirectUri = window.location.origin + '/auth/google/callback';
     const scope = 'openid email profile';
-    const state = Math.random().toString(36).slice(2);
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
     sessionStorage.setItem('gao_google_state', state);
 
     const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}&prompt=select_account&access_type=offline`;

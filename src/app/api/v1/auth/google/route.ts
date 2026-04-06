@@ -6,6 +6,10 @@ import { createSession } from '@/lib/session';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const ALLOWED_REDIRECT_URIS = [
+  process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/auth/google/callback` : null,
+  'http://localhost:3000/auth/google/callback',
+].filter(Boolean) as string[];
 
 /**
  * POST /api/v1/auth/google
@@ -30,7 +34,7 @@ export async function POST(req: NextRequest) {
           code: body.code,
           client_id: GOOGLE_CLIENT_ID,
           client_secret: GOOGLE_CLIENT_SECRET,
-          redirect_uri: body.redirect_uri,
+          redirect_uri: ALLOWED_REDIRECT_URIS.includes(body.redirect_uri) ? body.redirect_uri : ALLOWED_REDIRECT_URIS[0] || '',
           grant_type: 'authorization_code',
         }),
       });
@@ -67,6 +71,9 @@ export async function POST(req: NextRequest) {
       const googleUser = await googleRes.json();
       if (googleUser.aud !== GOOGLE_CLIENT_ID) {
         return NextResponse.json({ error: { code: 'invalid_audience', message: 'Token not issued for this app' } }, { status: 401 });
+      }
+      if (googleUser.iss !== 'accounts.google.com' && googleUser.iss !== 'https://accounts.google.com') {
+        return NextResponse.json({ error: { code: 'invalid_issuer', message: 'Token not issued by Google' } }, { status: 401 });
       }
 
       email = googleUser.email;

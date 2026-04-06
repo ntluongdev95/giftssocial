@@ -1,8 +1,10 @@
 import { SignJWT, jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'gao-social-dev-secret-change-in-production'
-);
+const JWT_SECRET_RAW = process.env.JWT_SECRET;
+if (!JWT_SECRET_RAW && process.env.NODE_ENV === 'production') {
+  throw new Error('FATAL: JWT_SECRET environment variable is required in production');
+}
+const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_RAW || 'gao-social-dev-only-not-for-production');
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
 const REFRESH_EXPIRES_IN = '90d';
 
