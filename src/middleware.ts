@@ -9,8 +9,8 @@ import { validateCsrf } from '@/lib/csrf';
  */
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
-const AUTH_RATE_LIMIT = { max: 15, windowSec: 60 };
-const API_RATE_LIMIT = { max: 120, windowSec: 60 };
+const AUTH_RATE_LIMIT = { max: 30, windowSec: 60 };
+const API_RATE_LIMIT = { max: 300, windowSec: 60 };
 
 function checkRateLimit(key: string, isAuth: boolean): { allowed: boolean; remaining: number } {
   const config = isAuth ? AUTH_RATE_LIMIT : API_RATE_LIMIT;
@@ -44,7 +44,8 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function getClientIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  return req.headers.get('cf-connecting-ip')
+    || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     || req.headers.get('x-real-ip')
     || req.ip
     || 'unknown';
