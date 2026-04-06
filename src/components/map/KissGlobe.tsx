@@ -73,6 +73,9 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   const [sendError, setSendError] = useState<string | null>(null);
   const [noLocationWarning, setNoLocationWarning] = useState(false);
   const [customAddress, setCustomAddress] = useState('');
+  const [addressCoords, setAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<{ display_name: string; lat: string; lon: string }[]>([]);
+  const addressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchFriends();
@@ -137,20 +140,26 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   };
 
   const handleSendWithAddress = async () => {
-    if (!customAddress.trim()) { await doSend(); return; }
-    setSending(true);
-    try {
-      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(customAddress)}&limit=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
-      const geoData = await geoRes.json();
-      if (geoData[0]) {
-        const lat = parseFloat(geoData[0].lat);
-        const lng = parseFloat(geoData[0].lon);
-        await doSend({ lat, lng });
-      } else {
-        setSendError('Address not found — try a different one');
-        setSending(false);
-      }
-    } catch { await doSend(); }
+    if (addressCoords) {
+      await doSend(addressCoords);
+    } else {
+      // Send anyway without coords — no fly animation
+      await doSend();
+    }
+  };
+
+  const handleAddressInput = (q: string) => {
+    setCustomAddress(q);
+    setAddressCoords(null);
+    if (addressTimer.current) clearTimeout(addressTimer.current);
+    if (q.length < 2) { setAddressSuggestions([]); return; }
+    addressTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+        const data = await res.json();
+        setAddressSuggestions(data || []);
+      } catch { setAddressSuggestions([]); }
+    }, 300);
   };
 
   const GIFT_CATEGORIES = [
@@ -407,13 +416,35 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
                   This person hasn&apos;t shared their location. You can enter their address to see the flight, or send anyway — you will not see how it&apos;s delivered on the map.
                 </p>
               </div>
-              <input
-                value={customAddress}
-                onChange={e => setCustomAddress(e.target.value)}
-                placeholder="Enter their city or address (optional)..."
-                className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder:text-[#4a5068] outline-none"
-                style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.06)' }}
-              />
+              <div className="relative">
+                <input
+                  value={customAddress}
+                  onChange={e => handleAddressInput(e.target.value)}
+                  placeholder="Enter their city or address (optional)..."
+                  className="w-full rounded-lg px-3 py-2 text-xs text-white placeholder:text-[#4a5068] outline-none"
+                  style={{ background: 'rgba(17,19,24,0.8)', border: addressCoords ? '1px solid rgba(52,211,153,0.3)' : '1px solid rgba(255,255,255,0.06)' }}
+                />
+                {addressCoords && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[#34d399]">✓</span>}
+                {addressSuggestions.length > 0 && !addressCoords && (
+                  <div className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-50" style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(255,255,255,0.08)', maxHeight: '150px', overflowY: 'auto' }}>
+                    {addressSuggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setCustomAddress(s.display_name.split(',').slice(0, 2).join(','));
+                          setAddressCoords({ lat: parseFloat(s.lat), lng: parseFloat(s.lon) });
+                          setAddressSuggestions([]);
+                        }}
+                        className="w-full text-left px-3 py-2 text-[10px] text-[#a3adc3] hover:bg-white/5 cursor-pointer truncate"
+                        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                      >
+                        📍 {s.display_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={handleSendWithAddress}
@@ -421,7 +452,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
                   className="flex-1 rounded-lg py-2 text-[11px] font-semibold cursor-pointer disabled:opacity-50"
                   style={{ background: 'linear-gradient(135deg, #f87171, #ec4899)', color: 'white' }}
                 >
-                  {sending ? 'Sending…' : customAddress.trim() ? `Send to ${customAddress.split(',')[0]}` : 'Send anyway'}
+                  {sending ? 'Sending…' : addressCoords ? `Send to ${customAddress.split(',')[0]}` : 'Send anyway'}
                 </button>
                 <button
                   onClick={() => setNoLocationWarning(false)}
