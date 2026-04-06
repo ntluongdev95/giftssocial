@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
 
       if (!tokenRes.ok) {
         const err = await tokenRes.json();
-        console.error('[Auth Google] token exchange error:', err);
-        return NextResponse.json({ error: { code: 'token_exchange_failed', message: 'Failed to exchange Google code' } }, { status: 401 });
+        console.error('[Auth Google] token exchange error:', err, 'redirect_uri sent:', ALLOWED_REDIRECT_URIS.includes(body.redirect_uri) ? body.redirect_uri : ALLOWED_REDIRECT_URIS[0]);
+        return NextResponse.json({ error: { code: 'token_exchange_failed', message: `Failed to exchange Google code: ${err?.error || 'unknown'}`, detail: err?.error_description } }, { status: 401 });
       }
 
       const tokens = await tokenRes.json();

@@ -9,8 +9,8 @@ import { validateCsrf } from '@/lib/csrf';
  */
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
-const AUTH_RATE_LIMIT = { max: 30, windowSec: 60 };
-const API_RATE_LIMIT = { max: 300, windowSec: 60 };
+const AUTH_RATE_LIMIT = { max: 60, windowSec: 60 };
+const API_RATE_LIMIT = { max: 600, windowSec: 60 };
 
 function checkRateLimit(key: string, isAuth: boolean): { allowed: boolean; remaining: number } {
   const config = isAuth ? AUTH_RATE_LIMIT : API_RATE_LIMIT;
