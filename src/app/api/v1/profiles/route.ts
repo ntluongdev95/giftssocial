@@ -74,7 +74,8 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const query = `SELECT * FROM profiles ${where} ORDER BY ${orderBy} LIMIT ${limit + 1}`;
+    values.push(limit + 1);
+    const query = `SELECT * FROM profiles ${where} ORDER BY ${orderBy} LIMIT $${paramIdx}`;
 
     const result = await pgPool.query(query, values);
     const rows = result.rows;

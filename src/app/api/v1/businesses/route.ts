@@ -38,14 +38,20 @@ export async function GET(req: NextRequest) {
       idx += 3;
     }
 
-    // Order: if searching by name, rank by relevance; otherwise by trust
-    const orderBy = q
-      ? `ts_rank(to_tsvector('english', name), plainto_tsquery('english', '${q.replace(/'/g, "''")}')) DESC, trust_score DESC`
-      : 'trust_score DESC';
+    // Order: if searching by name, rank by relevance (parameterized); otherwise by trust
+    let orderBy: string;
+    if (q) {
+      values.push(q);
+      orderBy = `ts_rank(to_tsvector('english', name), plainto_tsquery('english', $${idx})) DESC, trust_score DESC`;
+      idx++;
+    } else {
+      orderBy = 'trust_score DESC';
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    values.push(limit);
     const result = await pgPool.query(
-      `SELECT * FROM businesses ${where} ORDER BY ${orderBy} LIMIT ${limit}`,
+      `SELECT * FROM businesses ${where} ORDER BY ${orderBy} LIMIT $${idx}`,
       values
     );
 

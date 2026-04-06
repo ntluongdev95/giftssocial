@@ -48,8 +48,9 @@ export async function GET(req: NextRequest) {
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
+    values.push(limit);
     const result = await pgPool.query(
-      `SELECT e.* FROM events e ${where} ORDER BY e.start_time ASC LIMIT ${limit}`,
+      `SELECT e.* FROM events e ${where} ORDER BY e.start_time ASC LIMIT $${idx}`,
       values
     );
 

@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import maplibregl from 'maplibre-gl';
+import { escapeHtml } from '@/lib/sanitize';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
 import StarfieldBackground from './StarfieldBackground';
@@ -432,10 +433,10 @@ export default function WorldMap({
                   font-size:12px;line-height:1;
                 ">✕</button>
                 <div style="font-size:12px;font-weight:700;color:#f0f4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                  ${label.split(',')[0]}
+                  ${escapeHtml(label.split(',')[0])}
                 </div>
                 <div style="font-size:10px;color:#4a5068;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                  ${label.split(',').slice(1).join(',').trim()}
+                  ${escapeHtml(label.split(',').slice(1).join(',').trim())}
                 </div>
                 ${isAddress ? `<a href="${googleStreetViewUrl}" target="_blank" rel="noopener" style="
                   display:flex;align-items:center;gap:4px;

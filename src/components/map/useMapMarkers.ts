@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+import { escapeHtml } from '@/lib/sanitize';
 import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, EntityType, MarkerState } from '@/types';
 import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
@@ -196,12 +197,12 @@ function createFriendMarkerElement(friend: Friend): HTMLDivElement {
   el.innerHTML = `
     <div class="gao-friend-avatar">
       ${friend.avatar_url
-        ? `<img src="${friend.avatar_url}" alt="${friend.display_name}" />`
+        ? `<img src="${friend.avatar_url}" alt="${escapeHtml(friend.display_name)}" />`
         : initials
       }
       ${friend.is_online ? '<div class="gao-friend-online"></div>' : ''}
     </div>
-    <div class="gao-friend-name">${friend.display_name}</div>
+    <div class="gao-friend-name">${escapeHtml(friend.display_name)}</div>
   `;
 
   return el;
@@ -219,7 +220,7 @@ function createDeveloperMarkerElement(dev: Developer): HTMLDivElement {
   el.innerHTML = `
     <div class="gao-friend-avatar" style="border-color:${borderColor};box-shadow:0 0 12px ${borderColor}44;">
       ${dev.avatar_url
-        ? `<img src="${dev.avatar_url}" alt="${dev.display_name}" />`
+        ? `<img src="${dev.avatar_url}" alt="${escapeHtml(dev.display_name)}" />`
         : initials
       }
       ${dev.is_available ? '<div class="gao-friend-online" style="background:#34d399;"></div>' : ''}
@@ -317,7 +318,7 @@ function createLandmarkMarkerElement(lm: Landmark): HTMLDivElement {
   // Tooltip (CSS only, no MapLibre Popup)
   el.innerHTML = `
     <span style="font-size:14px;line-height:1;">${lm.icon}</span>
-    <span style="font-size:9px;font-weight:600;color:${color};max-width:70px;overflow:hidden;text-overflow:ellipsis;">${lm.name}</span>
+    <span style="font-size:9px;font-weight:600;color:${color};max-width:70px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(lm.name)}</span>
     <div class="gao-lm-tip" style="
       position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
       background:rgba(10,11,15,0.95);border:1px solid ${color}25;border-radius:8px;
@@ -326,7 +327,7 @@ function createLandmarkMarkerElement(lm: Landmark): HTMLDivElement {
       box-shadow:0 4px 12px rgba(0,0,0,0.5);
       font-family:Inter,system-ui,sans-serif;
     ">
-      <div style="font-size:11px;font-weight:700;color:white;">${lm.name}</div>
+      <div style="font-size:11px;font-weight:700;color:white;">${escapeHtml(lm.name)}</div>
       <div style="font-size:9px;color:#a3adc3;">${lm.city}, ${lm.country}${lm.height ? ` · ${lm.height}m` : ''}</div>
     </div>
   `;

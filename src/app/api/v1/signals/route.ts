@@ -71,8 +71,8 @@ export async function GET(req: NextRequest) {
        LEFT JOIN users u ON u.id = s.author_id
        ${where}
        ORDER BY s.created_at DESC
-       LIMIT ${limit}`,
-      values
+       LIMIT $${idx}`,
+      [...values, limit]
     );
 
     // Transform to frontend format

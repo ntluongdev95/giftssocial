@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { pgPool } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
+import { setCsrfCookie } from '@/lib/csrf';
 import { createSession } from '@/lib/session';
 
 const schema = z.object({
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
       expires_in: 2592000,
     });
 
-    return setAuthCookies(response, accessToken, refreshToken);
+    return setCsrfCookie(setAuthCookies(response, accessToken, refreshToken));
   } catch (err) {
     console.error('[Auth Login]', err);
     return NextResponse.json(

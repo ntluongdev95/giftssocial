@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import maplibregl from 'maplibre-gl';
+import { escapeHtml, sanitizeUrl } from '@/lib/sanitize';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -945,7 +946,7 @@ export default function KissGlobe() {
             animation:kiss-receiver-pulse 2s ease-in-out infinite;
           ">
             ${kiss.receiver_avatar
-              ? `<img src="${kiss.receiver_avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+              ? `<img src="${sanitizeUrl(kiss.receiver_avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
               : receiverInitial
             }
           </div>
@@ -960,7 +961,7 @@ export default function KissGlobe() {
           background:rgba(10,11,15,0.8);backdrop-filter:blur(4px);
           padding:1px 6px;border-radius:8px;
           white-space:nowrap;max-width:70px;overflow:hidden;text-overflow:ellipsis;
-        ">${displayName}</span>
+        ">${escapeHtml(displayName)}</span>
         <style>
           @keyframes kiss-receiver-pulse {
             0%,100% { box-shadow:0 0 16px rgba(236,72,153,0.3); }
@@ -988,7 +989,7 @@ export default function KissGlobe() {
           background:rgba(10,11,15,0.7);
           padding:1px 5px;border-radius:6px;
           white-space:nowrap;
-        ">${displayName}</span>
+        ">${escapeHtml(displayName)}</span>
       `;
     }
 
@@ -1002,7 +1003,7 @@ export default function KissGlobe() {
         }).then(() => {
           mutate();
           // Update marker to opened state
-          el.querySelector('div')!.innerHTML = `<span style="font-size:22px">${kiss.emoji}</span>`;
+          el.querySelector('div')!.innerHTML = `<span style="font-size:22px">${escapeHtml(kiss.emoji)}</span>`;
         });
       } else if (isReceiver || isSender) {
         setRevealKiss(kiss);

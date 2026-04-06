@@ -3,7 +3,7 @@
 import { checkAccountApi } from '@/app/api/calls/apiAccounts';
 import { getPasskeyNonceApi, passKeyLoginApi, passKeyRegisterApi } from '@/app/api/calls/apiAuth';
 import { getMe } from '@/app/api/calls/apiUser';
-import { findPasskeyUserByCredentialId, getSavedPasskeyUsers, SavedPasskeyUser, savePasskeyUser, setAccessTokenToLocal, setRefreshTokenToLocal, updatePasskeyUserInfo, updatePasskeyUserLastLogin } from '@/lib/clients/storage.helper';
+import { findPasskeyUserByCredentialId, getSavedPasskeyUsers, SavedPasskeyUser, savePasskeyUser, setAccessTokenToLocal } from '@/lib/clients/storage.helper';
 import { createPasskeyCredential, getPasskeyCredential, isPasskeyCancelError, isWebAuthnSupported } from '@/lib/passkey';
 import { getFCMToken, requestFCMToken } from '@/lib/passkey/fcm';
 import { useAccountStore } from '@/stores/account-store';
@@ -62,10 +62,10 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
 
   // Handle OAuth login success (Google/Apple)
   const handleOAuthSuccess = useCallback(async (accessToken: string, refreshToken?: string) => {
-    // Store in localStorage for backward compat (external API clients that need Authorization header)
-    // httpOnly cookies are the primary auth mechanism — localStorage is supplementary
+    // Store access token in localStorage for external API clients that need Authorization header
+    // httpOnly cookies are the primary auth mechanism — this is supplementary
+    // NOTE: refresh token NOT stored in localStorage (sensitive — httpOnly cookie only)
     setAccessTokenToLocal(accessToken);
-    if (refreshToken) setRefreshTokenToLocal(refreshToken);
     setTokens(accessToken, refreshToken);
 
     // Hydrate user from cookie-based session (primary) or token fallback

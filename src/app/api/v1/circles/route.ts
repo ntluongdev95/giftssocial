@@ -24,7 +24,8 @@ export async function GET(req: NextRequest) {
     if (category) { conditions.push(`category = $${idx++}`); values.push(category); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const result = await pgPool.query(`SELECT * FROM circles ${where} ORDER BY member_count DESC LIMIT ${limit}`, values);
+    values.push(limit);
+    const result = await pgPool.query(`SELECT * FROM circles ${where} ORDER BY member_count DESC LIMIT $${idx}`, values);
 
     return NextResponse.json({ data: result.rows });
   } catch (err) {
