@@ -437,19 +437,20 @@ export default function WorldPage() {
 
     // Delay to let map initialize
     const timer = setTimeout(() => {
-      fetch(`/api/v1/kisses?mine=true&limit=50`, { headers: { Authorization: `Bearer ${token}` } })
+      // Public endpoint — works for anyone, not just sender/receiver
+      fetch(`/api/v1/kisses/${kissId}`)
         .then(r => r.json())
         .then(data => {
-          const kiss = (data.data || []).find((k: Record<string, unknown>) => k.id === kissId);
-          if (kiss) {
-            // Open cinematic replay overlay
-            setReplayKiss(kiss);
-            // Mark as opened
-            fetch('/api/v1/kisses', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ id: kissId }),
-            }).catch(() => {});
+          if (data.data) {
+            setReplayKiss(data.data);
+            // Mark as opened if I'm the receiver
+            if (token) {
+              fetch('/api/v1/kisses', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ id: kissId }),
+              }).catch(() => {});
+            }
           }
         })
         .catch(() => {});

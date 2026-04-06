@@ -153,7 +153,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
 
   const handleShare = useCallback(async (platform: string) => {
     const text = `${kiss.emoji} Got a kiss from ${kiss.sender_name || 'someone'}! ${senderCity} → ${receiverCity} on Gao Social`;
-    const url = `${window.location.origin}/world?kiss=${kiss.id}`;
+    const url = `${window.location.origin}/kiss/${kiss.id}`;
 
     if (platform === 'native' && navigator.share) {
       try {
@@ -175,7 +175,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   }, [kiss, senderCity, receiverCity]);
 
   const handleCopyLink = useCallback(() => {
-    navigator.clipboard.writeText(`${window.location.origin}/world?kiss=${kiss.id}`);
+    navigator.clipboard.writeText(`${window.location.origin}/kiss/${kiss.id}`);
     setCopied(true);
     toast.success('Link copied!');
     setTimeout(() => setCopied(false), 2000);
