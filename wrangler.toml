@@ -17,3 +17,4 @@ id = "49968b6c630147a284b3b2e93eec6422"
 
 [vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"
