@@ -20,6 +20,7 @@ interface Kiss {
   sender_lng: number;
   receiver_lat: number;
   receiver_lng: number;
+  kiss_type?: string;
   created_at: string;
 }
 
@@ -152,7 +153,9 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   }, [step, kiss]);
 
   const handleShare = useCallback(async (platform: string) => {
-    const text = `${kiss.emoji} Got a kiss from ${kiss.sender_name || 'someone'}! ${senderCity} → ${receiverCity} on Gao Social`;
+    const text = kiss.kiss_type === 'declaration'
+      ? `🌍❤️ ${kiss.sender_name} declared love to ${kiss.receiver_name || 'someone'}! Watch the journey on Gao Social`
+      : `${kiss.emoji} Got a kiss from ${kiss.sender_name || 'someone'}! ${senderCity} → ${receiverCity} on Gao Social`;
     const url = `${window.location.origin}/kiss/${kiss.id}`;
 
     if (platform === 'native' && navigator.share) {
@@ -233,14 +236,14 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
               </motion.span>
             ))}
 
-            {/* Phase 1: "Somewhere in {city}..." (0-2s) */}
+            {/* Phase 1: Opening text (0-2s) */}
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: [0, 1, 1, 0] }}
               transition={{ duration: 2.5, times: [0, 0.2, 0.7, 1] }}
               className="text-sm tracking-[0.3em] uppercase text-[#4a5068] absolute top-[20%]"
             >
-              Somewhere in {senderCity || '...'}
+              {kiss.kiss_type === 'declaration' ? 'A love story for the world...' : `Somewhere in ${senderCity || '...'}`}
             </motion.p>
 
             {/* Phase 2: Sender avatar appears (1.5-4s) */}
@@ -286,7 +289,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
               transition={{ duration: 5, times: [0, 0.4, 0.55, 0.65, 1] }}
               className="flex flex-col items-center gap-3 mt-4"
             >
-              <p className="text-sm text-[#a3adc3]">decided to send something special</p>
+              <p className="text-sm text-[#a3adc3]">{kiss.kiss_type === 'declaration' ? 'wants the whole world to know' : 'decided to send something special'}</p>
               <motion.div
                 initial={{ scale: 0, rotate: -30 }}
                 animate={{ scale: [0, 0, 0, 1.3, 1], rotate: [-30, -30, -30, 5, 0] }}
@@ -331,7 +334,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
               transition={{ duration: 6.5, times: [0, 0.5, 0.6, 0.7, 0.82, 0.9] }}
               className="text-[11px] text-[#ec4899] mt-4 tracking-wider"
             >
-              Preparing for takeoff...
+              {kiss.kiss_type === 'declaration' ? 'Broadcasting to the world...' : 'Preparing for takeoff...'}
             </motion.p>
           </motion.div>
         )}
@@ -471,14 +474,120 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
               />
             </div>
 
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 2.5 }}
-              className="text-xs text-[#4a5068]"
-            >
-              {senderCity} → {receiverCity}
-            </motion.p>
+            {/* Regular kiss: city route */}
+            {kiss.kiss_type !== 'declaration' && (
+              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.5 }} className="text-xs text-[#4a5068]">
+                {senderCity} → {receiverCity}
+              </motion.p>
+            )}
+
+            {/* Declaration: Globe with chibis on top */}
+            {kiss.kiss_type === 'declaration' && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.5, type: 'spring', damping: 15 }}
+                className="flex flex-col items-center gap-3 mt-2"
+              >
+                {/* Mini globe with characters on top */}
+                <div className="relative">
+                  {/* Globe */}
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+                    className="relative"
+                  >
+                    <svg width="160" height="160" viewBox="0 0 160 160">
+                      <defs>
+                        <radialGradient id="globe-grad" cx="40%" cy="35%">
+                          <stop offset="0%" stopColor="#1e3a5f" />
+                          <stop offset="50%" stopColor="#0f2340" />
+                          <stop offset="100%" stopColor="#0a1628" />
+                        </radialGradient>
+                        <radialGradient id="globe-shine" cx="30%" cy="25%">
+                          <stop offset="0%" stopColor="rgba(0,212,255,0.15)" />
+                          <stop offset="100%" stopColor="transparent" />
+                        </radialGradient>
+                      </defs>
+                      {/* Globe sphere */}
+                      <circle cx="80" cy="80" r="75" fill="url(#globe-grad)" stroke="rgba(0,212,255,0.2)" strokeWidth="1" />
+                      <circle cx="80" cy="80" r="75" fill="url(#globe-shine)" />
+                      {/* Continents (simplified) */}
+                      <ellipse cx="55" cy="50" rx="22" ry="15" fill="#22c55e" opacity="0.3" />
+                      <ellipse cx="100" cy="65" rx="18" ry="20" fill="#22c55e" opacity="0.25" />
+                      <ellipse cx="70" cy="95" rx="15" ry="10" fill="#22c55e" opacity="0.2" />
+                      <ellipse cx="115" cy="45" rx="12" ry="14" fill="#22c55e" opacity="0.2" />
+                      {/* Grid lines */}
+                      <ellipse cx="80" cy="80" rx="75" ry="40" fill="none" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
+                      <ellipse cx="80" cy="80" rx="75" ry="60" fill="none" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
+                      <ellipse cx="80" cy="80" rx="40" ry="75" fill="none" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
+                      <line x1="5" y1="80" x2="155" y2="80" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
+                    </svg>
+                  </motion.div>
+
+                  {/* Heart pin on top of globe */}
+                  <motion.div
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 1, type: 'spring', damping: 12 }}
+                    className="absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center"
+                  >
+                    {/* Two avatars side by side */}
+                    <div className="flex items-center -space-x-3">
+                      <div className="h-11 w-11 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold z-10"
+                        style={{ background: 'rgba(236,72,153,0.2)', border: '2.5px solid #ec4899', color: '#ec4899', boxShadow: '0 0 12px rgba(236,72,153,0.4)' }}>
+                        {kiss.sender_avatar
+                          ? <img src={kiss.sender_avatar} alt="" className="w-full h-full object-cover" />
+                          : (kiss.sender_name || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <motion.div
+                        animate={{ scale: [1, 1.2, 1] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                        className="text-xl z-20 -mt-3"
+                      >❤️</motion.div>
+                      <div className="h-11 w-11 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold z-10"
+                        style={{ background: 'rgba(0,212,255,0.2)', border: '2.5px solid #00d4ff', color: '#00d4ff', boxShadow: '0 0 12px rgba(0,212,255,0.4)' }}>
+                        {kiss.receiver_avatar
+                          ? <img src={kiss.receiver_avatar} alt="" className="w-full h-full object-cover" />
+                          : (kiss.receiver_name || 'You').charAt(0).toUpperCase()}
+                      </div>
+                    </div>
+
+                    {/* Names */}
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <span className="text-[9px] font-bold text-[#ec4899]">{kiss.sender_name}</span>
+                      <span className="text-[8px] text-[#4a5068]">&</span>
+                      <span className="text-[9px] font-bold text-[#00d4ff]">{kiss.receiver_name || 'You'}</span>
+                    </div>
+                  </motion.div>
+
+                  {/* Orbiting hearts */}
+                  {['❤️', '💕', '💖'].map((h, i) => (
+                    <motion.span
+                      key={i}
+                      className="absolute text-lg pointer-events-none"
+                      style={{ left: '50%', top: '50%' }}
+                      animate={{
+                        x: [Math.cos(i * 2.1) * 100, Math.cos(i * 2.1 + Math.PI) * 100, Math.cos(i * 2.1 + Math.PI * 2) * 100],
+                        y: [Math.sin(i * 2.1) * 50, Math.sin(i * 2.1 + Math.PI) * 50, Math.sin(i * 2.1 + Math.PI * 2) * 50],
+                        opacity: [0.6, 1, 0.6],
+                      }}
+                      transition={{ duration: 4 + i, repeat: Infinity, ease: 'linear' }}
+                    >{h}</motion.span>
+                  ))}
+                </div>
+
+                {/* Declaration text */}
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.5 }}
+                  className="text-sm font-bold text-[#ec4899] text-center"
+                >
+                  Told the whole world 🌍
+                </motion.p>
+              </motion.div>
+            )}
           </motion.div>
         )}
 
@@ -529,16 +638,25 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
                 {/* Names + route */}
                 <div>
                   <p className="text-lg font-bold text-white">{kiss.sender_name || 'Someone'}</p>
-                  <p className="text-[11px] text-[#ec4899] mt-0.5">sent a kiss to</p>
+                  <p className="text-[11px] text-[#ec4899] mt-0.5">
+                    {kiss.kiss_type === 'declaration' ? 'declared love to' : 'sent a kiss to'}
+                  </p>
                   <p className="text-lg font-bold text-white mt-0.5">{kiss.receiver_name || 'You'}</p>
                 </div>
 
-                {/* Route */}
-                <div className="flex items-center gap-2 text-xs text-[#4a5068]">
-                  <span>{senderCity}</span>
-                  <span className="text-[#ec4899]">✈️</span>
-                  <span>{receiverCity}</span>
-                </div>
+                {/* Declaration badge or route */}
+                {kiss.kiss_type === 'declaration' ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'linear-gradient(135deg, rgba(236,72,153,0.15), rgba(168,85,247,0.15))', border: '1px solid rgba(236,72,153,0.2)' }}>
+                    <span className="text-xs">🌍</span>
+                    <span className="text-[10px] font-semibold text-[#ec4899]">Public Love Declaration</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-[#4a5068]">
+                    <span>{senderCity}</span>
+                    <span className="text-[#ec4899]">✈️</span>
+                    <span>{receiverCity}</span>
+                  </div>
+                )}
 
                 {/* Message */}
                 {kiss.message && (

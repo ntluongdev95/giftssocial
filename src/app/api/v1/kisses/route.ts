@@ -71,6 +71,7 @@ const kissSchema = z.object({
   message: z.string().max(200).default(''),
   emoji: z.string().max(10).default('💋'),
   visibility: z.enum(['public', 'private']).default('public'),
+  kiss_type: z.enum(['kiss', 'declaration']).default('kiss'),
   receiver_lat: z.number().optional(),
   receiver_lng: z.number().optional(),
 });
@@ -105,19 +106,20 @@ export async function POST(req: NextRequest) {
     const recLng = hasValidDestination ? (d.receiver_lng || receiver.rows[0].location_lng) : 0;
 
     const result = await pgPool.query(
-      `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [userId, d.receiver_id, d.message, d.emoji, d.visibility,
+      `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [userId, d.receiver_id, d.message, d.emoji, d.visibility, d.kiss_type,
        sender.rows[0].location_lat, sender.rows[0].location_lng, recLat, recLng]
     );
 
-    // Notify receiver with different message based on destination availability
+    // Notify receiver
     const senderName = sender.rows[0].display_name || 'Someone';
-    if (hasValidDestination) {
-      // Has coords (either receiver location or sender-provided address) → can flyTo
+    const isDeclaration = d.kiss_type === 'declaration';
+    if (isDeclaration) {
+      notify(d.receiver_id, 'system', `🌍❤️ ${senderName} declared love to you!`, 'The whole world can see it! Open to watch 🌏✨', 'kiss', result.rows[0].id);
+    } else if (hasValidDestination) {
       notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Open it on the map 🎁✨', 'kiss', result.rows[0].id);
     } else {
-      // No coords at all (send anyway) → ask receiver to share location
       notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Tap here to share your location and see it fly to you! 📍✈️', 'kiss', result.rows[0].id);
     }
 

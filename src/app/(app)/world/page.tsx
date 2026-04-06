@@ -1088,9 +1088,13 @@ export default function WorldPage() {
           onClose={() => setReplayKiss(null)}
           onFlyStart={() => {
             const k = replayKiss;
+            // Declarations always use 3D globe
+            if (k?.kiss_type === 'declaration' && viewMode !== '3d') {
+              setViewMode('3d');
+            }
             if (k && k.sender_lat && k.receiver_lat) {
               window.dispatchEvent(new CustomEvent('gao-fly-to', {
-                detail: { lng: k.sender_lng, lat: k.sender_lat, zoom: 4, skipPin: true }
+                detail: { lng: k.sender_lng, lat: k.sender_lat, zoom: k.kiss_type === 'declaration' ? 2 : 4, skipPin: true }
               }));
             }
           }}

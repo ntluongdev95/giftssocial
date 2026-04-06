@@ -69,6 +69,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   const [message, setMessage] = useState('');
   const [emoji, setEmoji] = useState('💋');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [kissType, setKissType] = useState<'kiss' | 'declaration'>('kiss');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [noLocationWarning, setNoLocationWarning] = useState(false);
@@ -100,7 +101,8 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
     if (!token) { setSendError('Please login first'); return; }
     setSending(true);
     try {
-      const payload: Record<string, unknown> = { receiver_id: receiverId, message, emoji, visibility };
+      const payload: Record<string, unknown> = { receiver_id: receiverId, message, emoji, visibility, kiss_type: kissType };
+      if (kissType === 'declaration') payload.visibility = 'public'; // declarations are always public
       if (overrideReceiverCoords) {
         payload.receiver_lat = overrideReceiverCoords.lat;
         payload.receiver_lng = overrideReceiverCoords.lng;
@@ -358,7 +360,40 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
             />
           </div>
 
-          {/* Visibility */}
+          {/* Type: Kiss or Love Declaration */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setKissType('kiss'); }}
+              className="flex-1 rounded-xl py-2.5 text-xs font-semibold cursor-pointer transition-all"
+              style={kissType === 'kiss'
+                ? { background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }
+                : { background: 'rgba(17,19,24,0.5)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.04)' }}
+            >
+              💋 Send Kiss
+            </button>
+            <button
+              onClick={() => { setKissType('declaration'); setVisibility('public'); }}
+              className="flex-1 rounded-xl py-2.5 text-xs font-semibold cursor-pointer transition-all"
+              style={kissType === 'declaration'
+                ? { background: 'linear-gradient(135deg, rgba(236,72,153,0.15), rgba(168,85,247,0.15))', color: '#ec4899', border: '1px solid rgba(236,72,153,0.3)', boxShadow: '0 0 15px rgba(236,72,153,0.1)' }
+                : { background: 'rgba(17,19,24,0.5)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.04)' }}
+            >
+              🌍❤️ Declare Love
+            </button>
+          </div>
+
+          {/* Declaration banner */}
+          {kissType === 'declaration' && (
+            <div className="rounded-xl px-3 py-2.5 flex items-start gap-2" style={{ background: 'linear-gradient(135deg, rgba(236,72,153,0.06), rgba(168,85,247,0.06))', border: '1px solid rgba(236,72,153,0.12)' }}>
+              <span className="text-base">🌏</span>
+              <p className="text-[10px] text-[#ec4899] leading-relaxed">
+                Tell the whole world you love someone! Your declaration will be shown on the 3D globe with a cinematic experience everyone can see and share.
+              </p>
+            </div>
+          )}
+
+          {/* Visibility — only show for regular kiss */}
+          {kissType === 'kiss' && (
           <div className="flex gap-2">
             {(['public', 'private'] as const).map(v => (
               <button key={v} onClick={() => setVisibility(v)} className="flex-1 rounded-xl py-2 text-xs font-semibold capitalize cursor-pointer" style={visibility === v ? { background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' } : { background: 'rgba(17,19,24,0.5)', color: '#4a5068', border: '1px solid rgba(255,255,255,0.04)' }}>
@@ -366,6 +401,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
               </button>
             ))}
           </div>
+          )}
 
           {/* Error */}
           {sendError && (
