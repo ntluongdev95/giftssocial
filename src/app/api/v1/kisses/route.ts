@@ -97,6 +97,8 @@ export async function POST(req: NextRequest) {
     if (!receiver.rows[0]) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
 
     const receiverHasLocation = !!receiver.rows[0].location_lat;
+    const senderProvidedAddress = !!(d.receiver_lat && d.receiver_lng);
+    const hasValidDestination = receiverHasLocation || senderProvidedAddress;
 
     // Priority: 1) sender-provided address coords, 2) receiver's actual location, 3) sender location as fallback
     const recLat = d.receiver_lat || receiver.rows[0].location_lat || sender.rows[0].location_lat;
@@ -109,11 +111,13 @@ export async function POST(req: NextRequest) {
        sender.rows[0].location_lat, sender.rows[0].location_lng, recLat, recLng]
     );
 
-    // Notify receiver
+    // Notify receiver with different message based on destination availability
     const senderName = sender.rows[0].display_name || 'Someone';
-    if (receiverHasLocation) {
+    if (hasValidDestination) {
+      // Has coords (either receiver location or sender-provided address) → can flyTo
       notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Open it on the map 🎁✨', 'kiss', result.rows[0].id);
     } else {
+      // No coords at all (send anyway) → ask receiver to share location
       notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Tap here to share your location and see it fly to you! 📍✈️', 'kiss', result.rows[0].id);
     }
 
