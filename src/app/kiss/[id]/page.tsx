@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { pgPool } from '@/lib/db';
 import type { Metadata } from 'next';
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.gao.social';
+
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -32,12 +34,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return {
       title,
       description,
+      metadataBase: new URL(BASE_URL),
       openGraph: {
         title,
         description,
         type: 'website',
+        url: `${BASE_URL}/kiss/${id}`,
         siteName: 'Gao Social',
-        images: k.sender_avatar ? [{ url: k.sender_avatar, width: 200, height: 200 }] : [],
+        images: k.sender_avatar ? [{ url: k.sender_avatar.startsWith('/') ? `${BASE_URL}${k.sender_avatar}` : k.sender_avatar, width: 200, height: 200 }] : [],
       },
       twitter: {
         card: 'summary',
