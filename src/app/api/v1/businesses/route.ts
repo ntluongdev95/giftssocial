@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB, genId, parseRows } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/businesses — Search nearby businesses ───────────────────
@@ -17,45 +17,32 @@ export async function GET(req: NextRequest) {
 
     const conditions: string[] = ["status = 'active'"];
     const values: unknown[] = [];
-    let idx = 1;
 
-    // Name search (full-text + ILIKE fallback)
+    // Name search (LIKE — SQLite LIKE is case-insensitive for ASCII)
     if (q) {
-      conditions.push(`(to_tsvector('english', name) @@ plainto_tsquery('english', $${idx}) OR name ILIKE $${idx + 1} OR address ILIKE $${idx + 1} OR city ILIKE $${idx + 1})`);
-      values.push(q, `%${q}%`);
-      idx += 2;
+      conditions.push(`(name LIKE ? OR address LIKE ? OR city LIKE ?)`);
+      values.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
 
     if (category) {
-      conditions.push(`(category = $${idx} OR $${idx} = ANY(subcategories))`);
-      values.push(category);
-      idx++;
+      conditions.push(`(category = ? OR subcategories LIKE '%"' || ? || '"%')`);
+      values.push(category, category);
     }
 
     if (radiusKm > 0 && (lat !== 0 || lng !== 0)) {
-      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians($${idx})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(location_lat))))) < $${idx + 2}`);
-      values.push(lat, lng, radiusKm);
-      idx += 3;
-    }
-
-    // Order: if searching by name, rank by relevance (parameterized); otherwise by trust
-    let orderBy: string;
-    if (q) {
-      values.push(q);
-      orderBy = `ts_rank(to_tsvector('english', name), plainto_tsquery('english', $${idx})) DESC, trust_score DESC`;
-      idx++;
-    } else {
-      orderBy = 'trust_score DESC';
+      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < ?`);
+      values.push(lat, lng, lat, radiusKm);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     values.push(limit);
-    const result = await pgPool.query(
-      `SELECT * FROM businesses ${where} ORDER BY ${orderBy} LIMIT $${idx}`,
-      values
-    );
 
-    return NextResponse.json({ data: result.rows });
+    const db = getDB();
+    const result = await db.prepare(
+      `SELECT * FROM businesses ${where} ORDER BY trust_score DESC LIMIT ?`
+    ).bind(...values).all<Record<string, unknown>>();
+
+    return NextResponse.json({ data: parseRows(result.results) });
   } catch (err) {
     console.error('[Businesses GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch businesses' } }, { status: 500 });
@@ -97,22 +84,46 @@ export async function POST(req: NextRequest) {
 
     const d = parsed.data;
     const [lngVal, latVal] = d.location.coordinates;
+    const db = getDB();
 
-    const result = await pgPool.query(
-      `INSERT INTO businesses (owner_user_id, name, category, description, location_lat, location_lng, address, city, phone, website, hours, booking_enabled, cover_image, images, services, social_links, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
-       ON CONFLICT (owner_user_id) DO UPDATE SET
-         name=EXCLUDED.name, category=EXCLUDED.category, description=EXCLUDED.description,
-         location_lat=EXCLUDED.location_lat, location_lng=EXCLUDED.location_lng,
-         address=EXCLUDED.address, city=EXCLUDED.city, phone=EXCLUDED.phone, website=EXCLUDED.website,
-         hours=EXCLUDED.hours, booking_enabled=EXCLUDED.booking_enabled,
-         cover_image=EXCLUDED.cover_image, images=EXCLUDED.images, services=EXCLUDED.services, social_links=EXCLUDED.social_links,
-         status='active', updated_at=NOW()
-       RETURNING id, status, updated_at`,
-      [userId, d.name, d.category, d.description || '', latVal, lngVal, d.address || '', d.city || '', d.phone || null, d.website || null, JSON.stringify(d.hours || {}), d.booking_enabled ?? false, d.cover_image || null, d.images || [], JSON.stringify(d.services || []), JSON.stringify(d.social_links || [])]
-    );
+    // SELECT + INSERT/UPDATE pattern (no ON CONFLICT on owner_user_id)
+    const existing = await db.prepare('SELECT id FROM businesses WHERE owner_user_id = ? LIMIT 1').bind(userId).first<{ id: string }>();
 
-    return NextResponse.json({ data: result.rows[0] }, { status: 201 });
+    let row: Record<string, unknown> | null;
+    if (existing) {
+      row = await db.prepare(
+        `UPDATE businesses SET
+           name=?, category=?, description=?,
+           location_lat=?, location_lng=?,
+           address=?, city=?, phone=?, website=?,
+           hours=?, booking_enabled=?,
+           cover_image=?, images=?, services=?, social_links=?,
+           status='active', updated_at=datetime('now')
+         WHERE id=? RETURNING id, status, updated_at`
+      ).bind(
+        d.name, d.category, d.description || '', latVal, lngVal,
+        d.address || '', d.city || '', d.phone || null, d.website || null,
+        JSON.stringify(d.hours || {}), d.booking_enabled ? 1 : 0,
+        d.cover_image || null, JSON.stringify(d.images || []),
+        JSON.stringify(d.services || []), JSON.stringify(d.social_links || []),
+        existing.id
+      ).first<Record<string, unknown>>();
+    } else {
+      const newId = genId('biz_');
+      row = await db.prepare(
+        `INSERT INTO businesses (id, owner_user_id, name, category, description, location_lat, location_lng, address, city, phone, website, hours, booking_enabled, cover_image, images, services, social_links, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+         RETURNING id, status, updated_at`
+      ).bind(
+        newId, userId, d.name, d.category, d.description || '', latVal, lngVal,
+        d.address || '', d.city || '', d.phone || null, d.website || null,
+        JSON.stringify(d.hours || {}), d.booking_enabled ? 1 : 0,
+        d.cover_image || null, JSON.stringify(d.images || []),
+        JSON.stringify(d.services || []), JSON.stringify(d.social_links || [])
+      ).first<Record<string, unknown>>();
+    }
+
+    return NextResponse.json({ data: row }, { status: 201 });
   } catch (err) {
     console.error('[Businesses POST]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to save business' } }, { status: 500 });

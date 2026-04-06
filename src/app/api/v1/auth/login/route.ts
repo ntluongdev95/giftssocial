@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
 import { setCsrfCookie } from '@/lib/csrf';
@@ -26,19 +26,17 @@ export async function POST(req: NextRequest) {
     const { email } = parsed.data;
 
     // Find user
-    const result = await pgPool.query(
-      'SELECT id, display_name, email, trust_score, trust_level, status FROM users WHERE email = $1 AND status = $2',
-      [email, 'active']
-    );
+    const db = getDB();
+    const user = await db.prepare(
+      "SELECT id, display_name, email, trust_score, trust_level, status FROM users WHERE email = ? AND status = ?"
+    ).bind(email, 'active').first<{ id: string; display_name: string; email: string; trust_score: number; trust_level: string; status: string }>();
 
-    if (result.rows.length === 0) {
+    if (!user) {
       return NextResponse.json(
         { error: { code: 'user_not_found', message: 'No account found with this email' } },
         { status: 404 }
       );
     }
-
-    const user = result.rows[0];
 
     // Generate tokens
     const accessToken = await signAccessToken(user.id);

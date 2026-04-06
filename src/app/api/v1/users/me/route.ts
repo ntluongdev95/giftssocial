@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // GET /api/v1/users/me
@@ -8,10 +8,11 @@ export async function GET(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
 
-    const result = await pgPool.query('SELECT * FROM users WHERE id = $1', [userId]);
-    if (result.rows.length === 0) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
+    const db = getDB();
+    const row = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+    if (!row) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
 
-    return NextResponse.json({ data: result.rows[0] });
+    return NextResponse.json({ data: row });
   } catch (err) {
     console.error('[Users Me GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch user' } }, { status: 500 });
@@ -28,26 +29,25 @@ export async function PATCH(req: NextRequest) {
     const allowedFields = ['display_name', 'full_name', 'bio', 'avatar_url', 'background_url', 'photos', 'location_lat', 'location_lng', 'city'];
     const updates: string[] = [];
     const values: unknown[] = [];
-    let idx = 1;
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        updates.push(`${field} = $${idx++}`);
+        updates.push(`${field} = ?`);
         values.push(body[field]);
       }
     }
 
     if (updates.length === 0) return NextResponse.json({ error: { code: 'invalid_request', message: 'No fields to update' } }, { status: 400 });
 
-    updates.push(`updated_at = NOW()`);
+    updates.push(`updated_at = datetime('now')`);
     values.push(userId);
 
-    const result = await pgPool.query(
-      `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
-      values
-    );
+    const db = getDB();
+    const row = await db.prepare(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ? RETURNING *`
+    ).bind(...values).first();
 
-    return NextResponse.json({ data: result.rows[0] });
+    return NextResponse.json({ data: row });
   } catch (err) {
     console.error('[Users Me PATCH]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to update' } }, { status: 500 });

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 
-const haversine = (latP: number, lngP: number) =>
-  `(6371 * acos(LEAST(1.0, cos(radians($${latP})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(location_lat)))))`;
+const haversine = (lat: number, lng: number) =>
+  `(6371 * acos(LEAST(1.0, cos(radians(${lat})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(location_lat)))))`;
 
-const profileHaversine = (latP: number, lngP: number) =>
-  `(6371 * acos(LEAST(1.0, cos(radians($${latP})) * cos(radians(lat)) * cos(radians(lng) - radians($${lngP})) + sin(radians($${latP})) * sin(radians(lat)))))`;
+const profileHaversine = (lat: number, lng: number) =>
+  `(6371 * acos(LEAST(1.0, cos(radians(${lat})) * cos(radians(lat)) * cos(radians(lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(lat)))))`;
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,49 +15,46 @@ export async function GET(req: NextRequest) {
     const radiusKm = Math.min(parseInt(searchParams.get('radius') || '50000'), 500000) / 1000;
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
+    const db = getDB();
+
     const [businesses, events, profiles, signals, circles] = await Promise.all([
-      pgPool.query(
-        `SELECT *, ${haversine(1, 2)} AS distance_km
+      db.prepare(
+        `SELECT *, ${haversine(lat, lng)} AS distance_km
          FROM businesses
-         WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(1, 2)} < $3
-         ORDER BY trust_score DESC LIMIT $4`,
-        [lat, lng, radiusKm, limit]
-      ).then(r => r.rows).catch(() => []),
+         WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
+         ORDER BY trust_score DESC LIMIT ?`
+      ).bind(radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
 
-      pgPool.query(
-        `SELECT *, ${haversine(1, 2)} AS distance_km
+      db.prepare(
+        `SELECT *, ${haversine(lat, lng)} AS distance_km
          FROM events
-         WHERE status IN ('scheduled', 'live') AND start_time > NOW() AND location_lat IS NOT NULL AND ${haversine(1, 2)} < $3
-         ORDER BY start_time ASC LIMIT 10`,
-        [lat, lng, radiusKm]
-      ).then(r => r.rows).catch(() => []),
+         WHERE status IN ('scheduled', 'live') AND start_time > datetime('now') AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
+         ORDER BY start_time ASC LIMIT 10`
+      ).bind(radiusKm).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
 
-      pgPool.query(
-        `SELECT *, ${profileHaversine(1, 2)} AS distance_km
+      db.prepare(
+        `SELECT *, ${profileHaversine(lat, lng)} AS distance_km
          FROM profiles
-         WHERE status = 'active' AND available = true AND ${profileHaversine(1, 2)} < $3
-         ORDER BY trust_score_snapshot DESC LIMIT $4`,
-        [lat, lng, radiusKm, limit]
-      ).then(r => r.rows).catch(() => []),
+         WHERE status = 'active' AND available = 1 AND ${profileHaversine(lat, lng)} < ?
+         ORDER BY trust_score_snapshot DESC LIMIT ?`
+      ).bind(radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
 
-      pgPool.query(
+      db.prepare(
         `SELECT s.*, u.username AS author_username, u.display_name AS author_name, u.avatar_url AS author_avatar,
-                (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians($2)) + sin(radians($1)) * sin(radians(s.location_lat))))) AS distance_km
+                (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(s.location_lat))))) AS distance_km
          FROM signals s
          LEFT JOIN users u ON u.id = s.author_id
-         WHERE s.status = 'active' AND s.expires_at > NOW() AND s.visibility = 'public'
-           AND (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians($2)) + sin(radians($1)) * sin(radians(s.location_lat))))) < $3
-         ORDER BY s.created_at DESC LIMIT $4`,
-        [lat, lng, radiusKm, limit]
-      ).then(r => r.rows).catch(err => { console.error('[Nearby signals]', err); return []; }),
+         WHERE s.status = 'active' AND s.expires_at > datetime('now') AND s.visibility = 'public'
+           AND (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(s.location_lat))))) < ?
+         ORDER BY s.created_at DESC LIMIT ?`
+      ).bind(lat, lng, lat, lat, lng, lat, radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(err => { console.error('[Nearby signals]', err); return []; }),
 
-      pgPool.query(
-        `SELECT *, ${haversine(1, 2)} AS distance_km
+      db.prepare(
+        `SELECT *, ${haversine(lat, lng)} AS distance_km
          FROM circles
-         WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(1, 2)} < $3
-         ORDER BY member_count DESC LIMIT $4`,
-        [lat, lng, radiusKm, limit]
-      ).then(r => r.rows).catch(() => []),
+         WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
+         ORDER BY member_count DESC LIMIT ?`
+      ).bind(radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
     ]);
 
     // Separate signals by type

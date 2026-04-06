@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/circles/:id — Single circle detail ────────────────────
@@ -8,25 +8,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const userId = await resolveUserId(req).catch(() => null);
+    const db = getDB();
 
-    const result = await pgPool.query('SELECT * FROM circles WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
+    const circle = await db.prepare('SELECT * FROM circles WHERE id = ?').bind(id).first<Record<string, unknown>>();
+    if (!circle) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Circle not found' } }, { status: 404 });
     }
-
-    const circle = result.rows[0];
 
     // Attach caller's membership info
     let my_role: string | null = null;
     let my_status: string | null = null;
     if (userId) {
-      const mem = await pgPool.query(
-        "SELECT role, status FROM circle_members WHERE circle_id = $1 AND user_id = $2 AND status IN ('active', 'pending')",
-        [id, userId]
-      );
-      if (mem.rows.length > 0) {
-        my_role = mem.rows[0].role;
-        my_status = mem.rows[0].status;
+      const mem = await db.prepare(
+        "SELECT role, status FROM circle_members WHERE circle_id = ? AND user_id = ? AND status IN ('active', 'pending')"
+      ).bind(id, userId).first<{ role: string; status: string }>();
+      if (mem) {
+        my_role = mem.role;
+        my_status = mem.status;
       }
     }
 
@@ -45,25 +43,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
 
     const { id } = await params;
+    const db = getDB();
 
     // Check owner
-    const mem = await pgPool.query(
-      "SELECT role FROM circle_members WHERE circle_id = $1 AND user_id = $2 AND status = 'active'",
-      [id, userId]
-    );
-    if (!mem.rows.length || !['owner', 'admin'].includes(mem.rows[0].role)) {
+    const mem = await db.prepare(
+      "SELECT role FROM circle_members WHERE circle_id = ? AND user_id = ? AND status = 'active'"
+    ).bind(id, userId).first<{ role: string }>();
+    if (!mem || !['owner', 'admin'].includes(mem.role)) {
       return NextResponse.json({ error: { code: 'forbidden', message: 'Only owner/admin can edit' } }, { status: 403 });
     }
 
     const body = await req.json();
     const updates: string[] = [];
     const values: unknown[] = [];
-    let idx = 1;
 
     const allowed = ['name', 'description', 'city', 'avatar_url', 'cover_image', 'visibility', 'join_mode'] as const;
     for (const key of allowed) {
       if (body[key] !== undefined) {
-        updates.push(`${key} = $${idx++}`);
+        updates.push(`${key} = ?`);
         values.push(body[key]);
       }
     }
@@ -73,12 +70,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     values.push(id);
-    const result = await pgPool.query(
-      `UPDATE circles SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`,
-      values
-    );
+    const row = await db.prepare(
+      `UPDATE circles SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ? RETURNING *`
+    ).bind(...values).first();
 
-    return NextResponse.json({ data: result.rows[0] });
+    return NextResponse.json({ data: row });
   } catch (err) {
     console.error('[Circle PATCH]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to update circle' } }, { status: 500 });

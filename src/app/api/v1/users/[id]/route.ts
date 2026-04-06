@@ -1,54 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const db = getDB();
 
-    const result = await pgPool.query(
+    const user = await db.prepare(
       `SELECT id, username, display_name, avatar_url, bio, photos, city, trust_level, trust_score, followers_count, following_count, location_lat, location_lng, created_at
-       FROM users WHERE id = $1`,
-      [id]
-    );
+       FROM users WHERE id = ?`
+    ).bind(id).first<Record<string, unknown>>();
 
-    if (result.rows.length === 0) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
-
-    const user = result.rows[0];
+    if (!user) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
 
     // Fetch public activity in parallel
-    const [signalsRes, reviewsRes, checkinsRes] = await Promise.all([
-      pgPool.query(
+    const [signalsResult, reviewsResult, checkinsResult] = await Promise.all([
+      db.prepare(
         `SELECT id, type, title, category, created_at FROM signals
-         WHERE author_id = $1 AND visibility = 'public' AND status = 'active'
-         ORDER BY created_at DESC LIMIT 10`,
-        [id]
-      ).catch(() => ({ rows: [] })),
-      pgPool.query(
+         WHERE author_id = ? AND visibility = 'public' AND status = 'active'
+         ORDER BY created_at DESC LIMIT 10`
+      ).bind(id).all<Record<string, unknown>>().catch(() => ({ results: [] })),
+
+      db.prepare(
         `SELECT r.id, r.rating, r.title, r.body, r.created_at, r.verified_visit,
                 b.name AS business_name, b.avatar_url AS business_avatar
          FROM reviews r LEFT JOIN businesses b ON b.id = r.business_id
-         WHERE r.author_id = $1 AND r.status = 'active'
-         ORDER BY r.created_at DESC LIMIT 10`,
-        [id]
-      ).catch(() => ({ rows: [] })),
-      pgPool.query(
+         WHERE r.author_id = ? AND r.status = 'active'
+         ORDER BY r.created_at DESC LIMIT 10`
+      ).bind(id).all<Record<string, unknown>>().catch(() => ({ results: [] })),
+
+      db.prepare(
         `SELECT c.id, c.target_type, c.target_id, c.created_at,
                 COALESCE(b.name, e.title) AS target_name
          FROM checkins c
          LEFT JOIN businesses b ON c.target_type = 'business' AND b.id = c.target_id
          LEFT JOIN events e ON c.target_type = 'event' AND e.id = c.target_id
-         WHERE c.user_id = $1
-         ORDER BY c.created_at DESC LIMIT 10`,
-        [id]
-      ).catch(() => ({ rows: [] })),
+         WHERE c.user_id = ?
+         ORDER BY c.created_at DESC LIMIT 10`
+      ).bind(id).all<Record<string, unknown>>().catch(() => ({ results: [] })),
     ]);
 
     return NextResponse.json({
       data: {
         ...user,
-        signals: signalsRes.rows,
-        reviews: reviewsRes.rows,
-        checkins: checkinsRes.rows,
+        signals: signalsResult.results,
+        reviews: reviewsResult.results,
+        checkins: checkinsResult.results,
       },
     });
   } catch (err) {

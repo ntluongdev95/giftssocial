@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 
@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
     let targetId: string | null = null;
     let targetName: string | null = null;
 
+    const db = getDB();
+
     if (qr_data) {
       // Parse QR: gao://checkin/business/{id} or gao://checkin/event/{id}
       const match = qr_data.match(/^gao:\/\/checkin\/(business|event)\/(.+)$/);
@@ -30,17 +32,21 @@ export async function POST(req: NextRequest) {
 
     if (!targetId && code) {
       // Try to find by manual code — check businesses first, then events
-      const bizResult = await pgPool.query('SELECT id, name FROM businesses WHERE checkin_code = $1 AND status = \'active\'', [code.toUpperCase()]);
-      if (bizResult.rows.length > 0) {
+      const bizResult = await db.prepare(
+        "SELECT id, name FROM businesses WHERE checkin_code = ? AND status = 'active'"
+      ).bind(code.toUpperCase()).first<{ id: string; name: string }>();
+      if (bizResult) {
         targetType = 'business';
-        targetId = bizResult.rows[0].id;
-        targetName = bizResult.rows[0].name;
+        targetId = bizResult.id;
+        targetName = bizResult.name;
       } else {
-        const evtResult = await pgPool.query('SELECT id, title FROM events WHERE checkin_code = $1 AND status IN (\'scheduled\', \'live\')', [code.toUpperCase()]);
-        if (evtResult.rows.length > 0) {
+        const evtResult = await db.prepare(
+          "SELECT id, title FROM events WHERE checkin_code = ? AND status IN ('scheduled', 'live')"
+        ).bind(code.toUpperCase()).first<{ id: string; title: string }>();
+        if (evtResult) {
           targetType = 'event';
-          targetId = evtResult.rows[0].id;
-          targetName = evtResult.rows[0].title;
+          targetId = evtResult.id;
+          targetName = evtResult.title;
         }
       }
     }
@@ -52,45 +58,41 @@ export async function POST(req: NextRequest) {
     // Get target name if not already set
     if (!targetName) {
       if (targetType === 'business') {
-        const r = await pgPool.query('SELECT name FROM businesses WHERE id = $1', [targetId]);
-        targetName = r.rows[0]?.name || 'Business';
+        const r = await db.prepare('SELECT name FROM businesses WHERE id = ?').bind(targetId).first<{ name: string }>();
+        targetName = r?.name || 'Business';
       } else {
-        const r = await pgPool.query('SELECT title FROM events WHERE id = $1', [targetId]);
-        targetName = r.rows[0]?.title || 'Event';
+        const r = await db.prepare('SELECT title FROM events WHERE id = ?').bind(targetId).first<{ title: string }>();
+        targetName = r?.title || 'Event';
       }
     }
 
     // Check for duplicate check-in (same user, same target, within 24h)
-    const existing = await pgPool.query(
-      "SELECT id FROM proofs WHERE user_id = $1 AND target_type = $2 AND target_id = $3 AND proof_type = 'checked_in' AND created_at > NOW() - INTERVAL '24 hours'",
-      [userId, targetType, targetId]
-    );
-    if (existing.rows.length > 0) {
+    const existing = await db.prepare(
+      "SELECT id FROM proofs WHERE user_id = ? AND target_type = ? AND target_id = ? AND proof_type = 'checked_in' AND created_at > datetime('now', '-1 day')"
+    ).bind(userId, targetType, targetId).first();
+    if (existing) {
       return NextResponse.json({ error: { code: 'already_checked_in', message: `Already checked in at ${targetName} today` } }, { status: 400 });
     }
 
     // Create proof
     const trustPoints = targetType === 'event' ? 3 : 2;
-    await pgPool.query(
-      `INSERT INTO proofs (user_id, proof_type, target_type, target_id, evidence_type, trust_points, verified)
-       VALUES ($1, 'checked_in', $2, $3, 'qr_scan', $4, true)`,
-      [userId, targetType, targetId, trustPoints]
-    );
-
-    // Update trust score
-    await pgPool.query('SELECT recalculate_trust_score($1)', [userId]).catch(() => {});
+    const proofId = genId('prf_');
+    await db.prepare(
+      `INSERT INTO proofs (id, user_id, proof_type, target_type, target_id, evidence_type, trust_points, verified)
+       VALUES (?, ?, 'checked_in', ?, ?, 'qr_scan', ?, 1)`
+    ).bind(proofId, userId, targetType, targetId, trustPoints).run();
 
     // If event check-in, increment checkin_count
     if (targetType === 'event') {
-      await pgPool.query('UPDATE events SET checkin_count = checkin_count + 1 WHERE id = $1', [targetId]);
+      await db.prepare('UPDATE events SET checkin_count = checkin_count + 1 WHERE id = ?').bind(targetId).run();
     }
 
     // Notify business owner
     if (targetType === 'business') {
-      const owner = await pgPool.query('SELECT owner_user_id FROM businesses WHERE id = $1', [targetId]);
-      const userName = await pgPool.query('SELECT display_name FROM users WHERE id = $1', [userId]);
-      if (owner.rows[0]?.owner_user_id) {
-        notify(owner.rows[0].owner_user_id, 'system', `${userName.rows[0]?.display_name || 'Someone'} checked in!`, `At ${targetName}`, targetType, targetId);
+      const owner = await db.prepare('SELECT owner_user_id FROM businesses WHERE id = ?').bind(targetId).first<{ owner_user_id: string }>();
+      const userName = await db.prepare('SELECT display_name FROM users WHERE id = ?').bind(userId).first<{ display_name: string }>();
+      if (owner?.owner_user_id) {
+        notify(owner.owner_user_id, 'system', `${userName?.display_name || 'Someone'} checked in!`, `At ${targetName}`, targetType, targetId);
       }
     }
 
@@ -121,13 +123,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: { code: 'invalid_request', message: 'target_type and target_id required' } }, { status: 400 });
     }
 
+    const db = getDB();
     let code = '';
     if (targetType === 'business') {
-      const r = await pgPool.query('SELECT checkin_code FROM businesses WHERE id = $1', [targetId]);
-      code = r.rows[0]?.checkin_code || '';
+      const r = await db.prepare('SELECT checkin_code FROM businesses WHERE id = ?').bind(targetId).first<{ checkin_code: string }>();
+      code = r?.checkin_code || '';
     } else if (targetType === 'event') {
-      const r = await pgPool.query('SELECT checkin_code FROM events WHERE id = $1', [targetId]);
-      code = r.rows[0]?.checkin_code || '';
+      const r = await db.prepare('SELECT checkin_code FROM events WHERE id = ?').bind(targetId).first<{ checkin_code: string }>();
+      code = r?.checkin_code || '';
     }
 
     return NextResponse.json({

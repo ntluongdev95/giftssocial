@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, parseRow } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/profiles/me — Get my own profile ───────────────────────
@@ -11,13 +11,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ data: null });
     }
 
-    const result = await pgPool.query('SELECT * FROM profiles WHERE user_id = $1', [userId]);
+    const db = getDB();
+    const raw = await db.prepare('SELECT * FROM profiles WHERE user_id = ?').bind(userId).first<Record<string, unknown>>();
 
-    if (result.rows.length === 0) {
+    if (!raw) {
       return NextResponse.json({ data: null });
     }
 
-    const row = result.rows[0];
+    const row = parseRow(raw) as Record<string, unknown>;
     return NextResponse.json({
       data: {
         _id: row.id,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/friends — Mutual follows with location ────────────────
@@ -9,19 +9,20 @@ export async function GET(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ data: [] });
 
+    const db = getDB();
+
     // Mutual follows: I follow them AND they follow me
-    const result = await pgPool.query(
+    const result = await db.prepare(
       `SELECT u.id, u.display_name, u.username, u.avatar_url, u.trust_level, u.trust_score,
               u.location_lat, u.location_lng, u.location_sharing, u.last_seen_at
        FROM follows f1
        JOIN follows f2 ON f1.following_user_id = f2.follower_id AND f2.following_user_id = f1.follower_id
        JOIN users u ON u.id = f1.following_user_id
-       WHERE f1.follower_id = $1 AND u.status = 'active'
-       LIMIT 100`,
-      [userId]
-    );
+       WHERE f1.follower_id = ? AND u.status = 'active'
+       LIMIT 100`
+    ).bind(userId).all<Record<string, unknown>>();
 
-    const friends = result.rows.map((r) => ({
+    const friends = result.results.map((r) => ({
       id: r.id,
       display_name: r.display_name || r.username || 'Unknown',
       avatar_url: r.avatar_url || null,
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
       location: r.location_lat && r.location_lng
         ? { type: 'Point', coordinates: [r.location_lng, r.location_lat] }
         : null,
-      is_online: r.last_seen_at ? (Date.now() - new Date(r.last_seen_at).getTime()) < 5 * 60 * 1000 : false,
+      is_online: r.last_seen_at ? (Date.now() - new Date(r.last_seen_at as string).getTime()) < 5 * 60 * 1000 : false,
       last_seen_at: r.last_seen_at || null,
     }));
 

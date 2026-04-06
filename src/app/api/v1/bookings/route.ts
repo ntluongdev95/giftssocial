@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── POST /api/v1/bookings — Create booking ─────────────────────────────
@@ -28,19 +28,20 @@ export async function POST(req: NextRequest) {
     const d = parsed.data;
     if (!d.business_id && !d.event_id) return NextResponse.json({ error: { code: 'invalid_request', message: 'business_id or event_id required' } }, { status: 400 });
 
-    const result = await pgPool.query(
-      `INSERT INTO bookings (user_id, business_id, event_id, service_name, slot_time, party_size, notes, amount, currency)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       RETURNING *`,
-      [userId, d.business_id || null, d.event_id || null, d.service_name || null, d.slot_time || null, d.party_size, d.notes, d.amount, d.currency]
-    );
+    const db = getDB();
+    const id = genId('bk_');
+    const row = await db.prepare(
+      `INSERT INTO bookings (id, user_id, business_id, event_id, service_name, slot_time, party_size, notes, amount, currency)
+       VALUES (?,?,?,?,?,?,?,?,?,?)
+       RETURNING *`
+    ).bind(id, userId, d.business_id || null, d.event_id || null, d.service_name || null, d.slot_time || null, d.party_size, d.notes, d.amount, d.currency).first();
 
     // If booking an event, increment joined_count
     if (d.event_id) {
-      await pgPool.query('UPDATE events SET joined_count = joined_count + 1 WHERE id = $1', [d.event_id]).catch(() => {});
+      await db.prepare('UPDATE events SET joined_count = joined_count + 1 WHERE id = ?').bind(d.event_id).run().catch(() => {});
     }
 
-    return NextResponse.json({ data: result.rows[0] }, { status: 201 });
+    return NextResponse.json({ data: row }, { status: 201 });
   } catch (err) {
     console.error('[Bookings POST]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to create booking' } }, { status: 500 });

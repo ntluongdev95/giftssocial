@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── POST /api/v1/circles/:id/leave ──────────────────────────────────────
@@ -10,19 +10,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
 
     const { id } = await params;
+    const db = getDB();
 
-    const result = await pgPool.query(
-      "UPDATE circle_members SET status = 'left' WHERE circle_id = $1 AND user_id = $2 AND status IN ('active', 'pending') RETURNING id, status",
-      [id, userId]
-    );
+    // Get current status before updating
+    const current = await db.prepare(
+      "SELECT status FROM circle_members WHERE circle_id = ? AND user_id = ? AND status IN ('active', 'pending')"
+    ).bind(id, userId).first<{ status: string }>();
 
-    if (result.rows.length > 0) {
+    const result = await db.prepare(
+      "UPDATE circle_members SET status = 'left' WHERE circle_id = ? AND user_id = ? AND status IN ('active', 'pending')"
+    ).bind(id, userId).run();
+
+    if ((result.meta?.changes ?? 0) > 0 && current?.status === 'active') {
       // Only decrement counts if was an active member (not pending)
-      const prevStatus = result.rows[0].status;
-      if (prevStatus === 'active') {
-        await pgPool.query('UPDATE circles SET member_count = GREATEST(member_count - 1, 0) WHERE id = $1', [id]);
-        await pgPool.query('UPDATE users SET circles_count = GREATEST(circles_count - 1, 0) WHERE id = $1', [userId]).catch(() => {});
-      }
+      await db.prepare('UPDATE circles SET member_count = MAX(member_count - 1, 0) WHERE id = ?').bind(id).run();
+      await db.prepare('UPDATE users SET circles_count = MAX(circles_count - 1, 0) WHERE id = ?').bind(userId).run().catch(() => {});
     }
 
     return NextResponse.json({ data: { circle_id: id, left: true } });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, parseRow } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── Simple scoring-based matching engine ────────────────────────────────
@@ -45,17 +45,18 @@ async function matchIntentToBusiness(params: URLSearchParams) {
   const lng = parseFloat(params.get('lng') || '0');
   const radiusKm = Math.min(parseInt(params.get('radius') || '10000'), 50000) / 1000;
 
+  const db = getDB();
   let signalLat = lat;
   let signalLng = lng;
   let signalCategory = category || '';
 
   // If signal_id provided, get signal location + category
   if (signalId) {
-    const sig = await pgPool.query('SELECT location_lat, location_lng, category, metadata FROM signals WHERE id = $1', [signalId]);
-    if (sig.rows.length > 0) {
-      signalLat = sig.rows[0].location_lat;
-      signalLng = sig.rows[0].location_lng;
-      signalCategory = sig.rows[0].category || signalCategory;
+    const sig = await db.prepare('SELECT location_lat, location_lng, category, metadata FROM signals WHERE id = ?').bind(signalId).first<{ location_lat: number; location_lng: number; category: string; metadata: string }>();
+    if (sig) {
+      signalLat = sig.location_lat;
+      signalLng = sig.location_lng;
+      signalCategory = sig.category || signalCategory;
     }
   }
 
@@ -64,31 +65,39 @@ async function matchIntentToBusiness(params: URLSearchParams) {
   }
 
   // Score = category_match(10) + distance_score(0-8) + trust(0-5) + rating(0-5) + booking(3)
-  const result = await pgPool.query(`
+  // Note: SQLite doesn't support $N = ANY(array), using LOWER(category) = LOWER(?) only
+  const result = await db.prepare(`
     SELECT *,
-      (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($2)) + sin(radians($1)) * sin(radians(location_lat))))) AS distance_km,
+      (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) AS distance_km,
       (
-        CASE WHEN LOWER(category) = LOWER($3) OR $3 = ANY(subcategories) THEN 10 ELSE 0 END
+        CASE WHEN LOWER(category) = LOWER(?) THEN 10 ELSE 0 END
         + CASE
-            WHEN (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($2)) + sin(radians($1)) * sin(radians(location_lat))))) < 1 THEN 8
-            WHEN (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($2)) + sin(radians($1)) * sin(radians(location_lat))))) < 3 THEN 5
-            WHEN (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($2)) + sin(radians($1)) * sin(radians(location_lat))))) < 10 THEN 2
+            WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 1 THEN 8
+            WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 3 THEN 5
+            WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 10 THEN 2
             ELSE 0
           END
         + CASE WHEN trust_score >= 60 THEN 5 WHEN trust_score >= 30 THEN 2 ELSE 0 END
         + CASE WHEN rating_avg >= 4.5 THEN 5 WHEN rating_avg >= 4.0 THEN 3 WHEN rating_avg >= 3.5 THEN 1 ELSE 0 END
-        + CASE WHEN booking_enabled THEN 3 ELSE 0 END
+        + CASE WHEN booking_enabled = 1 THEN 3 ELSE 0 END
       ) AS match_score
     FROM businesses
     WHERE status = 'active'
-      AND (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians($2)) + sin(radians($1)) * sin(radians(location_lat))))) < $4
+      AND (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < ?
     ORDER BY match_score DESC, distance_km ASC
     LIMIT 10
-  `, [signalLat, signalLng, signalCategory, radiusKm]);
+  `).bind(
+    signalLat, signalLng, signalLat,                   // distance_km expr
+    signalCategory,                                      // category match
+    signalLat, signalLng, signalLat,                   // dist < 1
+    signalLat, signalLng, signalLat,                   // dist < 3
+    signalLat, signalLng, signalLat,                   // dist < 10
+    signalLat, signalLng, signalLat, radiusKm          // WHERE clause
+  ).all<Record<string, unknown>>();
 
   return NextResponse.json({
-    data: result.rows,
-    meta: { type: 'intent_to_business', category: signalCategory, location: [signalLng, signalLat], results: result.rows.length },
+    data: result.results,
+    meta: { type: 'intent_to_business', category: signalCategory, location: [signalLng, signalLat], results: result.results.length },
   });
 }
 
@@ -103,44 +112,60 @@ async function matchPeopleNearby(params: URLSearchParams, userId: string | null)
     return NextResponse.json({ data: [] });
   }
 
+  const db = getDB();
+
   // Get current user's profile for skill matching
   let mySkills: string[] = [];
   let myIndustry = '';
   if (userId) {
-    const me = await pgPool.query('SELECT skills, industry FROM profiles WHERE user_id = $1', [userId]);
-    if (me.rows.length > 0) {
-      mySkills = me.rows[0].skills || [];
-      myIndustry = me.rows[0].industry || '';
+    const me = await db.prepare('SELECT skills, industry FROM profiles WHERE user_id = ?').bind(userId).first<{ skills: string; industry: string }>();
+    if (me) {
+      // skills stored as JSON string
+      try { mySkills = JSON.parse(me.skills || '[]'); } catch { mySkills = []; }
+      myIndustry = me.industry || '';
     }
   }
 
-  // Score = distance(0-8) + same_industry(5) + shared_skills(2 each, max 10) + trust(0-5)
-  const result = await pgPool.query(`
+  // Score = distance(0-8) + same_industry(5) + trust(0-5)
+  // Skills overlap simplified: check if any of mySkills appear in skills text
+  const skillMatch = mySkills.length > 0
+    ? mySkills.map(() => `skills LIKE ?`).join(' + ')
+    : '0';
+  const skillValues = mySkills.map(s => `%${s}%`);
+
+  const result = await db.prepare(`
     SELECT p.*,
       u.username, u.display_name, u.avatar_url, u.trust_score AS user_trust_score, u.trust_level AS user_trust_level,
-      (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians($2)) + sin(radians($1)) * sin(radians(p.lat))))) AS distance_km,
+      (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) AS distance_km,
       (
         CASE
-          WHEN (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians($2)) + sin(radians($1)) * sin(radians(p.lat))))) < 1 THEN 8
-          WHEN (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians($2)) + sin(radians($1)) * sin(radians(p.lat))))) < 5 THEN 5
-          WHEN (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians($2)) + sin(radians($1)) * sin(radians(p.lat))))) < 15 THEN 2
+          WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 1 THEN 8
+          WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 5 THEN 5
+          WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 15 THEN 2
           ELSE 0
         END
-        + CASE WHEN p.industry = $3 AND $3 != '' THEN 5 ELSE 0 END
-        + LEAST(COALESCE(array_length(ARRAY(SELECT unnest(p.skills) INTERSECT SELECT unnest($4::text[])), 1), 0) * 2, 10)
+        + CASE WHEN p.industry = ? AND ? != '' THEN 5 ELSE 0 END
         + CASE WHEN p.trust_score_snapshot >= 60 THEN 5 WHEN p.trust_score_snapshot >= 30 THEN 2 ELSE 0 END
       ) AS match_score
     FROM profiles p
     LEFT JOIN users u ON u.id = p.user_id
     WHERE p.status = 'active'
-      AND p.user_id != COALESCE($5, '')
-      AND (6371 * acos(LEAST(1.0, cos(radians($1)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians($2)) + sin(radians($1)) * sin(radians(p.lat))))) < $6
+      AND p.user_id != COALESCE(?, '')
+      AND (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < ?
     ORDER BY match_score DESC, distance_km ASC
     LIMIT 20
-  `, [lat, lng, myIndustry, mySkills, userId || '', radiusKm]);
+  `).bind(
+    lat, lng, lat,              // distance_km
+    lat, lng, lat,              // dist < 1
+    lat, lng, lat,              // dist < 5
+    lat, lng, lat,              // dist < 15
+    myIndustry, myIndustry,    // industry match
+    userId || '',              // exclude self
+    lat, lng, lat, radiusKm   // WHERE distance < radius
+  ).all<Record<string, unknown>>();
 
   // Format profiles
-  const data = result.rows.map((r: Record<string, unknown>) => ({
+  const data = result.results.map((r: Record<string, unknown>) => ({
     _id: r.id, user_id: r.user_id, headline: r.headline, bio: r.bio,
     industry: r.industry, skills: r.skills, experience: r.experience,
     education: r.education, languages: r.languages,
@@ -158,40 +183,52 @@ async function matchPeopleNearby(params: URLSearchParams, userId: string | null)
 // ─── 3. Events for you ──────────────────────────────────────────────────
 
 async function matchEventsForYou(userId: string | null) {
+  const db = getDB();
+
   if (!userId) {
     // Not logged in — return popular upcoming events
-    const result = await pgPool.query(`
+    const result = await db.prepare(`
       SELECT * FROM events
-      WHERE status IN ('scheduled', 'live') AND start_time > NOW()
+      WHERE status IN ('scheduled', 'live') AND start_time > datetime('now')
       ORDER BY joined_count DESC LIMIT 10
-    `);
-    return NextResponse.json({ data: result.rows });
+    `).all<Record<string, unknown>>();
+    return NextResponse.json({ data: result.results });
   }
 
   // Get user's circles
-  const circlesRes = await pgPool.query("SELECT circle_id FROM circle_members WHERE user_id = $1 AND status = 'active'", [userId]);
-  const circleIds = circlesRes.rows.map(r => r.circle_id);
+  const circlesRes = await db.prepare(
+    "SELECT circle_id FROM circle_members WHERE user_id = ? AND status = 'active'"
+  ).bind(userId).all<{ circle_id: string }>();
+  const circleIds = circlesRes.results.map(r => r.circle_id);
 
   // Get user's profile for industry/category matching
-  const profileRes = await pgPool.query('SELECT industry, city FROM profiles WHERE user_id = $1', [userId]);
-  const myIndustry = profileRes.rows[0]?.industry || '';
-  const myCity = profileRes.rows[0]?.city || '';
+  const profileRes = await db.prepare('SELECT industry, city FROM profiles WHERE user_id = ?').bind(userId).first<{ industry: string; city: string }>();
+  const myIndustry = profileRes?.industry || '';
+  const myCity = profileRes?.city?.split(',')[0] || '';
 
   // Score = in_my_circle(10) + same_category_as_industry(5) + same_city(3) + popularity(0-5) + verified(3)
-  const result = await pgPool.query(`
+  // circle_id = ANY(circleIds) → circle_id IN (...)
+  let circleInClause = '0';
+  const circleBindValues: string[] = [];
+  if (circleIds.length > 0) {
+    circleInClause = `CASE WHEN circle_id IN (${circleIds.map(() => '?').join(',')}) THEN 10 ELSE 0 END`;
+    circleBindValues.push(...circleIds);
+  }
+
+  const result = await db.prepare(`
     SELECT *,
       (
-        CASE WHEN circle_id = ANY($1::text[]) THEN 10 ELSE 0 END
-        + CASE WHEN LOWER(category) = LOWER($2) THEN 5 ELSE 0 END
-        + CASE WHEN LOWER(city) LIKE LOWER($3) THEN 3 ELSE 0 END
+        ${circleInClause}
+        + CASE WHEN LOWER(category) = LOWER(?) THEN 5 ELSE 0 END
+        + CASE WHEN LOWER(city) LIKE ? THEN 3 ELSE 0 END
         + CASE WHEN joined_count > 50 THEN 5 WHEN joined_count > 20 THEN 3 WHEN joined_count > 5 THEN 1 ELSE 0 END
-        + CASE WHEN verified THEN 3 ELSE 0 END
+        + CASE WHEN verified = 1 THEN 3 ELSE 0 END
       ) AS match_score
     FROM events
-    WHERE status IN ('scheduled', 'live') AND start_time > NOW()
+    WHERE status IN ('scheduled', 'live') AND start_time > datetime('now')
     ORDER BY match_score DESC, start_time ASC
     LIMIT 10
-  `, [circleIds.length > 0 ? circleIds : [''], myIndustry, `%${myCity.split(',')[0]}%`]);
+  `).bind(...circleBindValues, myIndustry, `%${myCity}%`).all<Record<string, unknown>>();
 
-  return NextResponse.json({ data: result.rows, meta: { type: 'events_for_you', results: result.rows.length } });
+  return NextResponse.json({ data: result.results, meta: { type: 'events_for_you', results: result.results.length } });
 }

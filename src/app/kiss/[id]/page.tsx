@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import type { Metadata } from 'next';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.gao.social';
@@ -12,22 +12,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
 
   try {
-    const result = await pgPool.query(
+    const db = getDB();
+    const k = await db.prepare(
       `SELECT k.emoji, k.message, k.visibility,
               s.display_name AS sender_name, s.avatar_url AS sender_avatar,
               r.display_name AS receiver_name
        FROM kisses k
        LEFT JOIN users s ON s.id = k.sender_id
        LEFT JOIN users r ON r.id = k.receiver_id
-       WHERE k.id = $1`,
-      [id]
-    );
+       WHERE k.id = ?`
+    ).bind(id).first<{ emoji: string; message: string; visibility: string; sender_name: string; sender_avatar: string; receiver_name: string }>();
 
-    if (result.rows.length === 0 || result.rows[0].visibility === 'private') {
+    if (!k || k.visibility === 'private') {
       return { title: 'Kiss on Gao Social' };
     }
-
-    const k = result.rows[0];
     const title = `${k.emoji} ${k.sender_name} sent a kiss to ${k.receiver_name} on Gao Social`;
     const description = k.message || `${k.sender_name} sent a ${k.emoji} kiss! Watch the journey on Gao Social.`;
 

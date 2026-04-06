@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
 import { setCsrfCookie } from '@/lib/csrf';
@@ -90,23 +90,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: { code: 'no_email', message: 'Google account has no email' } }, { status: 400 });
     }
 
+    const db = getDB();
+
     // Find existing user by email
     let userId: string;
-    const existing = await pgPool.query('SELECT id FROM users WHERE email = $1', [email]);
+    const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
+    const isNewUser = !existing;
 
-    if (existing.rows.length > 0) {
-      userId = existing.rows[0].id;
-      await pgPool.query(
-        'UPDATE users SET avatar_url = COALESCE(avatar_url, $1), display_name = COALESCE(display_name, $2), status = $3, updated_at = NOW() WHERE id = $4',
-        [avatarUrl, name, 'active', userId]
-      );
+    if (existing) {
+      userId = existing.id;
+      await db.prepare(
+        "UPDATE users SET avatar_url = COALESCE(avatar_url, ?), display_name = COALESCE(display_name, ?), status = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(avatarUrl, name, 'active', userId).run();
     } else {
-      userId = `user_${crypto.randomUUID().replace(/-/g, '')}`;
-      await pgPool.query(
+      userId = genId('user_');
+      await db.prepare(
         `INSERT INTO users (id, email, display_name, avatar_url, trust_score, trust_level, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 0, 'new', 'active', NOW(), NOW())`,
-        [userId, email, name, avatarUrl]
-      );
+         VALUES (?, ?, ?, ?, 0, 'new', 'active', datetime('now'), datetime('now'))`
+      ).bind(userId, email, name, avatarUrl).run();
     }
 
     const accessToken = await signAccessToken(userId);
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest) {
       access_token: accessToken,
       refresh_token: refreshToken,
       expires_in: 2592000,
-      is_new_user: existing.rows.length === 0,
+      is_new_user: isNewUser,
     });
 
     return setCsrfCookie(setAuthCookies(response, accessToken, refreshToken));

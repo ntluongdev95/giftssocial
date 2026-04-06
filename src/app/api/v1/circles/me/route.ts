@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/circles/me — My circles ─────────────────────────────────
@@ -9,16 +9,16 @@ export async function GET(req: NextRequest) {
     const userId = await resolveUserId(req);
     if (!userId) return NextResponse.json({ data: [] });
 
-    const result = await pgPool.query(
+    const db = getDB();
+    const result = await db.prepare(
       `SELECT c.*, cm.role AS my_role, cm.status AS member_status
        FROM circle_members cm
        JOIN circles c ON c.id = cm.circle_id
-       WHERE cm.user_id = $1 AND cm.status IN ('active', 'pending')
-       ORDER BY cm.joined_at DESC`,
-      [userId]
-    );
+       WHERE cm.user_id = ? AND cm.status IN ('active', 'pending')
+       ORDER BY cm.joined_at DESC`
+    ).bind(userId).all<Record<string, unknown>>();
 
-    return NextResponse.json({ data: result.rows });
+    return NextResponse.json({ data: result.results });
   } catch (err) {
     console.error('[Circles Me GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch' } }, { status: 500 });

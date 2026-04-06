@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 
@@ -15,60 +15,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json();
     const { status, checkin } = body;
 
-    // Verify ownership
-    const check = await pgPool.query('SELECT * FROM bookings WHERE id = $1', [id]);
-    if (check.rows.length === 0) return NextResponse.json({ error: { code: 'not_found', message: 'Booking not found' } }, { status: 404 });
+    const db = getDB();
 
-    const booking = check.rows[0];
+    // Verify ownership
+    const booking = await db.prepare('SELECT * FROM bookings WHERE id = ?').bind(id).first<Record<string, unknown>>();
+    if (!booking) return NextResponse.json({ error: { code: 'not_found', message: 'Booking not found' } }, { status: 404 });
     if (booking.user_id !== userId) return NextResponse.json({ error: { code: 'forbidden', message: 'Not your booking' } }, { status: 403 });
 
-    const sets: string[] = ['updated_at = NOW()'];
+    const sets: string[] = ["updated_at = datetime('now')"];
     const values: unknown[] = [];
-    let idx = 1;
 
     if (status) {
-      sets.push(`status = $${idx++}`);
+      sets.push(`status = ?`);
       values.push(status);
     }
 
     if (checkin) {
-      sets.push(`checkin_at = NOW()`);
-      sets.push(`checkin_verified = true`);
+      sets.push(`checkin_at = datetime('now')`);
+      sets.push(`checkin_verified = 1`);
     }
 
     values.push(id);
-    const result = await pgPool.query(
-      `UPDATE bookings SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
-      values
-    );
-
-    const updated = result.rows[0];
+    const updated = await db.prepare(
+      `UPDATE bookings SET ${sets.join(', ')} WHERE id = ? RETURNING *`
+    ).bind(...values).first<Record<string, unknown>>();
 
     // If completed → auto-create proof + update trust
     if (status === 'completed') {
       const targetType = booking.business_id ? 'business' : 'event';
-      const targetId = booking.business_id || booking.event_id;
+      const targetId = (booking.business_id || booking.event_id) as string;
 
       // Create proof
-      await pgPool.query(
-        `INSERT INTO proofs (user_id, proof_type, target_type, target_id, evidence_type, booking_id, trust_points, verified)
-         VALUES ($1, 'booking_completed', $2, $3, 'system', $4, 3, true)`,
-        [userId, targetType, targetId, id]
-      ).catch(() => {});
-
-      // Recalculate trust
-      await pgPool.query('SELECT recalculate_trust_score($1)', [userId]).catch(() => {});
+      const proofId = genId('prf_');
+      await db.prepare(
+        `INSERT INTO proofs (id, user_id, proof_type, target_type, target_id, evidence_type, booking_id, trust_points, verified)
+         VALUES (?, ?, 'booking_completed', ?, ?, 'system', ?, 3, 1)`
+      ).bind(proofId, userId, targetType, targetId, id).run().catch(() => {});
 
       // Update user bookings count
-      await pgPool.query('UPDATE users SET bookings_count = bookings_count + 1, updated_at = NOW() WHERE id = $1', [userId]).catch(() => {});
+      await db.prepare('UPDATE users SET bookings_count = bookings_count + 1, updated_at = datetime(\'now\') WHERE id = ?').bind(userId).run().catch(() => {});
 
       // Earn Gao points
-      await pgPool.query('UPDATE users SET gao_points = gao_points + 10, updated_at = NOW() WHERE id = $1', [userId]).catch(() => {});
-      await pgPool.query(
-        `INSERT INTO wallet_transactions (user_id, type, amount, balance_after, source, ref_type, ref_id, description)
-         VALUES ($1, 'earn', 10, (SELECT gao_points FROM users WHERE id = $1), 'booking_complete', 'booking', $2, 'Booking completed reward')`,
-        [userId, id]
-      ).catch(() => {});
+      await db.prepare("UPDATE users SET gao_points = gao_points + 10, updated_at = datetime('now') WHERE id = ?").bind(userId).run().catch(() => {});
+
+      // Get new balance
+      const userRow = await db.prepare('SELECT gao_points FROM users WHERE id = ?').bind(userId).first<{ gao_points: number }>();
+      const newBalance = userRow?.gao_points ?? 0;
+      const txId = genId('tx_');
+      await db.prepare(
+        `INSERT INTO wallet_transactions (id, user_id, type, amount, balance_after, source, ref_type, ref_id, description)
+         VALUES (?, ?, 'earn', 10, ?, 'booking_complete', 'booking', ?, 'Booking completed reward')`
+      ).bind(txId, userId, newBalance, id).run().catch(() => {});
 
       // Notification
       notify(userId, 'proof_earned', 'Booking completed! +3 trust +10 points', `Earned proof for ${booking.service_name || 'booking'}`, 'booking', id);
@@ -77,15 +74,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // If checkin → auto-create checkin proof
     if (checkin) {
       const targetType = booking.business_id ? 'business' : 'event';
-      const targetId = booking.business_id || booking.event_id;
+      const targetId = (booking.business_id || booking.event_id) as string;
 
-      await pgPool.query(
-        `INSERT INTO proofs (user_id, proof_type, target_type, target_id, evidence_type, booking_id, trust_points, verified)
-         VALUES ($1, 'checkin_verified', $2, $3, 'system', $4, 1, true)`,
-        [userId, targetType, targetId, id]
-      ).catch(() => {});
-
-      await pgPool.query('SELECT recalculate_trust_score($1)', [userId]).catch(() => {});
+      const proofId = genId('prf_');
+      await db.prepare(
+        `INSERT INTO proofs (id, user_id, proof_type, target_type, target_id, evidence_type, booking_id, trust_points, verified)
+         VALUES (?, ?, 'checkin_verified', ?, ?, 'system', ?, 1, 1)`
+      ).bind(proofId, userId, targetType, targetId, id).run().catch(() => {});
     }
 
     return NextResponse.json({ data: updated });

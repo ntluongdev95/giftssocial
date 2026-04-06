@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
 // ─── GET /api/v1/circles — List circles ──────────────────────────────────
@@ -14,20 +14,25 @@ export async function GET(req: NextRequest) {
 
     const conditions: string[] = ["status = 'active'"];
     const values: unknown[] = [];
-    let idx = 1;
 
     if (q) {
-      conditions.push(`(to_tsvector('english', name) @@ plainto_tsquery('english', $${idx}) OR name ILIKE $${idx + 1})`);
-      values.push(q, `%${q}%`);
-      idx += 2;
+      conditions.push(`(name LIKE ? OR category LIKE ?)`);
+      values.push(`%${q}%`, `%${q}%`);
     }
-    if (category) { conditions.push(`category = $${idx++}`); values.push(category); }
+    if (category) {
+      conditions.push(`category = ?`);
+      values.push(category);
+    }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     values.push(limit);
-    const result = await pgPool.query(`SELECT * FROM circles ${where} ORDER BY member_count DESC LIMIT $${idx}`, values);
 
-    return NextResponse.json({ data: result.rows });
+    const db = getDB();
+    const result = await db.prepare(
+      `SELECT * FROM circles ${where} ORDER BY member_count DESC LIMIT ?`
+    ).bind(...values).all<Record<string, unknown>>();
+
+    return NextResponse.json({ data: result.results });
   } catch (err) {
     console.error('[Circles GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch circles' } }, { status: 500 });
@@ -58,23 +63,21 @@ export async function POST(req: NextRequest) {
 
     const d = parsed.data;
     const slug = d.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const id = genId('cir_');
 
-    const result = await pgPool.query(
-      `INSERT INTO circles (owner_id, name, slug, category, description, city, visibility, join_mode, location_lat, location_lng, member_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1) RETURNING *`,
-      [userId, d.name, slug, d.category, d.description, d.city || '', d.visibility, d.join_mode, d.location_lat ?? null, d.location_lng ?? null]
-    );
-
-    const circle = result.rows[0];
+    const db = getDB();
+    const circle = await db.prepare(
+      `INSERT INTO circles (id, owner_id, name, slug, category, description, city, visibility, join_mode, location_lat, location_lng, member_count)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,1) RETURNING *`
+    ).bind(id, userId, d.name, slug, d.category, d.description, d.city || '', d.visibility, d.join_mode, d.location_lat ?? null, d.location_lng ?? null).first<Record<string, unknown>>();
 
     // Auto-join as owner
-    await pgPool.query(
-      `INSERT INTO circle_members (circle_id, user_id, role, status) VALUES ($1, $2, 'owner', 'active')`,
-      [circle.id, userId]
-    );
+    await db.prepare(
+      `INSERT INTO circle_members (circle_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')`
+    ).bind(id, userId).run();
 
     // Update user circles count
-    await pgPool.query('UPDATE users SET circles_count = circles_count + 1 WHERE id = $1', [userId]).catch(() => {});
+    await db.prepare('UPDATE users SET circles_count = circles_count + 1 WHERE id = ?').bind(userId).run().catch(() => {});
 
     return NextResponse.json({ data: circle }, { status: 201 });
   } catch (err) {

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-function CallbackHandler() {
+function GoogleCallbackInner() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function GoogleCallbackPage() {
         <p className="text-sm text-[#4a5068]">Completing sign in...</p>
       </div>
       <Suspense fallback={null}>
-        <CallbackHandler />
+        <GoogleCallbackInner />
       </Suspense>
     </div>
   );

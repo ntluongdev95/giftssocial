@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { pgPool } from '@/lib/db';
+import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 
@@ -17,44 +17,42 @@ export async function GET(req: NextRequest) {
 
     const userId = await resolveUserId(req).catch(() => null);
 
-    const conditions: string[] = ["e.status IN ('scheduled', 'live')", 'e.start_time > NOW()'];
+    const conditions: string[] = ["e.status IN ('scheduled', 'live')", "e.start_time > datetime('now')"];
     const values: unknown[] = [];
-    let idx = 1;
 
     // Visibility filter
     if (userId) {
       conditions.push(`(
         e.visibility = 'public' OR e.visibility IS NULL
         OR (e.visibility = 'circle' AND e.circle_id IN (
-          SELECT circle_id FROM circle_members WHERE user_id = $${idx} AND status = 'active'
+          SELECT circle_id FROM circle_members WHERE user_id = ? AND status = 'active'
         ))
-        OR e.host_user_id = $${idx}
+        OR e.host_user_id = ?
       )`);
-      values.push(userId);
-      idx++;
+      values.push(userId, userId);
     } else {
       conditions.push("(e.visibility = 'public' OR e.visibility IS NULL)");
     }
 
     if (category) {
-      conditions.push(`e.category = $${idx++}`);
+      conditions.push(`e.category = ?`);
       values.push(category);
     }
 
     if (radiusKm > 0 && (lat !== 0 || lng !== 0)) {
-      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians($${idx})) * cos(radians(e.location_lat)) * cos(radians(e.location_lng) - radians($${idx + 1})) + sin(radians($${idx})) * sin(radians(e.location_lat))))) < $${idx + 2}`);
-      values.push(lat, lng, radiusKm);
-      idx += 3;
+      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(e.location_lat)) * cos(radians(e.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(e.location_lat))))) < ?`);
+      values.push(lat, lng, lat, radiusKm);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
     values.push(limit);
-    const result = await pgPool.query(
-      `SELECT e.* FROM events e ${where} ORDER BY e.start_time ASC LIMIT $${idx}`,
-      values
-    );
 
-    return NextResponse.json({ data: result.rows });
+    const db = getDB();
+    const result = await db.prepare(
+      `SELECT e.* FROM events e ${where} ORDER BY e.start_time ASC LIMIT ?`
+    ).bind(...values).all<Record<string, unknown>>();
+
+    return NextResponse.json({ data: result.results });
   } catch (err) {
     console.error('[Events GET]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to fetch events' } }, { status: 500 });
@@ -98,33 +96,39 @@ export async function POST(req: NextRequest) {
 
     const circleId = d.target_circle_id || (d.visibility === 'circle' && d.host_id ? d.host_id : null);
 
-    const result = await pgPool.query(
-      `INSERT INTO events (host_user_id, host_type, host_id, title, description, category, location_lat, location_lng, location_name, city, start_time, end_time, capacity, visibility, circle_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       RETURNING id, status, created_at`,
-      [userId, d.host_type || 'user', d.host_id || userId, d.title, d.description || '', d.category || 'general', latVal, lngVal, d.location_name || '', d.city || '', d.start_time, d.end_time, d.capacity || null, d.visibility || 'public', circleId]
-    );
+    const db = getDB();
+    const id = genId('evt_');
+    const row = await db.prepare(
+      `INSERT INTO events (id, host_user_id, host_type, host_id, title, description, category, location_lat, location_lng, location_name, city, start_time, end_time, capacity, visibility, circle_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       RETURNING id, status, created_at`
+    ).bind(
+      id, userId, d.host_type || 'user', d.host_id || userId,
+      d.title, d.description || '', d.category || 'general',
+      latVal, lngVal, d.location_name || '', d.city || '',
+      d.start_time, d.end_time, d.capacity || null,
+      d.visibility || 'public', circleId
+    ).first<Record<string, unknown>>();
 
     // Notify circle members if event is for a circle
     if (d.visibility === 'circle' && circleId) {
       try {
-        const authorName = await pgPool.query('SELECT display_name, username FROM users WHERE id = $1', [userId]);
-        const name = authorName.rows[0]?.display_name || authorName.rows[0]?.username || 'Someone';
-        const circleName = await pgPool.query('SELECT name FROM circles WHERE id = $1', [circleId]);
-        const cName = circleName.rows[0]?.name || 'your circle';
+        const authorRow = await db.prepare('SELECT display_name, username FROM users WHERE id = ?').bind(userId).first<{ display_name: string; username: string }>();
+        const name = authorRow?.display_name || authorRow?.username || 'Someone';
+        const circleRow = await db.prepare('SELECT name FROM circles WHERE id = ?').bind(circleId).first<{ name: string }>();
+        const cName = circleRow?.name || 'your circle';
 
-        const members = await pgPool.query(
-          "SELECT user_id FROM circle_members WHERE circle_id = $1 AND status = 'active' AND user_id != $2",
-          [circleId, userId]
-        );
+        const members = await db.prepare(
+          "SELECT user_id FROM circle_members WHERE circle_id = ? AND status = 'active' AND user_id != ?"
+        ).bind(circleId, userId).all<{ user_id: string }>();
 
-        for (const m of members.rows) {
+        for (const m of members.results) {
           notify(m.user_id, 'circle_activity', `New event in ${cName}`, `${name}: ${d.title}`, 'circle', circleId);
         }
       } catch {}
     }
 
-    return NextResponse.json({ data: result.rows[0] }, { status: 201 });
+    return NextResponse.json({ data: row }, { status: 201 });
   } catch (err) {
     console.error('[Events POST]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to create event' } }, { status: 500 });
