@@ -91,46 +91,59 @@ export function playMessageChime() {
   playTone(1175, 0.5, 'sine', 0.06, 0.3);  // D6
 }
 
-/** Romantic melody loop for background — returns stop function */
+/**
+ * Background romantic music — returns stop function.
+ * Priority: /audio/love-romantic.mp3 file > Web Audio fallback
+ */
 export function playRomanticBg(): () => void {
-  const c = getCtx();
-  // Simple arpeggiated chords: Am - F - C - G
-  const chords = [
-    [440, 523, 659],   // Am
-    [349, 440, 523],   // F
-    [523, 659, 784],   // C
-    [392, 494, 587],   // G
-  ];
+  // Try mp3 file first
+  const audio = new Audio('/audio/love-romantic.mp3');
+  audio.loop = true;
+  audio.volume = 0.3;
 
+  let useFallback = false;
   let stopped = false;
   let timeouts: ReturnType<typeof setTimeout>[] = [];
 
-  function playChord(notes: number[], time: number) {
-    notes.forEach((freq, i) => {
-      const osc = c.createOscillator();
-      const gain = c.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, c.currentTime + time + i * 0.15);
-      gain.gain.linearRampToValueAtTime(0.04, c.currentTime + time + i * 0.15 + 0.05);
-      gain.gain.linearRampToValueAtTime(0, c.currentTime + time + i * 0.15 + 1.2);
-      osc.connect(gain);
-      gain.connect(c.destination);
-      osc.start(c.currentTime + time + i * 0.15);
-      osc.stop(c.currentTime + time + i * 0.15 + 1.5);
-    });
-  }
+  audio.play().catch(() => {
+    // File not found or autoplay blocked — fallback to Web Audio
+    useFallback = true;
+    fallbackLoop();
+  });
 
-  function loop() {
+  // Web Audio fallback: arpeggiated romantic chords
+  function fallbackLoop() {
     if (stopped) return;
-    chords.forEach((chord, i) => playChord(chord, i * 2));
-    timeouts.push(setTimeout(() => loop(), chords.length * 2 * 1000));
+    const c = getCtx();
+    const chords = [
+      [440, 523, 659],   // Am
+      [349, 440, 523],   // F
+      [523, 659, 784],   // C
+      [392, 494, 587],   // G
+    ];
+    chords.forEach((notes, ci) => {
+      notes.forEach((freq, ni) => {
+        const osc = c.createOscillator();
+        const gain = c.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const t = c.currentTime + ci * 2 + ni * 0.15;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.04, t + 0.05);
+        gain.gain.linearRampToValueAtTime(0, t + 1.2);
+        osc.connect(gain);
+        gain.connect(c.destination);
+        osc.start(t);
+        osc.stop(t + 1.5);
+      });
+    });
+    timeouts.push(setTimeout(() => fallbackLoop(), chords.length * 2 * 1000));
   }
-
-  loop();
 
   return () => {
     stopped = true;
+    audio.pause();
+    audio.src = '';
     timeouts.forEach(clearTimeout);
   };
 }
