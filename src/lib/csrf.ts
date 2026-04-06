@@ -45,8 +45,12 @@ export function validateCsrf(req: NextRequest): boolean {
   // No CSRF cookie yet — skip (first visit, cookie not set)
   if (!cookieToken) return true;
 
-  // Cookie exists but header missing or mismatch → reject
-  if (!headerToken || headerToken !== cookieToken) return false;
+  // Header not sent — allow (gradual rollout: frontend migrating to secureFetch)
+  // Once all fetch calls use secureFetch/csrfHeaders, change this to return false
+  if (!headerToken) return true;
+
+  // Both present but mismatch — reject (attacker forged token)
+  if (headerToken !== cookieToken) return false;
 
   return true;
 }
