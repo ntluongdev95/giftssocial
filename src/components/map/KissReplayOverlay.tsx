@@ -34,8 +34,8 @@ type Step = 'intro' | 'flying' | 'arrive' | 'message' | 'share';
 const STEP_DURATIONS: Record<Step, number> = {
   intro: 3000,
   flying: 0, // controlled by map animation callback
-  arrive: 3500,
-  message: 3000,
+  arrive: 5000, // chibi hug animation takes ~3.5s + buffer
+  message: 3500,
   share: 0, // stays until user dismisses
 };
 
@@ -153,7 +153,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
 
   const handleShare = useCallback(async (platform: string) => {
     const text = `${kiss.emoji} Got a kiss from ${kiss.sender_name || 'someone'}! ${senderCity} → ${receiverCity} on Gao Social`;
-    const url = `${window.location.origin}/world`;
+    const url = `${window.location.origin}/world?kiss=${kiss.id}`;
 
     if (platform === 'native' && navigator.share) {
       try {
@@ -175,7 +175,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   }, [kiss, senderCity, receiverCity]);
 
   const handleCopyLink = useCallback(() => {
-    navigator.clipboard.writeText(`${window.location.origin}/world`);
+    navigator.clipboard.writeText(`${window.location.origin}/world?kiss=${kiss.id}`);
     setCopied(true);
     toast.success('Link copied!');
     setTimeout(() => setCopied(false), 2000);
@@ -297,38 +297,125 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           </motion.div>
         )}
 
-        {/* ── Step 3: Arrival ── */}
+        {/* ── Step 3: Arrival — chibi characters run & hug ── */}
         {step === 'arrive' && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex flex-col items-center gap-4"
+            className="flex flex-col items-center gap-4 w-full max-w-sm px-4"
           >
             <ArrivalParticles emoji={kiss.emoji} />
 
+            {/* Main emoji */}
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: [0, 1.3, 1] }}
-              transition={{ duration: 0.6, times: [0, 0.6, 1] }}
-              className="text-8xl"
+              transition={{ duration: 0.6 }}
+              className="text-6xl"
             >
               {kiss.emoji}
             </motion.div>
 
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="text-lg font-bold text-white"
-            >
-              Delivered!
-            </motion.p>
+            {/* Chibi hug scene */}
+            <div className="relative h-48 w-full flex items-end justify-center overflow-hidden">
+              {/* Ground line */}
+              <div className="absolute bottom-6 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(236,72,153,0.2) 30%, rgba(0,212,255,0.2) 70%, transparent)' }} />
+
+              {/* Quote */}
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 0, 1, 1, 0] }}
+                transition={{ duration: 3, times: [0, 0.1, 0.25, 0.75, 1] }}
+                className="absolute top-0 left-0 right-0 text-center text-[10px] italic text-[#4a5068]"
+              >
+                distance means nothing when someone means everything
+              </motion.p>
+
+              {/* Sender chibi — runs from left */}
+              <motion.div
+                initial={{ x: -130 }}
+                animate={{ x: [-130, -40, 30, 65] }}
+                transition={{ duration: 3, ease: 'easeOut', times: [0, 0.4, 0.8, 1] }}
+                className="absolute bottom-6 z-10 flex flex-col items-center"
+              >
+                <motion.div
+                  animate={{ y: [0, -6, 0, -6, 0, -3, 0, 0] }}
+                  transition={{ duration: 2.8, times: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1] }}
+                  className="flex flex-col items-center"
+                >
+                  <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold"
+                    style={{ background: 'rgba(236,72,153,0.15)', border: '2.5px solid #ec4899', color: '#ec4899', boxShadow: '0 0 15px rgba(236,72,153,0.3)' }}>
+                    {kiss.sender_avatar
+                      ? <img src={kiss.sender_avatar} alt="" className="w-full h-full object-cover" />
+                      : (kiss.sender_name || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <svg width="32" height="36" viewBox="0 0 32 36" className="-mt-1">
+                    <line x1="16" y1="2" x2="16" y2="18" stroke="#ec4899" strokeWidth="2.5" strokeLinecap="round"/>
+                    <motion.line x1="16" y1="8" x2="6" y2="4" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
+                      animate={{ x2: [6, 4, 6, 4, 2], y2: [4, 12, 4, 12, 2] }}
+                      transition={{ duration: 2.8, times: [0, 0.15, 0.3, 0.7, 1] }}/>
+                    <motion.line x1="16" y1="8" x2="26" y2="12" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
+                      animate={{ x2: [26, 28, 26, 28, 30], y2: [12, 4, 12, 4, 2] }}
+                      transition={{ duration: 2.8, times: [0, 0.15, 0.3, 0.7, 1] }}/>
+                    <motion.line x1="16" y1="18" x2="10" y2="34" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
+                      animate={{ x2: [10, 20, 10, 20, 12] }}
+                      transition={{ duration: 2.8, times: [0, 0.15, 0.3, 0.7, 1] }}/>
+                    <motion.line x1="16" y1="18" x2="22" y2="34" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
+                      animate={{ x2: [22, 12, 22, 12, 20] }}
+                      transition={{ duration: 2.8, times: [0, 0.15, 0.3, 0.7, 1] }}/>
+                  </svg>
+                </motion.div>
+                <span className="text-[8px] font-semibold text-[#ec4899]">{kiss.sender_name || 'Sender'}</span>
+              </motion.div>
+
+              {/* Receiver chibi — stands still */}
+              <motion.div
+                initial={{ x: 80, opacity: 0 }}
+                animate={{ x: 80, opacity: 1 }}
+                transition={{ delay: 0.3 }}
+                className="absolute bottom-6 z-10 flex flex-col items-center"
+              >
+                <motion.div
+                  animate={{ y: [0, -2, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="flex flex-col items-center"
+                >
+                  <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold"
+                    style={{ background: 'rgba(0,212,255,0.15)', border: '2.5px solid #00d4ff', color: '#00d4ff', boxShadow: '0 0 15px rgba(0,212,255,0.3)' }}>
+                    {kiss.receiver_avatar
+                      ? <img src={kiss.receiver_avatar} alt="" className="w-full h-full object-cover" />
+                      : (kiss.receiver_name || 'You').charAt(0).toUpperCase()}
+                  </div>
+                  <svg width="32" height="36" viewBox="0 0 32 36" className="-mt-1" style={{ transform: 'scaleX(-1)' }}>
+                    <line x1="16" y1="2" x2="16" y2="18" stroke="#00d4ff" strokeWidth="2.5" strokeLinecap="round"/>
+                    <motion.line x1="16" y1="8" x2="6" y2="14" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"
+                      animate={{ x2: [6, 6, 6, 2], y2: [14, 14, 14, 3] }}
+                      transition={{ duration: 3, times: [0, 0.7, 0.85, 1] }}/>
+                    <motion.line x1="16" y1="8" x2="26" y2="14" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"
+                      animate={{ x2: [26, 26, 26, 30], y2: [14, 14, 14, 3] }}
+                      transition={{ duration: 3, times: [0, 0.7, 0.85, 1] }}/>
+                    <line x1="16" y1="18" x2="11" y2="34" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="16" y1="18" x2="21" y2="34" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </motion.div>
+                <span className="text-[8px] font-semibold text-[#00d4ff]">{kiss.receiver_name || 'You'}</span>
+              </motion.div>
+
+              {/* Glow when they meet */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: [0, 0, 0.8, 0.4], scale: [0, 0, 1.5, 2] }}
+                transition={{ duration: 3.5, times: [0, 0.7, 0.85, 1] }}
+                className="absolute w-24 h-24 rounded-full"
+                style={{ bottom: '3rem', right: '20%', background: 'radial-gradient(circle, rgba(236,72,153,0.5), rgba(0,212,255,0.3), transparent 70%)' }}
+              />
+            </div>
 
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 1 }}
+              transition={{ delay: 2.5 }}
               className="text-xs text-[#4a5068]"
             >
               {senderCity} → {receiverCity}
