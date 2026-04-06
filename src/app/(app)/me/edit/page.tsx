@@ -123,6 +123,14 @@ export default function EditProfilePage() {
       if (res.ok) {
         const data = await res.json();
         hydrateFromMe(data);
+        // Update last user for "Welcome back" UX
+        try {
+          localStorage.setItem('gao_last_user', JSON.stringify({
+            display_name: displayName || data.display_name || data.fullName || '',
+            avatar_url: avatarUrl || data.avatar_url || data.avatarUrl || '',
+            email: data.email || '',
+          }));
+        } catch { /* ignore */ }
         toast.success('Profile updated!');
         router.back();
       } else {
