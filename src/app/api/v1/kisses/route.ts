@@ -71,6 +71,8 @@ const kissSchema = z.object({
   message: z.string().max(200).default(''),
   emoji: z.string().max(10).default('💋'),
   visibility: z.enum(['public', 'private']).default('public'),
+  receiver_lat: z.number().optional(),
+  receiver_lng: z.number().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -96,9 +98,9 @@ export async function POST(req: NextRequest) {
 
     const receiverHasLocation = !!receiver.rows[0].location_lat;
 
-    // If receiver has no location, use sender location as placeholder (will be updated when receiver shares location)
-    const recLat = receiver.rows[0].location_lat || sender.rows[0].location_lat;
-    const recLng = receiver.rows[0].location_lng || sender.rows[0].location_lng;
+    // Priority: 1) sender-provided address coords, 2) receiver's actual location, 3) sender location as fallback
+    const recLat = d.receiver_lat || receiver.rows[0].location_lat || sender.rows[0].location_lat;
+    const recLng = d.receiver_lng || receiver.rows[0].location_lng || sender.rows[0].location_lng;
 
     const result = await pgPool.query(
       `INSERT INTO kisses (sender_id, receiver_id, message, emoji, visibility, sender_lat, sender_lng, receiver_lat, receiver_lng)

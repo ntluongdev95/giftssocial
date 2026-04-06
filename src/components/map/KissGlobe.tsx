@@ -92,15 +92,20 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
     }
   }, [fetchFriends]);
 
-  const doSend = async () => {
+  const doSend = async (overrideReceiverCoords?: { lat: number; lng: number }) => {
     const token = localStorage.getItem('access_token');
     if (!token) { setSendError('Please login first'); return; }
     setSending(true);
     try {
+      const payload: Record<string, unknown> = { receiver_id: receiverId, message, emoji, visibility };
+      if (overrideReceiverCoords) {
+        payload.receiver_lat = overrideReceiverCoords.lat;
+        payload.receiver_lng = overrideReceiverCoords.lng;
+      }
       const res = await fetch('/api/v1/kisses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ receiver_id: receiverId, message, emoji, visibility }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) { toast.success('Kiss sent! ✈️💋'); onSent(); onClose(); }
       else { const d = await res.json(); setSendError(d.error?.message || 'Failed to send kiss'); }
@@ -133,18 +138,17 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
 
   const handleSendWithAddress = async () => {
     if (!customAddress.trim()) { await doSend(); return; }
-    // Geocode the address via Nominatim, then update receiver location, then send
+    setSending(true);
     try {
       const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(customAddress)}&limit=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
       const geoData = await geoRes.json();
       if (geoData[0]) {
-        const token = localStorage.getItem('access_token') || '';
-        // Update receiver location temporarily in the kiss (not the user profile)
-        // We'll pass custom coords in the send request
-        await doSend();
+        const lat = parseFloat(geoData[0].lat);
+        const lng = parseFloat(geoData[0].lon);
+        await doSend({ lat, lng });
       } else {
         setSendError('Address not found — try a different one');
-        return;
+        setSending(false);
       }
     } catch { await doSend(); }
   };
