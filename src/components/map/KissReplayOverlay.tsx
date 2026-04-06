@@ -122,34 +122,17 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
     return () => clearTimeout(timer);
   }, [step, kiss, onFlyStart]);
 
-  // Listen for flight animation completion
+  // Wait for KissGlobe flight animation to finish, then advance to arrive
   useEffect(() => {
     if (step !== 'flying') return;
 
-    // Fallback: if flight takes too long, advance after 30s
-    const fallback = setTimeout(() => setStep('arrive'), 30000);
-
-    // Listen for gift marker placement (means flight ended)
-    const observer = new MutationObserver(() => {
-      // Check if a gift marker appeared
-      const gifts = document.querySelectorAll('[data-kiss-gift]');
-      if (gifts.length > 0) {
-        clearTimeout(fallback);
-        setTimeout(() => setStep('arrive'), 500);
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    // Also advance if map settles (simpler: just wait based on distance)
+    // Estimate flight time based on distance (matches KissGlobe timing)
     const dist = Math.abs(kiss.sender_lat - kiss.receiver_lat) + Math.abs(kiss.sender_lng - kiss.receiver_lng);
-    const flyTime = dist < 0.5 ? 9000 : dist < 5 ? 12000 : 27000;
-    const timer = setTimeout(() => setStep('arrive'), flyTime);
+    // Same city (<0.5°) → 9s motorbike, medium (<5°) → 15s, far → 27s
+    const flyTime = dist < 0.5 ? 9000 : dist < 5 ? 15000 : 27000;
 
-    return () => {
-      clearTimeout(fallback);
-      clearTimeout(timer);
-      observer.disconnect();
-    };
+    const timer = setTimeout(() => setStep('arrive'), flyTime);
+    return () => clearTimeout(timer);
   }, [step, kiss]);
 
   const handleShare = useCallback(async (platform: string) => {
