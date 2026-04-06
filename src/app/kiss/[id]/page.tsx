@@ -54,8 +54,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-// Cache this page for 1 hour (social crawlers won't hit DB every time)
-export const revalidate = 3600;
+// Revalidate every 10 min — gift expires in 24h, this ensures freshness
+export const revalidate = 600;
 
 export default async function KissSharePage({ params }: Props) {
   const { id } = await params;

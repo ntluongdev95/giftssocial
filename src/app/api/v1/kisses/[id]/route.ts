@@ -40,16 +40,26 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const kiss = result.rows[0];
 
     if (kiss.visibility === 'private') {
-      // Cache private flag too (avoid repeated DB hits)
-      redis.setex(`kiss:${id}`, 3600, JSON.stringify({ _private: true })).catch(() => {});
+      redis.setex(`kiss:${id}`, 300, JSON.stringify({ _private: true })).catch(() => {});
       return NextResponse.json({ error: { code: 'private', message: 'This kiss is private' } }, { status: 403 });
     }
 
-    // Cache for 1 hour
-    redis.setex(`kiss:${id}`, 3600, JSON.stringify(kiss)).catch(() => {});
+    // Cache TTL = time remaining until 24h expiry (min 60s, max 86400s)
+    const createdAt = new Date(kiss.created_at).getTime();
+    const expiresAt = createdAt + 24 * 60 * 60 * 1000;
+    const remainingSec = Math.max(60, Math.floor((expiresAt - Date.now()) / 1000));
+    const isExpired = remainingSec <= 60;
 
+    if (isExpired && !kiss.opened) {
+      return NextResponse.json({ error: { code: 'expired', message: 'This kiss has expired' } }, { status: 410 });
+    }
+
+    // Cache matches gift lifetime — auto-expires with the gift
+    redis.setex(`kiss:${id}`, remainingSec, JSON.stringify(kiss)).catch(() => {});
+
+    const httpCache = Math.min(remainingSec, 3600); // max 1h HTTP cache
     return NextResponse.json({ data: kiss }, {
-      headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=600' },
+      headers: { 'Cache-Control': `public, s-maxage=${httpCache}, stale-while-revalidate=60` },
     });
   } catch (err) {
     console.error('[Kiss GET]', err);
