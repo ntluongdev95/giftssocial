@@ -1087,11 +1087,7 @@ export default function WorldPage() {
           kiss={replayKiss as Parameters<typeof KissReplayOverlay>[0]['kiss']}
           onClose={() => setReplayKiss(null)}
           onFlyStart={() => {
-            // Declarations use 3D globe
-            if (replayKiss?.kiss_type === 'declaration' && viewMode !== '3d') {
-              setViewMode('3d');
-            }
-            // KissGlobe handles the actual flight animation — no manual flyTo needed
+            // KissGlobe handles the flight animation — no map manipulation here
           }}
         />
       )}
