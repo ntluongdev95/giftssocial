@@ -5,6 +5,7 @@ import { create } from 'zustand';
 export interface AuthState {
   user: UserInfo | null;
   isAuthed: boolean;
+  isGuest: boolean;
   accessToken: string | null;
   refreshToken: string | null;
 
@@ -24,10 +25,11 @@ export interface AuthState {
 export const useAuthStore = create<AuthState>()((set) => ({
   user: null,
   isAuthed: false,
+  isGuest: true,
   accessToken: null,
   refreshToken: null,
 
-  setUser: (user) => set({ user, isAuthed: !!user }),
+  setUser: (user) => set({ user, isAuthed: !!user, isGuest: !user }),
 
   setTokens: (accessToken, refreshToken) =>
     set({ accessToken, refreshToken: refreshToken ?? null }),
@@ -59,15 +61,18 @@ export const useAuthStore = create<AuthState>()((set) => ({
       followersCount: src.followers_count ?? 0,
       followingCount: src.following_count ?? 0,
       friendsCount: src.friends_count ?? 0,
+      gao_domain: src.gao_domain ?? undefined,
+      trust_score: src.trust_score ?? 0,
+      display_name: src.display_name ?? undefined,
     };
-    set({ user, isAuthed: true });
+    set({ user, isAuthed: true, isGuest: false });
   },
 
   logout: () => {
-    // Reset balance store to stop auto-refresh interval
     set({
       user: null,
       isAuthed: false,
+      isGuest: true,
       accessToken: null,
       refreshToken: null,
     });

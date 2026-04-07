@@ -66,13 +66,13 @@ export async function POST(req: NextRequest) {
           // Check if host has ever replied in this room
           const hostReply = await db.prepare(
             'SELECT id FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ? LIMIT 1'
-          ).bind(room_type || 'event', room_id, evt.host_user_id).first();
+          ).bind(room_type || 'event', room_id, evt.host_user_id).first<{ id: string }>();
 
           if (!hostReply) {
             // Check if auto-reply already sent
             const autoReply = await db.prepare(
               "SELECT id FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = 'system_auto' LIMIT 1"
-            ).bind(room_type || 'event', room_id).first();
+            ).bind(room_type || 'event', room_id).first<{ id: string }>();
 
             if (!autoReply) {
               // Send auto-reply

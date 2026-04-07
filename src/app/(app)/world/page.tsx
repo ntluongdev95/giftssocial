@@ -115,7 +115,7 @@ function DesktopResultRow({ item, onSelect }: { item: Record<string, unknown>; o
       )}
       <div className="flex-1 min-w-0">
         <p className="text-[12px] font-medium text-white truncate">{item.title as string}</p>
-        {item.subtitle && <p className="text-[9px] text-[#4a5068] truncate">{item.subtitle as string}</p>}
+        {!!item.subtitle && <p className="text-[9px] text-[#4a5068] truncate">{item.subtitle as string}</p>}
       </div>
       {dist != null && dist > 0 && <span className="shrink-0 text-[9px] text-[#4a5068]">{dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist}km`}</span>}
     </button>
@@ -139,7 +139,7 @@ export default function WorldPage() {
 
   // ── Search ──────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; place_name: string; center: [number, number]; type?: 'place' | 'business' }>>([]);
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; place_name: string; center: [number, number]; type?: 'place' | 'business' | 'profile' }>>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
@@ -488,8 +488,8 @@ export default function WorldPage() {
 
   // Listen for pin label card clicks → open detail popup
   useEffect(() => {
-    const handler = (e: Event) => {
-      const { entityId, entityType, label } = (e as CustomEvent).detail;
+    const handler = (e: globalThis.Event) => {
+      const { entityId, entityType, label } = (e as CustomEvent<{ entityId: string; entityType: string; label?: string }>).detail;
       if (entityId && entityType) {
         showSearchEntityDetail(entityId, entityType, { title: label || '' });
       }
@@ -1084,7 +1084,7 @@ export default function WorldPage() {
       {/* Kiss Replay Cinematic */}
       {replayKiss && (
         <KissReplayOverlay
-          kiss={replayKiss as Parameters<typeof KissReplayOverlay>[0]['kiss']}
+          kiss={replayKiss as unknown as Parameters<typeof KissReplayOverlay>[0]['kiss']}
           onClose={() => setReplayKiss(null)}
           onFlyStart={() => {
             // KissGlobe handles the flight animation — no map manipulation here

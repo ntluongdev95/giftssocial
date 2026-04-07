@@ -82,7 +82,7 @@ export default function SavedPage() {
                       <div className="flex-1 min-w-0">
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: `${cfg.color}15`, color: cfg.color }}>{cfg.label}</span>
                         <h3 className="text-sm font-bold text-white mt-1">{(item.event_title || item.business_name || item.item_id) as string}</h3>
-                        {(item.event_city || item.business_city) && <p className="text-[10px] text-[#a3adc3]">{(item.event_city || item.business_city) as string}</p>}
+                        {!!(item.event_city || item.business_city) && <p className="text-[10px] text-[#a3adc3]">{(item.event_city || item.business_city) as string}</p>}
                         <p className="text-[10px] text-[#4a5068] mt-0.5">
                           Saved {item.created_at ? format(new Date(item.created_at as string), 'MMM d, h:mm a') : ''}
                         </p>

@@ -25,6 +25,10 @@ export interface UserInfo {
   followersCount: number;
   followingCount: number;
   friendsCount: number;
+  // D1 social fields
+  gao_domain?: string;
+  trust_score?: number;
+  display_name?: string;
 }
 
 export interface CompleteRegisterBody {

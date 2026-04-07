@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { getDB, getKV } from '@/lib/db';
+import { resolveUserId } from '@/lib/resolveUser';
 
 const schema = z.object({
   query: z.string().min(1).max(500),
@@ -13,13 +14,11 @@ const schema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = req.headers.get('x-user-id');
-    const userRole = req.headers.get('x-user-role');
-
-    if (!userId || userRole === 'guest') {
+    const userId = await resolveUserId(req);
+    if (!userId) {
       return NextResponse.json(
         { error: { code: 'unauthorized', message: 'Account required to use Ask Gao' } },
-        { status: 403 }
+        { status: 401 }
       );
     }
 

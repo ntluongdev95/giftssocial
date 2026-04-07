@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     // Check if already following to avoid duplicate
     const existing = await db.prepare(
       'SELECT id FROM follows WHERE follower_id = ? AND following_user_id IS ? AND following_business_id IS ? AND following_circle_id IS ?'
-    ).bind(userId, user_id || null, business_id || null, circle_id || null).first();
+    ).bind(userId, user_id || null, business_id || null, circle_id || null).first<{ id: string }>();
 
     if (!existing) {
       const id = genId('fol_');
@@ -66,7 +66,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: { code: 'invalid_request' } }, { status: 400 });
     }
 
-    if ((result.meta?.changes ?? 0) > 0 && user_id) {
+    if (((result.meta?.changes as number | undefined) ?? 0) > 0 && user_id) {
       await db.prepare('UPDATE users SET followers_count = MAX(followers_count - 1, 0) WHERE id = ?').bind(user_id).run().catch(() => {});
       await db.prepare('UPDATE users SET following_count = MAX(following_count - 1, 0) WHERE id = ?').bind(userId).run().catch(() => {});
     }

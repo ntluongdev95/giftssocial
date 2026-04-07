@@ -89,7 +89,7 @@ export async function revokeSession(sessionId: string, userId: string): Promise<
     .prepare('UPDATE sessions SET is_revoked = 1 WHERE id = ? AND user_id = ?')
     .bind(sessionId, userId)
     .run();
-  return (result.meta?.changes ?? 0) > 0;
+  return ((result.meta?.changes as number | undefined) ?? 0) > 0;
 }
 
 export async function revokeAllSessions(userId: string): Promise<number> {
@@ -98,7 +98,7 @@ export async function revokeAllSessions(userId: string): Promise<number> {
     .prepare('UPDATE sessions SET is_revoked = 1 WHERE user_id = ? AND is_revoked = 0')
     .bind(userId)
     .run();
-  return result.meta?.changes ?? 0;
+  return (result.meta?.changes as number | undefined) ?? 0;
 }
 
 export async function listActiveSessions(userId: string) {
@@ -124,5 +124,5 @@ export async function cleanupSessions(): Promise<number> {
           OR (is_revoked = 1 AND last_active_at < datetime('now', '-7 days'))`
     )
     .run();
-  return result.meta?.changes ?? 0;
+  return (result.meta?.changes as number | undefined) ?? 0;
 }

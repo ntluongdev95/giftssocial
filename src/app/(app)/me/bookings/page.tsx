@@ -130,7 +130,7 @@ export default function MyBookingsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-sm font-bold text-white truncate">{name}</h3>
-                      {b.service_name && <p className="text-xs text-[#a3adc3] mt-0.5">{b.service_name as string}</p>}
+                      {!!b.service_name && <p className="text-xs text-[#a3adc3] mt-0.5">{b.service_name as string}</p>}
                     </div>
                     <span className="flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full shrink-0" style={{ background: `${st.color}15`, color: st.color }}>
                       {st.icon} {st.label}
@@ -149,10 +149,10 @@ export default function MyBookingsPage() {
                       <Clock size={12} className="text-[#4a5068]" />
                       <span>Booked {format(new Date(b.created_at as string), 'MMM d')}</span>
                     </div>
-                    {b.amount && Number(b.amount) > 0 && (
+                    {!!b.amount && Number(b.amount) > 0 && (
                       <span className="font-semibold text-[#00d4ff]">${Number(b.amount).toFixed(0)}</span>
                     )}
-                    {b.checkin_verified && (
+                    {!!b.checkin_verified && (
                       <span className="flex items-center gap-1 text-[#34d399] text-[10px] font-semibold">
                         <CheckCircle size={11} /> Checked in
                       </span>

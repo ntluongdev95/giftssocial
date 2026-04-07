@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { escapeHtml } from '@/lib/sanitize';
-import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, EntityType, MarkerState } from '@/types';
+import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, EntityType, TrustLevel, MarkerState } from '@/types';
 import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
 import { useFriendStore } from '@/stores/friendStore';
@@ -645,7 +645,7 @@ export function useMapMarkers(
           id: bid, entity_type: 'business',
           lat: biz.location_lat, lng: biz.location_lng,
           title: biz.name, state: biz.open_now ? 'live' : 'default',
-          trust_level: biz.trust_level as EntityType | undefined,
+          trust_level: biz.trust_level as TrustLevel | undefined,
           metadata: { category: biz.category, open_now: biz.open_now },
         });
       }

@@ -64,7 +64,7 @@ function BusinessContent({ data }: { data: Record<string, unknown> }) {
       <div className="flex items-center gap-2">
         <TrustBadge level={(data.trust_level as TrustLevel) || 'new'} score={(data.trust_score as number) || 0} />
         {(data.proof_count as number) > 0 && <span className="text-[10px] text-[#4a5068]"><Shield size={9} className="inline" /> {data.proof_count as number} proofs</span>}
-        {data.rating_avg && <span className="text-[10px] text-[#EAB308]"><Star size={9} className="inline" /> {data.rating_avg as string}</span>}
+        {!!data.rating_avg && <span className="text-[10px] text-[#EAB308]"><Star size={9} className="inline" /> {data.rating_avg as string}</span>}
       </div>
       <div className="flex gap-2">
         <ActionBtn icon={<MessageCircle size={13} />} label="Chat" />
@@ -89,7 +89,7 @@ function EventContent({ data }: { data: Record<string, unknown> }) {
       </div>
       <div className="flex items-center gap-3 text-[10px] text-[#4a5068]">
         <TrustBadge level={(data.trust_level as TrustLevel) || 'new'} score={(data.trust_score as number) || 0} />
-        {data.distance && <span><MapPin size={9} className="inline" /> {data.distance as string}</span>}
+        {!!data.distance && <span><MapPin size={9} className="inline" /> {data.distance as string}</span>}
         <span><Users size={9} className="inline" /> {data.joined_count as number} joined · {data.spots_left as number} left</span>
       </div>
       <div className="flex gap-2">
@@ -146,8 +146,8 @@ function OfferContent({ data }: { data: Record<string, unknown> }) {
           <p className="text-[11px] text-[#4a5068]">{data.business_name as string}{data.distance ? ` · ${data.distance}` : ''}</p>
         </div>
       </div>
-      {data.discount && <p className="text-sm font-bold" style={{ color: '#EAB308' }}><Tag size={12} className="inline mr-1" />{data.discount as string}</p>}
-      {data.expires && <p className="text-[10px] text-[#4a5068]">Expires {data.expires as string}</p>}
+      {!!data.discount && <p className="text-sm font-bold" style={{ color: '#EAB308' }}><Tag size={12} className="inline mr-1" />{data.discount as string}</p>}
+      {!!data.expires && <p className="text-[10px] text-[#4a5068]">Expires {data.expires as string}</p>}
       <div className="flex gap-2">
         <ActionBtn icon={<Tag size={13} />} label="Claim" primary />
         <ActionBtn icon={<CalendarCheck size={13} />} label="Book" />

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { USER_API_URL, APP_TYPE_GAO_DOMAINS } from '@/types/constants';
+import type { UserSyncRow } from '@/types/d1';
 
 // ─── POST /api/v1/users/sync — Sync external user to local DB ───────────
 // Called after passkey login to upsert user info locally
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
               proofs_count, bookings_count, reviews_count, circles_count, followers_count, following_count,
               created_at
        FROM users WHERE id = ?`
-    ).bind(u.id).first();
+    ).bind(u.id).first<UserSyncRow>();
 
     return NextResponse.json({ data: localUser });
   } catch (err) {

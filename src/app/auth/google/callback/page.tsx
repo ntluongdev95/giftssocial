@@ -9,10 +9,11 @@ function GoogleCallbackInner() {
   useEffect(() => {
     const code = searchParams.get('code');
     const error = searchParams.get('error');
+    const state = searchParams.get('state');
 
     if (window.opener) {
       window.opener.postMessage(
-        { type: 'google-auth', code, error },
+        { type: 'google-auth', code, error, state },
         window.location.origin
       );
     } else {

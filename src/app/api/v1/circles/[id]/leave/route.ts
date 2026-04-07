@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       "UPDATE circle_members SET status = 'left' WHERE circle_id = ? AND user_id = ? AND status IN ('active', 'pending')"
     ).bind(id, userId).run();
 
-    if ((result.meta?.changes ?? 0) > 0 && current?.status === 'active') {
+    if (((result.meta?.changes as number | undefined) ?? 0) > 0 && current?.status === 'active') {
       // Only decrement counts if was an active member (not pending)
       await db.prepare('UPDATE circles SET member_count = MAX(member_count - 1, 0) WHERE id = ?').bind(id).run();
       await db.prepare('UPDATE users SET circles_count = MAX(circles_count - 1, 0) WHERE id = ?').bind(userId).run().catch(() => {});

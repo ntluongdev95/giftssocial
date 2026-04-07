@@ -4,10 +4,9 @@
 
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getDB(): any {
+export function getDB(): D1Database {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { env } = (getCloudflareContext as any)() as any;
+  const { env } = (getCloudflareContext as any)() as { env: { DB: D1Database } };
   return env.DB;
 }
 
@@ -37,7 +36,7 @@ const JSON_OBJECT_FIELDS = new Set(['hours', 'metadata']);
 
 export function parseRow<T extends Record<string, unknown>>(row: T | null): T | null {
   if (!row) return null;
-  const out = { ...row };
+  const out: Record<string, unknown> = { ...row };
   for (const f of JSON_ARRAY_FIELDS) {
     if (f in out && typeof out[f] === 'string') {
       try { out[f] = JSON.parse(out[f] as string); } catch { out[f] = []; }

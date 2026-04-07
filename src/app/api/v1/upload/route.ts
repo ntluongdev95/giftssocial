@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveUserId } from '@/lib/resolveUser';
-import { uploadFile, getStorageMode } from '@/lib/storage';
+import { uploadFile } from '@/lib/storage';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,11 +24,9 @@ export async function POST(req: NextRequest) {
     const ext = file.name.split('.').pop() || 'jpg';
     const filename = `${userId}_${Date.now()}.${ext}`;
 
-    // Upload (R2 in production, local in development)
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const url = await uploadFile(buffer, filename, file.type);
+    const url = await uploadFile(filename, await file.arrayBuffer(), file.type);
 
-    return NextResponse.json({ data: { url, filename, storage: getStorageMode() } }, { status: 201 });
+    return NextResponse.json({ data: { url, filename } }, { status: 201 });
   } catch (err) {
     console.error('[Upload POST]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to upload' } }, { status: 500 });

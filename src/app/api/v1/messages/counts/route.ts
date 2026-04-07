@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
+import { resolveUserId } from '@/lib/resolveUser';
 
 // GET /api/v1/messages/counts?room_ids=id1,id2,id3
 export async function GET(req: NextRequest) {
   try {
+    const userId = await resolveUserId(req);
+    if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
+
     const { searchParams } = req.nextUrl;
     const roomIds = searchParams.get('room_ids')?.split(',').filter(Boolean);
 

@@ -15,6 +15,28 @@ database_id = "65f8c45c-b3d4-4f02-91b1-e6f828cc2e26"
 binding = "SOCIAL_KV"
 id = "49968b6c630147a284b3b2e93eec6422"
 
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "gao-social-dev"
+
+[env.dev]
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "gao-social-dev"
+database_id = "65f8c45c-b3d4-4f02-91b1-e6f828cc2e26"
+
+[[env.dev.kv_namespaces]]
+binding = "SOCIAL_KV"
+id = "49968b6c630147a284b3b2e93eec6422"
+
+[[env.dev.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "gao-social-dev"
+
+[env.dev.vars]
+NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"
+
 [vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
 NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"

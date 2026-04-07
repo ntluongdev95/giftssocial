@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
+import type { BusinessRow, EventRow, CircleRow } from '@/types/d1';
 
 const haversine = (lat: number, lng: number) =>
   `(6371 * acos(LEAST(1.0, cos(radians(${lat})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(location_lat)))))`;
@@ -23,14 +24,14 @@ export async function GET(req: NextRequest) {
          FROM businesses
          WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
          ORDER BY trust_score DESC LIMIT ?`
-      ).bind(radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
+      ).bind(radiusKm, limit).all<BusinessRow & { distance_km: number }>().then(r => r.results).catch(() => []),
 
       db.prepare(
         `SELECT *, ${haversine(lat, lng)} AS distance_km
          FROM events
          WHERE status IN ('scheduled', 'live') AND start_time > datetime('now') AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
          ORDER BY start_time ASC LIMIT 10`
-      ).bind(radiusKm).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
+      ).bind(radiusKm).all<EventRow & { distance_km: number }>().then(r => r.results).catch(() => []),
 
       db.prepare(
         `SELECT *, ${profileHaversine(lat, lng)} AS distance_km
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
          FROM circles
          WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
          ORDER BY member_count DESC LIMIT ?`
-      ).bind(radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
+      ).bind(radiusKm, limit).all<CircleRow & { distance_km: number }>().then(r => r.results).catch(() => []),
     ]);
 
     // Separate signals by type

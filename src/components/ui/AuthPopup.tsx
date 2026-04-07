@@ -3,7 +3,7 @@
 import { checkAccountApi } from '@/app/api/calls/apiAccounts';
 import { getPasskeyNonceApi, passKeyLoginApi, passKeyRegisterApi } from '@/app/api/calls/apiAuth';
 import { getMe } from '@/app/api/calls/apiUser';
-import { findPasskeyUserByCredentialId, getSavedPasskeyUsers, SavedPasskeyUser, savePasskeyUser, setAccessTokenToLocal } from '@/lib/clients/storage.helper';
+import { findPasskeyUserByCredentialId, getSavedPasskeyUsers, SavedPasskeyUser, savePasskeyUser } from '@/lib/clients/storage.helper';
 import { createPasskeyCredential, getPasskeyCredential, isPasskeyCancelError, isWebAuthnSupported } from '@/lib/passkey';
 import { getFCMToken, requestFCMToken } from '@/lib/passkey/fcm';
 import { useAccountStore } from '@/stores/account-store';
@@ -15,21 +15,6 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PasskeyOverlay } from './PasskeyOverlay';
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: Record<string, unknown>) => void;
-          prompt: (cb?: (notification: { isNotDisplayed: () => boolean; getNotDisplayedReason: () => string }) => void) => void;
-          renderButton: (el: HTMLElement, config: Record<string, unknown>) => void;
-          cancel: () => void;
-        };
-      };
-    };
-  }
-}
 
 interface AuthPopupProps {
   open: boolean;
@@ -62,10 +47,6 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
 
   // Handle OAuth login success (Google/Apple)
   const handleOAuthSuccess = useCallback(async (accessToken: string, refreshToken?: string) => {
-    // Store access token in localStorage for external API clients that need Authorization header
-    // httpOnly cookies are the primary auth mechanism — this is supplementary
-    // NOTE: refresh token NOT stored in localStorage (sensitive — httpOnly cookie only)
-    setAccessTokenToLocal(accessToken);
     setTokens(accessToken, refreshToken);
 
     // Hydrate user from cookie-based session (primary) or token fallback
@@ -93,34 +74,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     onClose();
   }, [setTokens, hydrateFromMe, setAccount, setAccountLoaded, onClose, router]);
 
-  // Google Sign-In handler
-  const handleGoogleCredential = useCallback(async (response: { credential: string }) => {
-    setGoogleLoading(true);
-    try {
-      const res = await fetch('/api/v1/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'Google login failed');
-      }
-
-      const data = await res.json();
-      if (data.is_new_user) {
-        toast.success('Welcome to Gao!');
-      }
-      await handleOAuthSuccess(data.access_token, data.refresh_token);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Google login failed');
-    } finally {
-      setGoogleLoading(false);
-    }
-  }, [handleOAuthSuccess]);
-
-  // Google Sign-In via popup OAuth flow (no GSI library needed)
+  // Google Sign-In via popup OAuth flow
   const handleGoogleClick = useCallback(() => {
     if (googleLoading) return;
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -138,10 +92,24 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     const left = (screen.width - w) / 2, top = (screen.height - h) / 2;
     const popup = window.open(url, 'google-signin', `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`);
 
+    // Popup blocked — fall back to full-page redirect
+    if (!popup) {
+      window.location.href = url;
+      return;
+    }
+
     // Listen for callback message from popup
     const handler = async (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
       if (e.data?.type !== 'google-auth') return;
+
+      const expectedState = sessionStorage.getItem('gao_google_state');
+      if (!e.data.state || e.data.state !== expectedState) {
+        console.warn('[Auth] CSRF state mismatch — ignoring message');
+        return;
+      }
+      sessionStorage.removeItem('gao_google_state');
+
       window.removeEventListener('message', handler);
       popup?.close();
 
@@ -269,7 +237,8 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <button
                 onClick={handleGoogleClick}
-                className="flex items-center justify-center gap-2.5 rounded-2xl py-3.5 cursor-pointer transition-all active:scale-[0.97]"
+                disabled={googleLoading}
+                className="flex items-center justify-center gap-2.5 rounded-2xl py-3.5 cursor-pointer transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24">
@@ -304,230 +273,31 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
 
         {/* PASSKEY: carousel disabled — only showing passkey buttons */}
         <div className="space-y-4">
-          {/* PASSKEY: user carousel commented out — to re-enable, restore currentUser state + handlers */}
-          {false ? (
-            <>
-              {/* USER PROFILE */}
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center gap-3 pb-2"
-              >
-                <div className="group relative">
-                  <div className="absolute inset-0 scale-150 rounded-full bg-cyan-500/20 opacity-0 blur-xl transition-opacity duration-700 group-hover:opacity-100" />
-
-                  <div className="relative h-20 w-20 overflow-hidden rounded-[2rem] border-2 border-white bg-neutral-100 shadow-2xl">
-                    {currentUser?.avatarUrl ? (
-                      <Image
-                        src={currentUser?.avatarUrl}
-                        alt={currentUser?.passkeyUsername}
-                        width={80}
-                        height={80}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#03050a]">
-                        <motion.div
-                          animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-                          transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
-                          className="absolute inset-0 opacity-40"
-                          style={{
-                            background:
-                              'radial-gradient(circle at 20% 30%, #00C2E0 0%, transparent 50%), radial-gradient(circle at 80% 70%, #2D5F8A 0%, transparent 50%)',
-                            backgroundSize: '200% 200%',
-                          }}
-                        />
-
-                        <div
-                          className="absolute inset-0 opacity-[0.15]"
-                          style={{
-                            backgroundImage: `linear-gradient(#fff 0.5px, transparent 0.5px), linear-gradient(90deg, #fff 0.5px, transparent 0.5px)`,
-                            backgroundSize: '15px 15px',
-                          }}
-                        />
-
-                        <motion.div
-                          animate={{
-                            top: ['-10%', '110%'],
-                            opacity: [0, 1, 1, 0],
-                          }}
-                          transition={{
-                            duration: 3,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                            repeatDelay: 1,
-                          }}
-                          className="absolute inset-x-0 z-20 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_rgba(0,194,224,0.8)]"
-                        />
-
-                        <div className="relative z-10 flex flex-col items-center">
-                          <div className="relative flex items-center justify-center">
-                            <span className="absolute text-5xl font-black text-cyan-500/20 blur-xl">
-                              G
-                            </span>
-                            <span className="relative text-4xl font-black tracking-tighter text-white drop-shadow-2xl">
-                              G
-                            </span>
-                          </div>
-                          <div className="mt-[-2px] flex flex-col items-center">
-                            <div className="mb-1 h-[1px] w-8 bg-gradient-to-r from-transparent via-white/40 to-transparent" />
-                            <span className="pl-[0.5em] text-[7px] leading-none font-black tracking-[0.5em] text-cyan-300 uppercase">
-                              SOCIAL
-                            </span>
-                          </div>
-                        </div>
-
-                        <motion.div
-                          animate={{ left: ['-150%', '200%'] }}
-                          transition={{
-                            duration: 2,
-                            repeat: Infinity,
-                            repeatDelay: 5,
-                            ease: 'easeInOut',
-                          }}
-                          className="absolute inset-y-0 w-12 -rotate-[35deg] bg-gradient-to-r from-transparent via-white/10 to-transparent blur-md"
-                        />
-
-                        <div className="absolute inset-0 rounded-[2rem] border-[1.5px] border-white/10 shadow-[inset_0_0_15px_rgba(255,255,255,0.05)]" />
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-screen" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="text-center">
-                  <h3 className="text-xl font-black tracking-tight text-neutral-900">
-                    {currentUser?.passkeyUsername}
-                  </h3>
-                  <p className="text-[10px] font-bold tracking-[0.2em] text-neutral-400 uppercase">
-                    {'Authorized Identity'}
-                  </p>
-                </div>
-              </motion.div>
-
-              {savedUsers.length > 1 && (
-                <div className="flex shrink-0 items-center justify-center gap-2.5 px-6 py-4">
-                  {savedUsers.length <= 5 ? (
-                    savedUsers.map((_, index) => {
-                      const isActive = index === currentUserIndex;
-                      return (
-                        <button
-                          key={index}
-                          onClick={() => setCurrentUserIndex(index)}
-                          className="relative h-1.5 transition-all duration-500 ease-out focus:outline-none cursor-pointer"
-                          style={{ width: isActive ? '24px' : '6px' }}
-                        >
-                          <div
-                            className={`absolute inset-0 rounded-full transition-colors duration-500 ${
-                              isActive ? 'bg-cyan-500' : 'bg-neutral-200'
-                            }`}
-                          />
-
-                          {isActive && (
-                            <motion.div
-                              layoutId="activeGlow"
-                              className="absolute inset-0 rounded-full bg-cyan-400 opacity-50 blur-[4px]"
-                            />
-                          )}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="flex items-center gap-3 rounded-full border border-neutral-100 bg-neutral-50 px-4 py-1.5">
-                      <span className="text-[10px] font-black tracking-widest text-cyan-500 uppercase">
-                        {String(currentUserIndex + 1).padStart(2, '0')}
-                      </span>
-                      <div className="h-3 w-[1px] bg-neutral-200" />
-                      <span className="text-[10px] font-bold tracking-widest text-neutral-400 uppercase">
-                        {String(savedUsers.length).padStart(2, '0')}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* LOGIN BUTTON */}
-              <div className="space-y-4">
-                <button
-                  onClick={handleUserClick}
-                  className="group relative w-full cursor-pointer overflow-hidden rounded-2xl bg-neutral-950 px-8 py-5 text-white transition-all active:scale-[0.97] disabled:opacity-90"
-                >
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div className="flex flex-col items-start text-left">
-                      <span className="mb-0.5 text-[9px] font-bold tracking-[0.4em] text-white/40 uppercase">
-                        Login as{' '}
-                      </span>
-                      <span className="text-[12px] tracking-[0.2em]">
-                        {currentUser?.passkeyUsername?.split(' ')[0]}
-                      </span>
-                    </div>
-
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5">
-                      <ArrowRight size={20} className="text-white/70" />
-                    </div>
-                  </div>
-                </button>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={handleSignupWithPasskey}
-                    className="group relative flex cursor-pointer flex-col items-start justify-between rounded-2xl border border-neutral-200 bg-white p-5 transition-all hover:bg-neutral-50 active:scale-[0.96]"
-                  >
-                    <div className="flex flex-col items-start text-left">
-                      <span className="mb-1 text-[8px] font-bold tracking-[0.3em] text-neutral-400 uppercase">
-                        New Passkey
-                      </span>
-                      <span className="text-[11px] leading-tight font-black tracking-[0.1em] text-neutral-900 uppercase">
-                        Create
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={loginWithOtherPasskey}
-                    className="group relative flex cursor-pointer flex-col items-start justify-between rounded-2xl border border-neutral-200 bg-white p-5 transition-all hover:bg-neutral-50 active:scale-[0.96]"
-                  >
-                    <div className="flex flex-col items-start text-left">
-                      <span className="mb-1 text-[8px] font-bold tracking-[0.3em] text-neutral-400 uppercase">
-                        Guard
-                      </span>
-                      <span className="text-[11px] leading-tight font-black tracking-[0.1em] text-neutral-900 uppercase">
-                        Restore
-                      </span>
-                    </div>
-                  </button>
-                </div>
+          {/* PASSKEY: buttons disabled, using toast placeholder */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              onClick={() => toast.info('Passkey coming soon')}
+              className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <Fingerprint size={16} className="text-[#00d4ff] shrink-0" />
+              <div className="text-left">
+                <span className="text-[10px] font-semibold text-white block">New Passkey</span>
+                <span className="text-[8px] text-[#4a5068]">Create</span>
               </div>
-            </>
-          ) : (
-            <>
-              {/* PASSKEY: buttons disabled, using toast placeholder */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => toast.info('Passkey coming soon')}
-                  className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <Fingerprint size={16} className="text-[#00d4ff] shrink-0" />
-                  <div className="text-left">
-                    <span className="text-[10px] font-semibold text-white block">New Passkey</span>
-                    <span className="text-[8px] text-[#4a5068]">Create</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => toast.info('Passkey restore coming soon')}
-                  className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <ArrowRight size={16} className="text-[#4a5068] shrink-0" />
-                  <div className="text-left">
-                    <span className="text-[10px] font-semibold text-white block">Restore</span>
-                    <span className="text-[8px] text-[#4a5068]">Recovery</span>
-                  </div>
-                </button>
+            </button>
+            <button
+              onClick={() => toast.info('Passkey restore coming soon')}
+              className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <ArrowRight size={16} className="text-[#4a5068] shrink-0" />
+              <div className="text-left">
+                <span className="text-[10px] font-semibold text-white block">Restore</span>
+                <span className="text-[8px] text-[#4a5068]">Recovery</span>
               </div>
-            </>
-          )}
+            </button>
+          </div>
         </div>
 
         {/* Security badge */}

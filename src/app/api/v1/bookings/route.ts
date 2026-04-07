@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import type { BookingRow } from '@/types/d1';
 
 // ─── POST /api/v1/bookings — Create booking ─────────────────────────────
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       `INSERT INTO bookings (id, user_id, business_id, event_id, service_name, slot_time, party_size, notes, amount, currency)
        VALUES (?,?,?,?,?,?,?,?,?,?)
        RETURNING *`
-    ).bind(id, userId, d.business_id || null, d.event_id || null, d.service_name || null, d.slot_time || null, d.party_size, d.notes, d.amount, d.currency).first();
+    ).bind(id, userId, d.business_id || null, d.event_id || null, d.service_name || null, d.slot_time || null, d.party_size, d.notes, d.amount, d.currency).first<BookingRow>();
 
     // If booking an event, increment joined_count
     if (d.event_id) {

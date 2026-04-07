@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     // Check for duplicate check-in (same user, same target, within 24h)
     const existing = await db.prepare(
       "SELECT id FROM proofs WHERE user_id = ? AND target_type = ? AND target_id = ? AND proof_type = 'checked_in' AND created_at > datetime('now', '-1 day')"
-    ).bind(userId, targetType, targetId).first();
+    ).bind(userId, targetType, targetId).first<{ id: string }>();
     if (existing) {
       return NextResponse.json({ error: { code: 'already_checked_in', message: `Already checked in at ${targetName} today` } }, { status: 400 });
     }
