@@ -68,13 +68,13 @@ async function matchIntentToBusiness(params: URLSearchParams) {
   // Note: SQLite doesn't support $N = ANY(array), using LOWER(category) = LOWER(?) only
   const result = await db.prepare(`
     SELECT *,
-      (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) AS distance_km,
+      (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) AS distance_km,
       (
         CASE WHEN LOWER(category) = LOWER(?) THEN 10 ELSE 0 END
         + CASE
-            WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 1 THEN 8
-            WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 3 THEN 5
-            WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 10 THEN 2
+            WHEN (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 1 THEN 8
+            WHEN (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 3 THEN 5
+            WHEN (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < 10 THEN 2
             ELSE 0
           END
         + CASE WHEN trust_score >= 60 THEN 5 WHEN trust_score >= 30 THEN 2 ELSE 0 END
@@ -83,7 +83,7 @@ async function matchIntentToBusiness(params: URLSearchParams) {
       ) AS match_score
     FROM businesses
     WHERE status = 'active'
-      AND (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < ?
+      AND (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(?)) + sin(radians(?)) * sin(radians(location_lat))))) < ?
     ORDER BY match_score DESC, distance_km ASC
     LIMIT 10
   `).bind(
@@ -136,12 +136,12 @@ async function matchPeopleNearby(params: URLSearchParams, userId: string | null)
   const result = await db.prepare(`
     SELECT p.*,
       u.username, u.display_name, u.avatar_url, u.trust_score AS user_trust_score, u.trust_level AS user_trust_level,
-      (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) AS distance_km,
+      (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) AS distance_km,
       (
         CASE
-          WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 1 THEN 8
-          WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 5 THEN 5
-          WHEN (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 15 THEN 2
+          WHEN (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 1 THEN 8
+          WHEN (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 5 THEN 5
+          WHEN (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < 15 THEN 2
           ELSE 0
         END
         + CASE WHEN p.industry = ? AND ? != '' THEN 5 ELSE 0 END
@@ -151,7 +151,7 @@ async function matchPeopleNearby(params: URLSearchParams, userId: string | null)
     LEFT JOIN users u ON u.id = p.user_id
     WHERE p.status = 'active'
       AND p.user_id != COALESCE(?, '')
-      AND (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < ?
+      AND (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(?)) + sin(radians(?)) * sin(radians(p.lat))))) < ?
     ORDER BY match_score DESC, distance_km ASC
     LIMIT 20
   `).bind(

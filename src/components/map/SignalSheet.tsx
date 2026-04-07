@@ -3,6 +3,7 @@
 import { X, MapPin, Clock, MessageCircle, Share2, Bookmark, User, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
+import { parseUTC } from '@/lib/date';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
@@ -44,8 +45,8 @@ const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string 
 
 export default function SignalSheet({ signal, onClose }: Props) {
   const cfg = TYPE_CONFIG[signal.type] || TYPE_CONFIG.presence;
-  const timeAgo = signal.created_at ? formatDistanceToNow(new Date(signal.created_at), { addSuffix: true }) : '';
-  const expiresIn = signal.expires_at ? formatDistanceToNow(new Date(signal.expires_at), { addSuffix: true }) : '';
+  const timeAgo = signal.created_at ? formatDistanceToNow(parseUTC(signal.created_at)!, { addSuffix: true }) : '';
+  const expiresIn = signal.expires_at ? formatDistanceToNow(parseUTC(signal.expires_at)!, { addSuffix: true }) : '';
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showChat, setShowChat] = useState(false);

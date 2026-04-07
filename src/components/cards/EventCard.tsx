@@ -11,7 +11,15 @@ interface EventCardProps {
 
 const EVENT_PLACEHOLDER = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&h=300&fit=crop';
 
+function formatDistance(km?: number): string {
+  if (!km || km <= 0) return '';
+  if (km < 1) return `${Math.round(km * 1000)}m`;
+  if (km < 100) return `${km.toFixed(1)} km`;
+  return `${Math.round(km)} km`;
+}
+
 export default function EventCard({ event: e, onClick }: EventCardProps) {
+  const distKm = (e as unknown as Record<string, unknown>).distance_km as number | undefined;
   const startDate = new Date(e.start_time);
   const endDate = new Date(e.end_time);
   const isLive = e.status === 'live';
@@ -85,11 +93,14 @@ export default function EventCard({ event: e, onClick }: EventCardProps) {
           <span>{timeLabel}</span>
         </div>
 
-        {/* Location */}
-        {(e.location_name || e.city) && (
+        {/* Location + distance */}
+        {(e.location_name || e.city || distKm) && (
           <div className="flex items-center gap-2 text-xs text-[#a3adc3]">
             <MapPin size={12} className="text-[#00d4ff] shrink-0" />
             <span className="truncate">{e.location_name}{e.city ? `, ${e.city}` : ''}</span>
+            {distKm != null && distKm > 0 && (
+              <span className="shrink-0 text-[10px] font-medium text-[#00d4ff]">{formatDistance(distKm)}</span>
+            )}
           </div>
         )}
 

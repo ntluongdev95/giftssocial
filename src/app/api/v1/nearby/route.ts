@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 
 const haversine = (lat: number, lng: number) =>
-  `(6371 * acos(LEAST(1.0, cos(radians(${lat})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(location_lat)))))`;
+  `(6371 * acos(MIN(1.0, cos(radians(${lat})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(location_lat)))))`;
 
 const profileHaversine = (lat: number, lng: number) =>
-  `(6371 * acos(LEAST(1.0, cos(radians(${lat})) * cos(radians(lat)) * cos(radians(lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(lat)))))`;
+  `(6371 * acos(MIN(1.0, cos(radians(${lat})) * cos(radians(lat)) * cos(radians(lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(lat)))))`;
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,11 +41,11 @@ export async function GET(req: NextRequest) {
 
       db.prepare(
         `SELECT s.*, u.username AS author_username, u.display_name AS author_name, u.avatar_url AS author_avatar,
-                (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(s.location_lat))))) AS distance_km
+                (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(s.location_lat))))) AS distance_km
          FROM signals s
          LEFT JOIN users u ON u.id = s.author_id
          WHERE s.status = 'active' AND s.expires_at > datetime('now') AND s.visibility = 'public'
-           AND (6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(s.location_lat))))) < ?
+           AND (6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(s.location_lat)) * cos(radians(s.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(s.location_lat))))) < ?
          ORDER BY s.created_at DESC LIMIT ?`
       ).bind(lat, lng, lat, lat, lng, lat, radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(err => { console.error('[Nearby signals]', err); return []; }),
 

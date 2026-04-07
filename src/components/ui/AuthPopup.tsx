@@ -138,11 +138,25 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     const left = (screen.width - w) / 2, top = (screen.height - h) / 2;
     const popup = window.open(url, 'google-signin', `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`);
 
+    // Cleanup if popup was blocked
+    if (!popup) {
+      toast.error('Popup blocked — please allow popups for this site');
+      return;
+    }
+
+    // Auto-cleanup after 2 minutes (user abandoned the popup)
+    let abandonTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      abandonTimer = null;
+      window.removeEventListener('message', handler);
+      setGoogleLoading(false);
+    }, 120_000);
+
     // Listen for callback message from popup
     const handler = async (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
       if (e.data?.type !== 'google-auth') return;
       window.removeEventListener('message', handler);
+      if (abandonTimer) { clearTimeout(abandonTimer); abandonTimer = null; }
       popup?.close();
 
       const { code, error } = e.data;
@@ -169,14 +183,6 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
       }
     };
     window.addEventListener('message', handler);
-
-    // Cleanup if popup closed without completing
-    // try/catch needed: Google sets COOP header that blocks popup.closed access
-    const timer = setInterval(() => {
-      try {
-        if (!popup || popup.closed) { clearInterval(timer); window.removeEventListener('message', handler); setGoogleLoading(false); }
-      } catch { clearInterval(timer); window.removeEventListener('message', handler); setGoogleLoading(false); }
-    }, 500);
   }, [googleLoading, handleOAuthSuccess]);
 
   // PASSKEY: temporarily disabled

@@ -8,6 +8,7 @@ import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
 import { useFriendStore } from '@/stores/friendStore';
 import { useDeveloperStore } from '@/stores/developerStore';
+import { parseUTC } from '@/lib/date';
 import { useLandmarkStore, type Landmark } from '@/stores/landmarkStore';
 
 // ─── SVG Marker Generators ───────────────────────────────────────────────
@@ -364,7 +365,7 @@ function signalToEntityType(type: string): EntityType {
 // Create a compact signal icon marker
 function createSignalMarkerElement(signal: Signal): HTMLDivElement {
   const cfg = SIGNAL_TYPE_CONFIG[signal.type] || SIGNAL_TYPE_CONFIG.presence;
-  const isLive = new Date(signal.created_at).getTime() > Date.now() - 30 * 60 * 1000;
+  const isLive = (parseUTC(signal.created_at)?.getTime() ?? 0) > Date.now() - 30 * 60 * 1000;
 
   const el = document.createElement('div');
   el.className = 'gao-marker' + (isLive ? ' state-live' : '');
@@ -457,7 +458,7 @@ export function useMapMarkers(
 
       if (markersRef.current.has(signal.id)) continue;
 
-      const isLive = signal.status === 'active' && new Date(signal.created_at).getTime() > Date.now() - 30 * 60 * 1000;
+      const isLive = signal.status === 'active' && (parseUTC(signal.created_at)?.getTime() ?? 0) > Date.now() - 30 * 60 * 1000;
       const state: MarkerState = signal.status === 'suppressed' ? 'suppressed' : isLive ? 'live' : 'default';
 
       const el = createSignalMarkerElement(signal);

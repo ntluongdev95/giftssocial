@@ -1,5 +1,6 @@
 'use client';
 
+import { parseUTC } from '@/lib/date';
 import type { Signal } from '@/types';
 
 type TagVariant = {
@@ -9,7 +10,7 @@ type TagVariant = {
 };
 
 function getTag(signal: Signal): TagVariant | null {
-  const ageMs = Date.now() - new Date(signal.created_at).getTime();
+  const ageMs = Date.now() - (parseUTC(signal.created_at)?.getTime() ?? Date.now());
   const thirtyMin = 30 * 60 * 1000;
   const twentyFourH = 24 * 60 * 60 * 1000;
 

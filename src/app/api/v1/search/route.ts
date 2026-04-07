@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   // Distance formula inlined with literal values (SQLite can't use $params in expressions used in ORDER BY)
   const distExpr = hasGeo
-    ? `(6371 * acos(LEAST(1, cos(radians(${lat})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(location_lat)))))`
+    ? `(6371 * acos(MIN(1, cos(radians(${lat})) * cos(radians(location_lat)) * cos(radians(location_lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(location_lat)))))`
     : '0';
 
   const db = getDB();

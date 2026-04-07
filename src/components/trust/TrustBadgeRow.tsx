@@ -24,15 +24,18 @@ export default function TrustBadgeRow({
   badges,
   maxVisible = 3,
 }: TrustBadgeRowProps) {
-  if (badges.length === 0) return null;
+  // badges may arrive as JSON string from D1
+  const parsed: Badge[] = typeof badges === 'string' ? (() => { try { return JSON.parse(badges); } catch { return []; } })() : Array.isArray(badges) ? badges : [];
+  if (parsed.length === 0) return null;
 
-  const visible = badges.slice(0, maxVisible);
-  const overflow = badges.length - maxVisible;
+  const visible = parsed.slice(0, maxVisible);
+  const overflow = parsed.length - maxVisible;
 
   return (
     <div className="flex items-center gap-1">
       {visible.map((badge) => {
         const config = BADGE_CONFIG[badge];
+        if (!config) return null;
         return (
           <span
             key={badge}

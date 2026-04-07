@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { X, Send, MessageCircle, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
+import { parseUTC } from '@/lib/date';
 import { useAuthStore } from '@/stores/auth-store';
 
 interface Message {
@@ -144,7 +145,7 @@ export default function PrivateChat({ roomId, title, subtitle, avatar, onClose, 
                   <div className={`max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
                       <span className="text-[10px] font-semibold" style={{ color: isMe ? '#00d4ff' : '#a3adc3' }}>{isMe ? 'You' : msg.sender_name}</span>
-                      <span className="text-[9px] text-[#4a5068]">{formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}</span>
+                      <span className="text-[9px] text-[#4a5068]">{formatDistanceToNow(parseUTC(msg.created_at)!, { addSuffix: true })}</span>
                     </div>
                     <div
                       className={`rounded-2xl px-3.5 py-2 text-sm ${isMe ? 'rounded-tr-md' : 'rounded-tl-md'}`}

@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
 
     const body = await req.json();
-    const allowedFields = ['display_name', 'full_name', 'bio', 'avatar_url', 'background_url', 'photos', 'location_lat', 'location_lng', 'city'];
+    const allowedFields = ['display_name', 'bio', 'avatar_url', 'location_lat', 'location_lng', 'city'];
     const updates: string[] = [];
     const values: unknown[] = [];
 

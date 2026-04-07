@@ -7,11 +7,20 @@ interface ProfileCardProps {
   profile: Profile;
 }
 
+function parseJsonField<T>(val: unknown): T[] {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+}
+
 export default function ProfileCard({ profile }: ProfileCardProps) {
-  const yearsExp = profile.experience?.length > 0
-    ? new Date().getFullYear() - Math.min(...profile.experience.map((e) => e.start_year))
+  const skills = parseJsonField<string>(profile.skills);
+  const languages = parseJsonField<string>(profile.languages);
+  const experience = parseJsonField<{ start_year: number; title?: string; company?: string }>(profile.experience);
+  const yearsExp = experience.length > 0
+    ? new Date().getFullYear() - Math.min(...experience.map((e) => e.start_year))
     : 0;
-  const latestRole = profile.experience?.[0];
+  const latestRole = experience[0];
 
   return (
     <div className="rounded-xl border border-[#181c24]/30 bg-[#111318]/60 p-4">
@@ -50,9 +59,9 @@ export default function ProfileCard({ profile }: ProfileCardProps) {
           )}
 
           {/* Skills preview */}
-          {profile.skills?.length > 0 && (
+          {skills?.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
-              {profile.skills.slice(0, 4).map((skill) => (
+              {skills.slice(0, 4).map((skill) => (
                 <span
                   key={skill}
                   className="rounded px-1.5 py-0.5 text-[10px] font-medium"
@@ -61,8 +70,8 @@ export default function ProfileCard({ profile }: ProfileCardProps) {
                   {skill}
                 </span>
               ))}
-              {profile.skills.length > 4 && (
-                <span className="text-[10px] text-[#4a5068]">+{profile.skills.length - 4}</span>
+              {skills.length > 4 && (
+                <span className="text-[10px] text-[#4a5068]">+{skills.length - 4}</span>
               )}
             </div>
           )}
@@ -71,7 +80,7 @@ export default function ProfileCard({ profile }: ProfileCardProps) {
           <div className="mt-2 flex items-center gap-3 text-[10px] text-[#4a5068]">
             {yearsExp > 0 && <span>{yearsExp} yrs exp</span>}
             <span className="capitalize">{profile.work_type}</span>
-            {profile.languages?.length > 0 && <span>{profile.languages.join(', ')}</span>}
+            {languages?.length > 0 && <span>{languages.join(', ')}</span>}
           </div>
         </div>
       </div>

@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (radiusKm > 0 && (lat !== 0 || lng !== 0)) {
-      conditions.push(`(6371 * acos(LEAST(1.0, cos(radians(?)) * cos(radians(e.location_lat)) * cos(radians(e.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(e.location_lat))))) < ?`);
+      conditions.push(`(6371 * acos(MIN(1.0, cos(radians(?)) * cos(radians(e.location_lat)) * cos(radians(e.location_lng) - radians(?)) + sin(radians(?)) * sin(radians(e.location_lat))))) < ?`);
       values.push(lat, lng, lat, radiusKm);
     }
 

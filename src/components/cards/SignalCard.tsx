@@ -2,6 +2,7 @@
 
 import { MapPin, Clock, User, MessageCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { parseUTC } from '@/lib/date';
 import { useAuthStore } from '@/stores/auth-store';
 
 const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string }> = {
@@ -22,8 +23,9 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
   const myUserId = useAuthStore(st => st.user?.id);
   const isOwner = myUserId && (s.author_id === myUserId || s.owner_id === myUserId);
   const cfg = TYPE_CONFIG[s.type as string] || TYPE_CONFIG.presence;
-  const timeAgo = s.created_at ? formatDistanceToNow(new Date(s.created_at as string), { addSuffix: true }) : '';
-  const isLive = s.created_at ? new Date(s.created_at as string).getTime() > Date.now() - 30 * 60 * 1000 : false;
+  const createdDate = s.created_at ? parseUTC(s.created_at as string) : null;
+  const timeAgo = createdDate ? formatDistanceToNow(createdDate, { addSuffix: true }) : '';
+  const isLive = createdDate ? createdDate.getTime() > Date.now() - 30 * 60 * 1000 : false;
 
   return (
     <div

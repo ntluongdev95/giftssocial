@@ -1,6 +1,8 @@
 'use client';
 
-import { Users, Calendar, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { Users, Calendar } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Circle } from '@/types';
 import TrustBadgeRow from '@/components/trust/TrustBadgeRow';
 
@@ -21,8 +23,42 @@ interface CircleCardProps {
   onClick?: () => void;
 }
 
+function formatDistance(km?: number): string {
+  if (!km || km <= 0) return '';
+  if (km < 1) return `${Math.round(km * 1000)}m`;
+  if (km < 100) return `${km.toFixed(1)} km`;
+  return `${Math.round(km)} km`;
+}
+
 export default function CircleCard({ circle, isMember = false, isPending = false, onClick }: CircleCardProps) {
   const cat = CATEGORY_COLORS[circle.category] || DEFAULT_CAT;
+  const distKm = (circle as unknown as Record<string, unknown>).distance_km as number | undefined;
+  const [joinState, setJoinState] = useState<'idle' | 'loading' | 'joined' | 'pending'>(
+    isMember ? 'joined' : isPending ? 'pending' : 'idle'
+  );
+
+  const handleJoin = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (joinState !== 'idle') return;
+    setJoinState('loading');
+    try {
+      const token = localStorage.getItem('access_token') || '';
+      const res = await fetch(`/api/v1/circles/${circle.id}/join`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || 'Failed to join');
+      }
+      const data = await res.json();
+      setJoinState(data.data?.status === 'pending' ? 'pending' : 'joined');
+      toast.success(data.data?.status === 'pending' ? 'Join request sent!' : `Joined ${circle.name}!`);
+    } catch (err) {
+      setJoinState('idle');
+      toast.error(err instanceof Error ? err.message : 'Failed to join');
+    }
+  };
 
   return (
     <div
@@ -49,13 +85,13 @@ export default function CircleCard({ circle, isMember = false, isPending = false
             <h3 className="truncate text-sm font-semibold text-white group-hover:text-[#00d4ff] transition-colors">
               {circle.name}
             </h3>
-            {isMember ? (
+            {joinState === 'joined' ? (
               <span className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold text-[#34d399]"
                 style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)' }}
               >
                 Joined ✓
               </span>
-            ) : isPending ? (
+            ) : joinState === 'pending' ? (
               <span className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold"
                 style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.2)', color: '#EAB308' }}
               >
@@ -63,14 +99,16 @@ export default function CircleCard({ circle, isMember = false, isPending = false
               </span>
             ) : (
               <button
-                className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold transition-all active:scale-95 cursor-pointer"
+                onClick={handleJoin}
+                disabled={joinState === 'loading'}
+                className="shrink-0 ml-2 rounded-lg px-3 py-1 text-[11px] font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-50"
                 style={{
                   background: 'linear-gradient(135deg, rgba(0,212,255,0.15), rgba(99,102,241,0.1))',
                   border: '1px solid rgba(0,212,255,0.25)',
                   color: '#00d4ff',
                 }}
               >
-                Join
+                {joinState === 'loading' ? '...' : 'Join'}
               </button>
             )}
           </div>
@@ -78,6 +116,9 @@ export default function CircleCard({ circle, isMember = false, isPending = false
           <p className="mt-1 text-xs" style={{ color: '#6b7a94' }}>
             <span style={{ color: cat.text }}>{circle.category}</span>
             {circle.city ? ` · ${circle.city}` : ''}
+            {distKm != null && distKm > 0 && (
+              <span className="ml-1 text-[#00d4ff]">· {formatDistance(distKm)}</span>
+            )}
           </p>
 
           {/* Stats row */}

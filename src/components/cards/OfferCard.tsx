@@ -1,6 +1,7 @@
 'use client';
 
 import { formatDistanceToNow } from 'date-fns';
+import { parseUTC } from '@/lib/date';
 import type { Signal } from '@/types';
 import SignalConfidenceTag from '@/components/trust/SignalConfidenceTag';
 
@@ -26,7 +27,7 @@ export default function OfferCard({
     : (signal.metadata?.discount as string) || '';
 
   const expiresLabel = signal.expires_at
-    ? `Expires ${formatDistanceToNow(new Date(signal.expires_at), { addSuffix: true })}`
+    ? `Expires ${formatDistanceToNow(parseUTC(signal.expires_at)!, { addSuffix: true })}`
     : '';
 
   return (

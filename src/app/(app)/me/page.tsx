@@ -19,7 +19,28 @@ export default function MePage() {
   const router = useRouter();
   const { user, isAuthed, logout } = useAuthStore();
 
-  const handleLogout = () => { logout(); router.push('/world'); };
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+
+    // Server-side: revoke sessions + clear httpOnly cookies
+    try {
+      await Promise.race([
+        fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }),
+        new Promise(r => setTimeout(r, 3000)),
+      ]);
+    } catch { /* proceed with local cleanup */ }
+
+    // Client-side cleanup
+    document.cookie = 'gao_logged_in=; Max-Age=0; path=/';
+    document.cookie = 'gao_csrf=; Max-Age=0; path=/';
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    logout();
+    router.push('/world');
+  };
 
   const displayName = user?.fullName || user?.username || 'Welcome';
   const avatarUrl = user?.avatarUrl;

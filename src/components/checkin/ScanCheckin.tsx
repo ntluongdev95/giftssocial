@@ -37,7 +37,7 @@ export default function ScanCheckin({ isOpen, onClose }: ScanCheckinProps) {
         () => {} // ignore errors during scanning
       );
     } catch (err) {
-      console.error('Camera error:', err);
+      console.warn('Camera unavailable, falling back to manual code:', (err as Error).message);
       setMode('code'); // fallback to manual code
     }
   }, []);
