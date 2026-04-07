@@ -91,14 +91,14 @@ export async function GET(req: NextRequest) {
 
     if (type === 'followers') {
       const result = await db.prepare(
-        `SELECT f.*, u.username, u.display_name, u.avatar_url, u.bio, u.photos, u.trust_level
+        `SELECT f.*, u.username, u.display_name, u.avatar_url, u.bio, u.trust_level
          FROM follows f LEFT JOIN users u ON u.id = f.follower_id
          WHERE f.following_user_id = ? ORDER BY f.created_at DESC LIMIT 100`
       ).bind(userId).all<Record<string, unknown>>();
       return NextResponse.json({ data: result.results });
     } else {
       const result = await db.prepare(
-        `SELECT f.*, u.username AS user_username, u.display_name AS user_name, u.avatar_url AS user_avatar, u.bio AS user_bio, u.photos AS user_photos,
+        `SELECT f.*, u.username AS user_username, u.display_name AS user_name, u.avatar_url AS user_avatar, u.bio AS user_bio,
                 b.name AS biz_name, b.category AS biz_category,
                 c.name AS circle_name, c.category AS circle_category
          FROM follows f

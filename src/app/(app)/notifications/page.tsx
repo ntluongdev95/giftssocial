@@ -3,11 +3,17 @@
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Bell, CheckCircle, Calendar, Shield, Star, Users, Wallet, Loader2, MessageCircle, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useState, useCallback } from 'react';
+import { parseUTC } from '@/lib/date';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { useNotifications } from '@/hooks/useNotifications';
 import PrivateChat from '@/components/chat/PrivateChat';
 import EventChat from '@/components/events/EventChat';
+import SignalSheet from '@/components/map/SignalSheet';
+import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
+import EventDetailPage from '@/components/events/EventDetailPage';
+import BusinessDetailPage from '@/components/business/BusinessDetailPage';
+import type { Circle, Event, Business } from '@/types';
 
 const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   booking_confirmed: { icon: <Calendar size={16} />, color: '#00d4ff' },
@@ -32,6 +38,79 @@ export default function NotificationsPage() {
   const router = useRouter();
   const { notifications, unreadCount, markAllRead, markRead, clearAll } = useNotifications();
   const [openChat, setOpenChat] = useState<{ type: string; id: string; title: string } | null>(null);
+  const [detailSignal, setDetailSignal] = useState<Record<string, unknown> | null>(null);
+  const [detailCircle, setDetailCircle] = useState<Circle | null>(null);
+  const [detailEvent, setDetailEvent] = useState<Event | null>(null);
+  const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const handleNotificationClick = async (n: Record<string, unknown>) => {
+    if (!n.read) markRead(n.id as string);
+
+    const refType = n.ref_type as string;
+    const refId = n.ref_id as string;
+    const token = localStorage.getItem('access_token') || '';
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // Chat notifications
+    if (n.type === 'new_message' && refId) {
+      setOpenChat({ type: refType, id: refId, title: n.title as string });
+      return;
+    }
+
+    // Circle join request
+    if (n.type === 'circle_join_request') {
+      router.push('/me/circles');
+      return;
+    }
+
+    // Kiss notification
+    if (refType === 'kiss' && refId) {
+      const body = (n.body as string) || '';
+      const needsLocation = body.includes('share your location') || body.includes('Tap here');
+      if (needsLocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            if (token) {
+              const lat = pos.coords.latitude;
+              const lng = pos.coords.longitude;
+              await fetch('/api/v1/users/me', { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ location_lat: lat, location_lng: lng }) }).catch(() => {});
+              await fetch('/api/v1/kisses', { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: refId, receiver_lat: lat, receiver_lng: lng }) }).catch(() => {});
+              toast.success('Location shared! Opening map...');
+            }
+            router.push(`/world?kiss=${refId}`);
+          },
+          () => router.push(`/world?kiss=${refId}&nofly=1`),
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+        return;
+      }
+      router.push(`/world?kiss=${refId}`);
+      return;
+    }
+
+    // Fetch detail based on ref_type
+    if (!refId) return;
+    setLoadingId(n.id as string);
+    try {
+      if (refType === 'signal') {
+        const res = await fetch(`/api/v1/signals/${refId}`, { headers });
+        if (res.ok) { const data = await res.json(); setDetailSignal(data.data); }
+      } else if (refType === 'circle') {
+        const res = await fetch(`/api/v1/circles/${refId}`, { headers });
+        if (res.ok) { const data = await res.json(); setDetailCircle(data.data); }
+      } else if (refType === 'event') {
+        const res = await fetch(`/api/v1/events/${refId}`, { headers });
+        if (res.ok) { const data = await res.json(); setDetailEvent(data.data); }
+      } else if (refType === 'business') {
+        const res = await fetch(`/api/v1/businesses/${refId}`, { headers });
+        if (res.ok) { const data = await res.json(); setDetailBusiness(data.data); }
+      } else if (refType === 'user') {
+        router.push(`/world?flyTo=${refId}`);
+      }
+    } catch { /* ignore */ }
+    setLoadingId(null);
+  };
 
   return (
     <div className="h-full overflow-y-auto">
@@ -86,53 +165,7 @@ export default function NotificationsPage() {
                     background: isUnread ? 'rgba(0,212,255,0.03)' : 'rgba(17,19,24,0.5)',
                     border: isUnread ? '1px solid rgba(0,212,255,0.12)' : '1px solid rgba(255,255,255,0.04)',
                   }}
-                  onClick={() => {
-                    if (isUnread) markRead(n.id as string);
-                    if (n.type === 'new_message' && n.ref_id) {
-                      setOpenChat({ type: n.ref_type as string, id: n.ref_id as string, title: n.title as string });
-                    }
-                    if (n.type === 'circle_join_request') {
-                      router.push('/me/circles');
-                    }
-                    if (n.ref_type === 'kiss' && n.ref_id) {
-                      const body = (n.body as string) || '';
-                      const needsLocation = body.includes('share your location') || body.includes('Tap here');
-
-                      if (needsLocation) {
-                        // Receiver needs to share location → ask browser → update user + kiss → flyTo
-                        navigator.geolocation.getCurrentPosition(
-                          async (pos) => {
-                            const token = localStorage.getItem('access_token');
-                            if (token) {
-                              const lat = pos.coords.latitude;
-                              const lng = pos.coords.longitude;
-                              // Update user location
-                              await fetch('/api/v1/users/me', {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ location_lat: lat, location_lng: lng }),
-                              }).catch(() => {});
-                              // Update kiss with real receiver location
-                              await fetch('/api/v1/kisses', {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ id: n.ref_id, receiver_lat: lat, receiver_lng: lng }),
-                              }).catch(() => {});
-                              toast.success('Location shared! Opening map...');
-                            }
-                            router.push(`/world?kiss=${n.ref_id}`);
-                          },
-                          () => {
-                            // Denied → still open kiss but just show the gift, no flyTo
-                            router.push(`/world?kiss=${n.ref_id}&nofly=1`);
-                          },
-                          { enableHighAccuracy: true, timeout: 10000 }
-                        );
-                      } else {
-                        router.push(`/world?kiss=${n.ref_id}`);
-                      }
-                    }
-                  }}
+                  onClick={() => handleNotificationClick(n)}
                 >
                   <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cfg.color}12`, color: cfg.color }}>
                     {cfg.icon}
@@ -143,11 +176,14 @@ export default function NotificationsPage() {
                       {isUnread && <div className="h-2 w-2 rounded-full bg-[#00d4ff] shrink-0 animate-pulse" />}
                     </div>
                     {n.body ? <p className="text-xs text-[#4a5068] mt-1 line-clamp-2">{String(n.body)}</p> : null}
-                    <p className="text-[10px] text-[#2d3548] mt-1.5">
-                      {n.created_at ? formatDistanceToNow(new Date(n.created_at as string), { addSuffix: true }) : ''}
-                    </p>
-
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <p className="text-[10px] text-[#2d3548]">
+                        {n.created_at ? formatDistanceToNow(parseUTC(n.created_at as string)!, { addSuffix: true }) : ''}
+                      </p>
+                      {n.ref_type && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,212,255,0.06)', color: '#4a5068' }}>Tap for details</span>}
+                    </div>
                   </div>
+                  {loadingId === n.id && <Loader2 size={14} className="text-[#00d4ff] animate-spin shrink-0" />}
                 </div>
               );
             })}
@@ -161,6 +197,30 @@ export default function NotificationsPage() {
       {openChat && openChat.type === 'dm' && (
         <PrivateChat roomId={openChat.id} title={openChat.title} onClose={() => setOpenChat(null)} />
       )}
+
+      {detailSignal && (
+        <SignalSheet
+          signal={{
+            id: detailSignal.id as string,
+            title: detailSignal.title as string,
+            type: detailSignal.type as string,
+            description: detailSignal.description as string,
+            category: detailSignal.category as string,
+            owner_id: detailSignal.author_id as string,
+            author_id: detailSignal.author_id as string,
+            author_name: detailSignal.author_name as string,
+            author_username: detailSignal.author_username as string,
+            author_avatar: detailSignal.author_avatar as string,
+            author_trust_level: detailSignal.author_trust_level as string,
+            created_at: detailSignal.created_at as string,
+            expires_at: detailSignal.expires_at as string,
+          }}
+          onClose={() => setDetailSignal(null)}
+        />
+      )}
+      {detailCircle && <CircleDetailSheet circle={detailCircle} onClose={() => setDetailCircle(null)} />}
+      {detailEvent && <EventDetailPage event={detailEvent} onClose={() => setDetailEvent(null)} />}
+      {detailBusiness && <BusinessDetailPage business={detailBusiness} onClose={() => setDetailBusiness(null)} />}
     </div>
   );
 }
