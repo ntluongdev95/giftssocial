@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDB, genId } from '@/lib/db';
+import type { KissRow } from '@/types/d1';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 
@@ -175,7 +176,7 @@ export async function PATCH(req: NextRequest) {
     values.push(id, userId);
     const row = await db.prepare(
       `UPDATE kisses SET ${updates.join(', ')} WHERE id = ? AND receiver_id = ? RETURNING *`
-    ).bind(...values).first();
+    ).bind(...values).first<KissRow>();
 
     return NextResponse.json({ data: row });
   } catch (err) {

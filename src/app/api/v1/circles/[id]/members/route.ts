@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const result = await db.prepare(
         "UPDATE circle_members SET status = 'active', joined_at = datetime('now') WHERE circle_id = ? AND user_id = ? AND status = 'pending'"
       ).bind(id, member_user_id).run();
-      if ((result.meta?.changes ?? 0) > 0) {
+      if (((result.meta?.changes as number | undefined) ?? 0) > 0) {
         await db.prepare('UPDATE circles SET member_count = member_count + 1 WHERE id = ?').bind(id).run();
         await db.prepare('UPDATE users SET circles_count = circles_count + 1 WHERE id = ?').bind(member_user_id).run().catch(() => {});
         const circleRow = await db.prepare('SELECT name FROM circles WHERE id = ?').bind(id).first<{ name: string }>();

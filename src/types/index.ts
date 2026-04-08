@@ -353,6 +353,20 @@ export interface Profile {
   updated_at: string;
 }
 
+// ─── Map User (lightweight, for map display) ─────────────────────────────
+
+export interface MapUser {
+  id: string;
+  display_name: string;
+  username?: string;
+  avatar_url?: string;
+  location_lat: number;
+  location_lng: number;
+  city?: string;
+  trust_level?: string;
+  trust_score?: number;
+}
+
 // ─── Map Marker ───────────────────────────────────────────────────────────
 
 export type MarkerState = 'default' | 'selected' | 'live' | 'verified' | 'executing' | 'suppressed';

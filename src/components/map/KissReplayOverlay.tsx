@@ -816,7 +816,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
             {/* Share buttons */}
             <div className="space-y-2">
               {/* Native share (mobile) */}
-              {typeof navigator !== 'undefined' && navigator.share && (
+              {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
                 <button
                   onClick={() => handleShare('native')}
                   className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold cursor-pointer"

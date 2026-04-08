@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Search, X, MapPin, Store, Users, Calendar, Globe, Loader2, Star, Clock, Shield, Navigation, History, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useLocationStore } from '@/stores/locationStore';
+import { useSearch } from '@/hooks/useSearch';
 
 const TABS = [
   { id: 'top', label: 'Top', Icon: Search },
@@ -61,48 +61,18 @@ function clearHistory() {
 }
 
 export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverlayProps) {
-  const [query, setQuery] = useState('');
-  const [tab, setTab] = useState('top');
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<Record<string, SearchResult[]>>({ people: [], businesses: [], events: [], circles: [], places: [] });
+  const { query, tab, results, loading, handleInput, handleTabChange, clear } = useSearch();
   const [history, setHistory] = useState<SearchResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { lat, lng } = useLocationStore();
 
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 100);
       setHistory(getHistory());
+    } else {
+      clear();
     }
-  }, [isOpen]);
-
-  const doSearch = useCallback(async (q: string, t: string) => {
-    if (!q.trim() || q.length < 2) { setResults({ people: [], businesses: [], events: [], circles: [], places: [] }); return; }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ q, tab: t, limit: '20' });
-      if (lat) params.set('lat', String(lat));
-      if (lng) params.set('lng', String(lng));
-      const res = await fetch(`/api/v1/search?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setResults(data.data);
-      }
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [lat, lng]);
-
-  const handleInput = (val: string) => {
-    setQuery(val);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => doSearch(val, tab), 300);
-  };
-
-  const handleTabChange = (t: string) => {
-    setTab(t);
-    if (query.length >= 2) doSearch(query, t);
-  };
+  }, [isOpen, clear]);
 
   const handleSelect = (item: SearchResult, action: 'detail' | 'flyto') => {
     addToHistory(item);
@@ -110,11 +80,12 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
     onClose();
   };
 
+  const typedResults = results as unknown as Record<string, SearchResult[]>;
   const allResults = tab === 'top'
-    ? Object.entries(results).flatMap(([, items]) => items)
-    : results[tab === 'businesses' ? 'businesses' : tab] || [];
+    ? Object.entries(typedResults).flatMap(([, items]) => items)
+    : typedResults[tab === 'businesses' ? 'businesses' : tab] || [];
 
-  const groupedTop = tab === 'top' ? results : null;
+  const groupedTop = tab === 'top' ? typedResults : null;
   const hasResults = allResults.length > 0;
 
   if (!isOpen) return null;
@@ -149,7 +120,7 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
                 className="flex-1 bg-transparent text-sm text-white placeholder:text-[#4a5068] outline-none"
               />
               {query && (
-                <button onClick={() => { setQuery(''); setResults({ people: [], businesses: [], events: [], circles: [], places: [] }); }} className="text-[#4a5068] cursor-pointer">
+                <button onClick={clear} className="text-[#4a5068] cursor-pointer">
                   <X size={14} />
                 </button>
               )}

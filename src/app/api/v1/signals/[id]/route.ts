@@ -82,7 +82,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const row = await db.prepare(
       `UPDATE signals SET ${sets.join(', ')} WHERE id = ? RETURNING id, title, status, updated_at`
-    ).bind(...values).first();
+    ).bind(...values).first<{ id: string; title: string | null; status: string; updated_at: string }>();
 
     return NextResponse.json({ data: row });
   } catch (err) {

@@ -446,7 +446,7 @@ function CreateSignalPageInner() {
                             Score: {b.match_score as number}
                           </p>
                         </div>
-                        {b.booking_enabled && (
+                        {!!b.booking_enabled && (
                           <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>Book</span>
                         )}
                       </div>

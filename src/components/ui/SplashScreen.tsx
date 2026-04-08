@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
 import * as THREE from 'three';
 
 export default function SplashScreen() {
-  const [visible, setVisible] = useState(true);
+  const [visible, setVisible] = useState(() => !sessionStorage.getItem('gao_splash_shown'));
   const [fadeOut, setFadeOut] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -163,15 +162,17 @@ export default function SplashScreen() {
 
   // Splash timing
   useEffect(() => {
-    if (sessionStorage.getItem('gao_splash_shown')) {
-      setVisible(false);
-      return;
-    }
+    if (!visible) return;
     sessionStorage.setItem('gao_splash_shown', 'true');
+
     const t1 = setTimeout(() => setFadeOut(true), 3000);
     const t2 = setTimeout(() => setVisible(false), 3500);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [visible]);
 
   if (!visible) return null;
 

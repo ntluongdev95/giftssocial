@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (d.booking_id) {
       const bk = await db.prepare(
         "SELECT id FROM bookings WHERE id = ? AND user_id = ? AND status = 'completed'"
-      ).bind(d.booking_id, userId).first();
+      ).bind(d.booking_id, userId).first<{ id: string }>();
       verifiedVisit = !!bk;
     }
 

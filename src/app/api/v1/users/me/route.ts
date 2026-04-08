@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import type { UserRow } from '@/types/d1';
 
 // GET /api/v1/users/me
 export async function GET(req: NextRequest) {
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
 
     const db = getDB();
-    const row = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+    const row = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first<UserRow>();
     if (!row) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
 
     return NextResponse.json({ data: row });

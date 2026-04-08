@@ -6,6 +6,11 @@ import { getDB } from '@/lib/db';
  *
  * Unified search across all entity types using SQLite LIKE + distance ranking.
  * Returns grouped results for "top" tab, or filtered results for specific tabs.
+ *
+ * Optimizations:
+ * - Nominatim has a 3s timeout and runs in parallel — never blocks DB queries
+ * - AbortController-friendly: clients can cancel in-flight requests
+ * - Results are cache-controlled (10s swr + 30s stale)
  */
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q')?.trim();
@@ -18,7 +23,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: { people: [], businesses: [], events: [], circles: [], places: [] } });
   }
 
-  const pattern = `%${q}%`;
+  // Sanitize: escape SQL LIKE wildcards in user input
+  const escaped = q.replace(/[%_]/g, '\\$&');
+  const pattern = `%${escaped}%`;
+  // Normalized pattern: lowercase, no spaces → "NTLuong" matches "Nt Luong", "ntluong"
+  const normPattern = `%${escaped.replace(/\s+/g, '').toLowerCase()}%`;
   const hasGeo = lat !== 0 && lng !== 0;
 
   // Distance formula inlined with literal values (SQLite can't use $params in expressions used in ORDER BY)
@@ -42,10 +51,12 @@ export async function GET(req: NextRequest) {
                   ${distExpr} AS distance
            FROM users
            WHERE status = 'active'
-             AND (display_name LIKE ? OR username LIKE ? OR bio LIKE ?)
+             AND (display_name LIKE ? OR username LIKE ? OR bio LIKE ?
+                  OR REPLACE(LOWER(display_name), ' ', '') LIKE ?
+                  OR REPLACE(LOWER(username), ' ', '') LIKE ?)
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} trust_score DESC
            LIMIT ?`
-        ).bind(pattern, pattern, pattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+        ).bind(pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.people = rows.map(r => ({
             id: r.id, type: 'people',
             title: r.display_name || r.username || 'User',
@@ -65,10 +76,11 @@ export async function GET(req: NextRequest) {
           `SELECT id, name, category, address, city, avatar_url, location_lat, location_lng, rating, review_count,
                   ${distExpr} AS distance
            FROM businesses
-           WHERE (name LIKE ? OR category LIKE ? OR address LIKE ? OR city LIKE ?)
+           WHERE (name LIKE ? OR category LIKE ? OR address LIKE ? OR city LIKE ?
+                  OR REPLACE(LOWER(name), ' ', '') LIKE ?)
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} rating DESC
            LIMIT ?`
-        ).bind(pattern, pattern, pattern, pattern, bLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+        ).bind(pattern, pattern, pattern, pattern, normPattern, bLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.businesses = rows.map(r => ({
             id: r.id, type: 'business', title: r.name,
             subtitle: [r.category, r.city].filter(Boolean).join(' · '),
@@ -88,11 +100,12 @@ export async function GET(req: NextRequest) {
           `SELECT id, title, description, location_name, city, location_lat, location_lng, start_time, status,
                   ${distExpr} AS distance
            FROM events
-           WHERE (title LIKE ? OR description LIKE ? OR location_name LIKE ? OR city LIKE ?)
+           WHERE (title LIKE ? OR description LIKE ? OR location_name LIKE ? OR city LIKE ?
+                  OR REPLACE(LOWER(title), ' ', '') LIKE ?)
              AND end_time > datetime('now')
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} start_time ASC
            LIMIT ?`
-        ).bind(pattern, pattern, pattern, pattern, eLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+        ).bind(pattern, pattern, pattern, pattern, normPattern, eLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.events = rows.map(r => ({
             id: r.id, type: 'event', title: r.title,
             subtitle: [r.location_name, r.city].filter(Boolean).join(' · '),
@@ -113,10 +126,11 @@ export async function GET(req: NextRequest) {
                   ${distExpr} AS distance
            FROM circles
            WHERE status = 'active'
-             AND (name LIKE ? OR category LIKE ? OR city LIKE ? OR description LIKE ?)
+             AND (name LIKE ? OR category LIKE ? OR city LIKE ? OR description LIKE ?
+                  OR REPLACE(LOWER(name), ' ', '') LIKE ?)
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} member_count DESC
            LIMIT ?`
-        ).bind(pattern, pattern, pattern, pattern, cLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+        ).bind(pattern, pattern, pattern, pattern, normPattern, cLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.circles = rows.map(r => ({
             id: r.id, type: 'circle', title: r.name,
             subtitle: [r.category, r.city].filter(Boolean).join(' · '),
@@ -148,7 +162,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    await Promise.all(queries);
+    // Use allSettled so one failing query doesn't block the rest
+    await Promise.allSettled(queries);
 
     return NextResponse.json({ data: results }, {
       headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30' },

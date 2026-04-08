@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { escapeHtml } from '@/lib/sanitize';
-import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, EntityType, MarkerState } from '@/types';
+import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, MapUser, EntityType, TrustLevel, MarkerState } from '@/types';
 import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
 import { useFriendStore } from '@/stores/friendStore';
@@ -135,6 +135,25 @@ const MARKER_STYLES = `
     padding: 1px 6px; font-size: 10px; font-weight: 600;
     color: #f0f4ff; white-space: nowrap; max-width: 80px;
     overflow: hidden; text-overflow: ellipsis; text-align: center;
+  }
+
+  /* User cluster popup */
+  .gao-cluster-popup .maplibregl-popup-content {
+    background: rgba(10,11,15,0.95) !important;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(59,130,246,0.2) !important;
+    border-radius: 12px !important;
+    padding: 0 !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+    max-height: 280px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+    min-width: 200px;
+  }
+  .gao-cluster-popup .maplibregl-popup-tip {
+    border-top-color: rgba(10,11,15,0.95) !important;
+  }
+  .gao-cluster-popup .maplibregl-popup-close-button {
+    color: #4a5068; font-size: 16px; top: 4px; right: 6px;
   }
 
   /* Landmark popup */
@@ -417,7 +436,8 @@ export function useMapMarkers(
   profiles: Profile[] = [],
   businesses: Business[] = [],
   events: Event[] = [],
-  circles: Circle[] = []
+  circles: Circle[] = [],
+  mapUsers: MapUser[] = []
 ) {
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const [styleVersion, setStyleVersion] = useState(0);
@@ -626,6 +646,8 @@ export function useMapMarkers(
       }
     }
 
+    // User markers handled via GeoJSON cluster layer (separate useEffect below)
+
     // Add / update business markers
     if (activeLayers.has('business')) {
       for (const biz of businesses) {
@@ -646,7 +668,7 @@ export function useMapMarkers(
           id: bid, entity_type: 'business',
           lat: biz.location_lat, lng: biz.location_lng,
           title: biz.name, state: biz.open_now ? 'live' : 'default',
-          trust_level: biz.trust_level as EntityType | undefined,
+          trust_level: biz.trust_level as TrustLevel | undefined,
           metadata: { category: biz.category, open_now: biz.open_now },
         });
       }
@@ -750,7 +772,233 @@ export function useMapMarkers(
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, signals, agents, profiles, businesses, events, circles, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker, styleVersion]);
+  }, [map, signals, agents, profiles, businesses, events, circles, mapUsers, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker, styleVersion]);
+
+  // ── User cluster layer (GeoJSON native clustering) ──────────────────────
+  const clusterPopupRef = useRef<maplibregl.Popup | null>(null);
+
+  useEffect(() => {
+    if (!map) return;
+    const isGlobe = useMapStore.getState().viewMode === '3d';
+    if (isGlobe) return;
+
+    const SRC = 'gao-users-cluster';
+    const showPeople = activeLayers.has('people');
+
+    // Build GeoJSON from mapUsers (skip users with profiles)
+    const profileUserIds = new Set(profiles.map(p => p.user_id));
+    const features: GeoJSON.Feature[] = mapUsers
+      .filter(u => u.location_lat && u.location_lng && !profileUserIds.has(u.id))
+      .map(u => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [u.location_lng, u.location_lat] },
+        properties: {
+          id: u.id,
+          name: u.display_name || u.username || 'User',
+          avatar: u.avatar_url || '',
+          city: u.city || '',
+          trust_level: u.trust_level || 'new',
+        },
+      }));
+
+    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: showPeople ? features : [] };
+
+    // Update or create source
+    const existing = map.getSource(SRC) as maplibregl.GeoJSONSource | undefined;
+    if (existing) {
+      existing.setData(geo);
+    } else {
+      map.addSource(SRC, {
+        type: 'geojson',
+        data: geo,
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 50,
+      });
+
+      // Cluster circle layer
+      map.addLayer({
+        id: 'gao-user-clusters',
+        type: 'circle',
+        source: SRC,
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': [
+            'step', ['get', 'point_count'],
+            'rgba(59,130,246,0.85)',  // < 10: blue
+            10, 'rgba(99,102,241,0.85)', // 10-30: indigo
+            30, 'rgba(168,85,247,0.85)', // 30+: purple
+          ],
+          'circle-radius': [
+            'step', ['get', 'point_count'],
+            18,   // < 10
+            10, 24, // 10-30
+            30, 32, // 30+
+          ],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(255,255,255,0.15)',
+        },
+      });
+
+      // Cluster count label
+      map.addLayer({
+        id: 'gao-user-cluster-count',
+        type: 'symbol',
+        source: SRC,
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': '{point_count_abbreviated}',
+          'text-size': 12,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        },
+        paint: {
+          'text-color': '#ffffff',
+        },
+      });
+
+      // Single user dot
+      map.addLayer({
+        id: 'gao-user-single',
+        type: 'circle',
+        source: SRC,
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': '#3B82F6',
+          'circle-radius': 6,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#0a0b0f',
+        },
+      });
+
+      // Single user name label
+      map.addLayer({
+        id: 'gao-user-label',
+        type: 'symbol',
+        source: SRC,
+        filter: ['!', ['has', 'point_count']],
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-size': 10,
+          'text-offset': [0, 1.2],
+          'text-anchor': 'top',
+          'text-max-width': 8,
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'],
+        },
+        paint: {
+          'text-color': '#f0f4ff',
+          'text-halo-color': '#0a0b0f',
+          'text-halo-width': 1,
+        },
+      });
+
+      // ── Cluster click → show popup with user list ──
+      map.on('click', 'gao-user-clusters', async (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+        const clusterId = feature.properties?.cluster_id;
+        const coords = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number];
+        const src = map.getSource(SRC) as maplibregl.GeoJSONSource;
+
+        // Get leaves (individual users in this cluster)
+        const leaves = await new Promise<GeoJSON.Feature[]>((resolve) => {
+          (src as unknown as { getClusterLeaves: (id: number, limit: number, offset: number, cb: (err: unknown, features: GeoJSON.Feature[]) => void) => void })
+            .getClusterLeaves(clusterId, 20, 0, (err, feats) => {
+              resolve(err ? [] : feats || []);
+            });
+        });
+
+        if (leaves.length === 0) return;
+
+        // Build popup HTML
+        const listHtml = leaves.map(leaf => {
+          const p = leaf.properties || {};
+          const avatar = p.avatar
+            ? `<img src="${escapeHtml(p.avatar)}" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+            : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:700;color:#3B82F6;">${escapeHtml((p.name || 'U').charAt(0))}</div>`;
+          return `<button class="gao-cluster-item" data-user-id="${escapeHtml(p.id)}" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px;border:none;background:none;cursor:pointer;text-align:left;transition:background 0.15s;border-bottom:1px solid rgba(255,255,255,0.04);" onmouseover="this.style.background='rgba(59,130,246,0.08)'" onmouseout="this.style.background='none'">
+            ${avatar}
+            <div style="min-width:0;flex:1;">
+              <div style="font-size:12px;font-weight:600;color:#f0f4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
+              ${p.city ? `<div style="font-size:9px;color:#4a5068;margin-top:1px;">${escapeHtml(p.city)}</div>` : ''}
+            </div>
+          </button>`;
+        }).join('');
+
+        const count = feature.properties?.point_count || leaves.length;
+        const html = `<div style="padding:10px 12px 6px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:between;">
+          <span style="font-size:11px;font-weight:700;color:#3B82F6;">${count} people</span>
+        </div>${listHtml}`;
+
+        // Close old popup
+        clusterPopupRef.current?.remove();
+
+        const popup = new maplibregl.Popup({ className: 'gao-cluster-popup', closeButton: true, maxWidth: '260px' })
+          .setLngLat(coords)
+          .setHTML(html)
+          .addTo(map);
+
+        clusterPopupRef.current = popup;
+
+        // Handle click on individual user in popup
+        const el = popup.getElement();
+        el?.addEventListener('click', (evt) => {
+          const btn = (evt.target as HTMLElement).closest('.gao-cluster-item') as HTMLElement | null;
+          if (!btn) return;
+          const userId = btn.dataset.userId;
+          if (userId) {
+            popup.remove();
+            setSelectedMarker(`user_${userId}`);
+            // Add to store so sheets can read it
+            const leaf = leaves.find(l => l.properties?.id === userId);
+            if (leaf) {
+              const lp = leaf.properties || {};
+              const geo = leaf.geometry as GeoJSON.Point;
+              addMarker({
+                id: `user_${userId}`,
+                entity_type: 'people',
+                lat: geo.coordinates[1],
+                lng: geo.coordinates[0],
+                title: lp.name || 'User',
+                state: 'default',
+                metadata: { city: lp.city, userId },
+              });
+            }
+          }
+        });
+      });
+
+      // Single user click
+      map.on('click', 'gao-user-single', (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+        const props = feature.properties || {};
+        const geo = feature.geometry as GeoJSON.Point;
+        const userId = props.id;
+
+        addMarker({
+          id: `user_${userId}`,
+          entity_type: 'people',
+          lat: geo.coordinates[1],
+          lng: geo.coordinates[0],
+          title: props.name || 'User',
+          state: 'default',
+          metadata: { city: props.city, userId },
+        });
+        setSelectedMarker(`user_${userId}`);
+      });
+
+      // Cursor changes
+      map.on('mouseenter', 'gao-user-clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'gao-user-clusters', () => { map.getCanvas().style.cursor = ''; });
+      map.on('mouseenter', 'gao-user-single', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'gao-user-single', () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    return () => {
+      clusterPopupRef.current?.remove();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, mapUsers, profiles, activeLayers, styleVersion]);
 
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {

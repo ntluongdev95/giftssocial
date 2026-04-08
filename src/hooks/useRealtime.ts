@@ -33,7 +33,7 @@ export function useRealtime(
   const [connected, setConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<string | null>(null);
 
-  const { token } = useAuthStore();
+  const { accessToken: token } = useAuthStore();
   const { addMarker, removeMarker, setMarkerState } = useMapStore();
 
   const handleSignalCreated = useCallback(

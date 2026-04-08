@@ -1,9 +1,11 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB, genId } from '@/lib/db';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { setAuthCookies } from '@/lib/auth-cookies';
 import { setCsrfCookie } from '@/lib/csrf';
 import { createSession } from '@/lib/session';
+import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/rate-limit';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -22,6 +24,9 @@ const ALLOWED_REDIRECT_URIS = [
  * Verifies, finds or creates user, returns JWT tokens.
  */
 export async function POST(req: NextRequest) {
+  const rl = await checkRateLimit(req);
+  if (rl && !rl.allowed) return rateLimitResponse(rl.resetIn);
+
   try {
     const body = await req.json();
     let email: string | null = null;
@@ -43,9 +48,9 @@ export async function POST(req: NextRequest) {
       });
 
       if (!tokenRes.ok) {
-        const err = await tokenRes.json();
-        console.error('[Auth Google] token exchange error:', err, 'redirect_uri sent:', ALLOWED_REDIRECT_URIS.includes(body.redirect_uri) ? body.redirect_uri : ALLOWED_REDIRECT_URIS[0]);
-        return NextResponse.json({ error: { code: 'token_exchange_failed', message: `Failed to exchange Google code: ${err?.error || 'unknown'}`, detail: err?.error_description } }, { status: 401 });
+        const err = await tokenRes.json() as { error?: string };
+        console.error('[Auth Google] token exchange error:', err?.error ?? 'unknown');
+        return NextResponse.json({ error: { code: 'token_exchange_failed', message: 'Failed to exchange Google code' } }, { status: 401 });
       }
 
       const tokens = await tokenRes.json();
@@ -60,6 +65,9 @@ export async function POST(req: NextRequest) {
       }
 
       const userInfo = await userInfoRes.json();
+      if (!userInfo.verified_email) {
+        return NextResponse.json({ error: { code: 'email_not_verified', message: 'Google account email is not verified' } }, { status: 401 });
+      }
       email = userInfo.email;
       name = userInfo.name || userInfo.given_name || email?.split('@')[0] || null;
       avatarUrl = userInfo.picture || null;
@@ -77,6 +85,9 @@ export async function POST(req: NextRequest) {
       }
       if (googleUser.iss !== 'accounts.google.com' && googleUser.iss !== 'https://accounts.google.com') {
         return NextResponse.json({ error: { code: 'invalid_issuer', message: 'Token not issued by Google' } }, { status: 401 });
+      }
+       if (googleUser.email_verified !== true && googleUser.email_verified !== 'true') {
+        return NextResponse.json({ error: { code: 'email_not_verified', message: 'Google account email is not verified' } }, { status: 401 });
       }
 
       email = googleUser.email;
@@ -122,7 +133,8 @@ export async function POST(req: NextRequest) {
       is_new_user: isNewUser,
     });
 
-    return setCsrfCookie(setAuthCookies(response, accessToken, refreshToken));
+    const final = setCsrfCookie(setAuthCookies(response, accessToken, refreshToken));
+    return rl ? addRateLimitHeaders(final, rl.remaining, rl.resetIn, req.nextUrl.pathname) : final;
   } catch (err) {
     console.error('[Auth Google]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Google login failed' } }, { status: 500 });

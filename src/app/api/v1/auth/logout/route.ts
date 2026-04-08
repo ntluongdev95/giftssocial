@@ -8,15 +8,20 @@ import { revokeAllSessions } from '@/lib/session';
  * Revokes all sessions for the user and clears all httpOnly auth cookies.
  */
 export async function POST(req: NextRequest) {
-  // Try to get user ID to revoke sessions
-  const accessToken = req.cookies.get('gao_token')?.value;
-  if (accessToken) {
-    const payload = await verifyToken(accessToken).catch(() => null);
-    if (payload?.sub) {
-      await revokeAllSessions(payload.sub).catch(() => {});
+  try {
+    const accessToken = req.cookies.get('gao_token')?.value;
+    if (accessToken) {
+      const payload = await verifyToken(accessToken).catch(() => null);
+      if (payload?.sub) {
+        await revokeAllSessions(payload.sub).catch(() => {});
+      }
     }
-  }
 
-  const response = NextResponse.json({ success: true });
-  return clearAuthCookies(response);
+    const response = NextResponse.json({ success: true });
+    return clearAuthCookies(response);
+  } catch (err) {
+    console.error('[Auth Logout]', err);
+    const response = NextResponse.json({ success: false }, { status: 500 });
+    return clearAuthCookies(response);
+  }
 }

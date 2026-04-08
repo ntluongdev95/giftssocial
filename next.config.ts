@@ -78,12 +78,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   bundlePagesRouterDependencies: true,
   turbopack: {},
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  typescript: { tsconfigPath: './tsconfig.build.json' },
 };
 
 export default withPWA(nextConfig);

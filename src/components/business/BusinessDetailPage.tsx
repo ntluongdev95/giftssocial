@@ -27,7 +27,7 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
   const [showBooking, setShowBooking] = useState(false);
   const [bookingService, setBookingService] = useState<string | undefined>();
   const [imgIdx, setImgIdx] = useState(0);
-  const coverImage = (b as Record<string, unknown>).cover_image as string;
+  const coverImage = (b as unknown as Record<string, unknown>).cover_image as string;
   const allImages = [
     ...(coverImage ? [coverImage] : []),
     ...(b.images && b.images.length > 0 ? b.images : []),

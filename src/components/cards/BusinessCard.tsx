@@ -16,7 +16,7 @@ function formatDistance(km?: number): string {
 }
 
 export default function BusinessCard({ business: b, distance, onClick }: BusinessCardProps) {
-  const distKm = distance ?? (b as Record<string, unknown>).distance_km as number | undefined;
+  const distKm = distance ?? (b as unknown as Record<string, unknown>).distance_km as number | undefined;
   const services = (b.services || []) as { name: string; price: number; duration: number }[];
   const todayKey = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()];
   const todayHours = b.hours?.[todayKey];

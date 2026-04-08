@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Check if already member
     const existing = await db.prepare(
       "SELECT id FROM circle_members WHERE circle_id = ? AND user_id = ? AND status = 'active'"
-    ).bind(id, userId).first();
+    ).bind(id, userId).first<{ id: string }>();
     if (existing) return NextResponse.json({ error: { code: 'already_member', message: 'Already a member' } }, { status: 400 });
 
     const joinMode = circle.join_mode as string;

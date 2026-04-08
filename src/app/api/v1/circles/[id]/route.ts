@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import type { CircleRow } from '@/types/d1';
 
 // ─── GET /api/v1/circles/:id — Single circle detail ────────────────────
 
@@ -72,7 +73,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     values.push(id);
     const row = await db.prepare(
       `UPDATE circles SET ${updates.join(', ')}, updated_at = datetime('now') WHERE id = ? RETURNING *`
-    ).bind(...values).first();
+    ).bind(...values).first<CircleRow>();
 
     return NextResponse.json({ data: row });
   } catch (err) {

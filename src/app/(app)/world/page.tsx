@@ -3,8 +3,9 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { Search, Layers, X, MapPin, Loader2, Store, User, Users, Calendar, History, Trash2 } from 'lucide-react';
+import { Search, Layers, X, MapPin, Loader2, Store, Users, Calendar, History, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSearch } from '@/hooks/useSearch';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
 import { useDeveloperStore } from '@/stores/developerStore';
@@ -25,7 +26,7 @@ import UserSheet from '@/components/map/UserSheet';
 import KissGlobe from '@/components/map/KissGlobe';
 import KissReplayOverlay from '@/components/map/KissReplayOverlay';
 import SearchOverlay from '@/components/map/SearchOverlay';
-import type { Signal, Agent, Profile, Business, Event, Circle, EntityType } from '@/types';
+import type { Signal, Agent, Profile, Business, Event, Circle, EntityType, MapUser } from '@/types';
 
 // Dynamic import — MapLibre needs browser
 const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
@@ -57,6 +58,7 @@ function WorldMapInner({
   businesses,
   events,
   circles,
+  mapUsers,
 }: {
   signals: Signal[];
   agents: Agent[];
@@ -64,10 +66,11 @@ function WorldMapInner({
   businesses: Business[];
   events: Event[];
   circles: Circle[];
+  mapUsers: MapUser[];
 }) {
   const { map } = useMap();
   const setMapCenter = useMapStore((s) => s.setMapCenter);
-  useMapMarkers(map, signals, agents, profiles, businesses, events, circles);
+  useMapMarkers(map, signals, agents, profiles, businesses, events, circles, mapUsers);
 
   // Track map center on pan/zoom (debounced)
   useEffect(() => {
@@ -115,7 +118,7 @@ function DesktopResultRow({ item, onSelect }: { item: Record<string, unknown>; o
       )}
       <div className="flex-1 min-w-0">
         <p className="text-[12px] font-medium text-white truncate">{item.title as string}</p>
-        {item.subtitle && <p className="text-[9px] text-[#4a5068] truncate">{item.subtitle as string}</p>}
+        {!!item.subtitle && <p className="text-[9px] text-[#4a5068] truncate">{item.subtitle as string}</p>}
       </div>
       {dist != null && dist > 0 && <span className="shrink-0 text-[9px] text-[#4a5068]">{dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist}km`}</span>}
     </button>
@@ -138,110 +141,11 @@ export default function WorldPage() {
   const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
 
   // ── Search ──────────────────────────────────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; place_name: string; center: [number, number]; type?: 'place' | 'business' }>>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [searchExpanded, setSearchExpanded] = useState(false);
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
-  // Desktop search state
-  const [desktopSearchQuery, setDesktopSearchQuery] = useState('');
-  const [desktopResults, setDesktopResults] = useState<Record<string, Array<Record<string, unknown>>>>({ people: [], businesses: [], events: [], circles: [], places: [] });
-  const [desktopTab, setDesktopTab] = useState('top');
-  const [desktopSearchLoading, setDesktopSearchLoading] = useState(false);
   const [desktopHistory, setDesktopHistory] = useState<Array<Record<string, unknown>>>([]);
-  const desktopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || '';
-
-  const searchGeocode = useCallback(async (q: string) => {
-    if (!q.trim() || q.length < 2) { setSearchResults([]); return; }
-    setSearchLoading(true);
-    try {
-      // Nominatim (OpenStreetMap) — free, no API key needed
-      const osmRes = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`,
-        { headers: { 'User-Agent': 'GaoSocial/1.0' } }
-      );
-      const osmData = await osmRes.json();
-      let results = osmData.map((r: any) => ({
-        id: `osm_${r.place_id}`,
-        place_name: r.display_name,
-        center: [parseFloat(r.lon), parseFloat(r.lat)] as [number, number],
-      }));
-
-      // Also search businesses + people in parallel
-      try {
-        const [bizRes, profileRes] = await Promise.all([
-          fetch(`/api/v1/businesses?q=${encodeURIComponent(q)}&limit=5`).then(r => r.json()).catch(() => ({ data: [] })),
-          fetch(`/api/v1/profiles?q=${encodeURIComponent(q)}&limit=5`).then(r => r.json()).catch(() => ({ data: [] })),
-        ]);
-        const bizResults = (bizRes.data || []).map((b: any) => ({
-          id: `biz_search_${b.id}`,
-          place_name: `${b.name} · ${b.category} · ${b.city || b.address || ''}`,
-          center: [b.location_lng, b.location_lat] as [number, number],
-          type: 'business' as const,
-        }));
-        const peopleResults = (profileRes.data || []).map((p: any) => ({
-          id: `profile_search_${p._id || p.id}`,
-          place_name: `${p.headline} · ${p.industry || ''} · ${p.city || ''}`,
-          center: [p.location?.coordinates?.[0] || p.lng, p.location?.coordinates?.[1] || p.lat] as [number, number],
-          type: 'profile' as const,
-        }));
-        if (bizResults.length > 0 || peopleResults.length > 0) {
-          results = [...peopleResults, ...bizResults, ...results].slice(0, 8);
-        }
-      } catch { /* ignore */ }
-
-      setSearchResults(results);
-    } catch {
-      setSearchResults([]);
-    } finally {
-      setSearchLoading(false);
-    }
-  }, [MAPTILER_KEY]);
-
-  const handleSearchInput = useCallback((val: string) => {
-    setSearchQuery(val);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => searchGeocode(val), 300);
-  }, [searchGeocode]);
-
-  const handleSelectPlace = useCallback((result: typeof searchResults[0]) => {
-    setSearchQuery(result.place_name);
-    setSearchResults([]);
-    setSearchFocused(false);
-
-    const name = result.place_name.toLowerCase();
-    const isAddress = /\d/.test(name.split(',')[0]);
-    const zoom = isAddress ? 18 : name.split(',').length >= 3 ? 15 : 12;
-
-    window.dispatchEvent(new CustomEvent('gao-fly-to', {
-      detail: { lng: result.center[0], lat: result.center[1], zoom, label: result.place_name }
-    }));
-  }, []);
-
-  // ── Desktop unified search ──
-  const handleDesktopSearch = useCallback((q: string, t?: string) => {
-    setDesktopSearchQuery(q);
-    if (desktopTimerRef.current) clearTimeout(desktopTimerRef.current);
-    if (!q.trim() || q.length < 2) { setDesktopResults({ people: [], businesses: [], events: [], circles: [], places: [] }); setDesktopSearchLoading(false); return; }
-    // Show loading immediately when switching tabs (no debounce delay)
-    if (t) setDesktopSearchLoading(true);
-    desktopTimerRef.current = setTimeout(async () => {
-      setDesktopSearchLoading(true);
-      try {
-        const params = new URLSearchParams({ q, tab: t || desktopTab, limit: '20' });
-        if (lat) params.set('lat', String(lat));
-        if (lng) params.set('lng', String(lng));
-        const res = await fetch(`/api/v1/search?${params}`);
-        if (res.ok) { const data = await res.json(); setDesktopResults(data.data); }
-      } catch { /* ignore */ }
-      setDesktopSearchLoading(false);
-    }, t ? 0 : 300);
-  }, [desktopTab, lat, lng]);
+  const desktop = useSearch();
 
   const handleDesktopSelect = useCallback((item: Record<string, unknown>) => {
     // Save to shared search history
@@ -250,8 +154,7 @@ export default function WorldPage() {
       h.unshift(item);
       localStorage.setItem('gao_search_history', JSON.stringify(h.slice(0, 10)));
     } catch { /* ignore */ }
-    setDesktopSearchQuery('');
-    setDesktopResults({ people: [], businesses: [], events: [], circles: [], places: [] });
+    desktop.clear();
     setSearchFocused(false);
     const itemLat = item.lat as number;
     const itemLng = item.lng as number;
@@ -273,7 +176,7 @@ export default function WorldPage() {
     if (isEntity) {
       setTimeout(() => showSearchEntityDetail(item.id as string, itemType, { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string }), 2500);
     }
-  }, [activeLayers, toggleLayer]);
+  }, [activeLayers, toggleLayer, desktop]);
 
   // Auto-request location on mount (browser handles the permission prompt)
   useEffect(() => {
@@ -352,12 +255,20 @@ export default function WorldPage() {
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
+  // Fetch all users for map (people layer)
+  const { data: mapUsersData } = useSWR<{ data: MapUser[] }>(
+    `/api/v1/users/map?${queryParams}`,
+    fetcher,
+    { refreshInterval: 60000, fallbackData: { data: [] } }
+  );
+
   const signals = signalsData?.data ?? [];
   const agents = agentsData?.data ?? [];
   const profiles = profilesData?.data ?? [];
   const businesses = businessesData?.data ?? [];
   const events = eventsData?.data ?? [];
   const circles = circlesData?.data ?? [];
+  const mapUsers = mapUsersData?.data ?? [];
 
   // Count for summary — uses the same fetched data (already scoped to viewport)
   const counts = useMemo(() => ({
@@ -488,8 +399,8 @@ export default function WorldPage() {
 
   // Listen for pin label card clicks → open detail popup
   useEffect(() => {
-    const handler = (e: Event) => {
-      const { entityId, entityType, label } = (e as CustomEvent).detail;
+    const handler = (e: globalThis.Event) => {
+      const { entityId, entityType, label } = (e as CustomEvent<{ entityId: string; entityType: string; label?: string }>).detail;
       if (entityId && entityType) {
         showSearchEntityDetail(entityId, entityType, { title: label || '' });
       }
@@ -546,7 +457,7 @@ export default function WorldPage() {
     <div className="relative h-full w-full">
       <WorldMap onMapReady={handleMapReady}>
         {/* Marker sync */}
-        <WorldMapInner signals={signals} agents={agents} profiles={profiles} businesses={businesses} events={events} circles={circles} />
+        <WorldMapInner signals={signals} agents={agents} profiles={profiles} businesses={businesses} events={events} circles={circles} mapUsers={mapUsers} />
         <KissGlobe />
 
         {/* ── Top Bar ─────────────────────────────────── */}
@@ -563,69 +474,6 @@ export default function WorldPage() {
               <Search size={15} style={{ color: '#4a5068' }} />
             </button>
 
-            {/* Mobile expanded search overlay */}
-            {searchExpanded && (
-              <div className="fixed inset-x-0 top-0 z-50 lg:hidden px-4 pt-[calc(env(safe-area-inset-top,44px)+12px)] pb-3" style={{ background: 'rgba(10,11,15,0.95)', backdropFilter: 'blur(16px)' }}>
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="relative flex-1 flex items-center gap-2.5 rounded-2xl px-4 py-3"
-                    style={{ background: 'rgba(17,19,24,0.9)', border: '1px solid rgba(0,212,255,0.3)', boxShadow: '0 0 20px rgba(0,212,255,0.1)' }}
-                  >
-                    {searchLoading ? (
-                      <Loader2 size={15} className="animate-spin shrink-0" style={{ color: '#00d4ff' }} />
-                    ) : (
-                      <Search size={15} className="shrink-0" style={{ color: '#00d4ff' }} />
-                    )}
-                    <input
-                      ref={searchInputRef}
-                      value={searchQuery}
-                      onChange={(e) => handleSearchInput(e.target.value)}
-                      onFocus={() => setSearchFocused(true)}
-                      onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                      placeholder="Search places, cities, countries…"
-                      className="flex-1 bg-transparent text-sm text-white placeholder:text-[#4a5068] outline-none"
-                    />
-                    {searchQuery && (
-                      <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="shrink-0" style={{ color: '#4a5068' }}>
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => { setSearchExpanded(false); setSearchFocused(false); setSearchQuery(''); setSearchResults([]); }}
-                    className="text-xs font-medium py-2 px-2"
-                    style={{ color: '#a3adc3' }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                {/* Mobile search results */}
-                {searchResults.length > 0 && (
-                  <div
-                    className="mt-1.5 rounded-xl overflow-hidden"
-                    style={{ background: 'rgba(10,11,15,0.95)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
-                  >
-                    {searchResults.map((r) => (
-                      <button
-                        key={r.id}
-                        onMouseDown={() => { handleSelectPlace(r); setSearchExpanded(false); }}
-                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,212,255,0.06)]"
-                        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
-                      >
-                        {r.type === 'business'
-                          ? <Store size={13} className="shrink-0" style={{ color: '#34d399' }} />
-                          : r.type === 'profile'
-                          ? <User size={13} className="shrink-0" style={{ color: '#3B82F6' }} />
-                          : <MapPin size={13} className="shrink-0" style={{ color: '#00d4ff' }} />
-                        }
-                        <span className="text-xs text-[#a3adc3] truncate">{r.place_name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Desktop search — inline with dropdown */}
             <div className="relative flex-1 hidden lg:block">
               <div
@@ -637,14 +485,14 @@ export default function WorldPage() {
                   backdropFilter: 'blur(16px)',
                 }}
               >
-                {searchLoading ? (
+                {desktop.loading ? (
                   <Loader2 size={15} className="animate-spin shrink-0" style={{ color: '#00d4ff' }} />
                 ) : (
                   <Search size={15} className="shrink-0" style={{ color: searchFocused ? '#00d4ff' : '#4a5068' }} />
                 )}
                 <input
-                  value={desktopSearchQuery}
-                  onChange={(e) => handleDesktopSearch(e.target.value)}
+                  value={desktop.query}
+                  onChange={(e) => desktop.handleInput(e.target.value)}
                   onFocus={() => { setSearchFocused(true); try { setDesktopHistory(JSON.parse(localStorage.getItem('gao_search_history') || '[]')); } catch { setDesktopHistory([]); } }}
                   onBlur={(e) => {
                     // Don't close dropdown if clicking inside it
@@ -654,15 +502,15 @@ export default function WorldPage() {
                   placeholder="Search people, businesses, events, places..."
                   className="flex-1 bg-transparent text-sm text-white placeholder:text-[#4a5068] outline-none"
                 />
-                {desktopSearchQuery && (
-                  <button onClick={() => { setDesktopSearchQuery(''); setDesktopResults({ people: [], businesses: [], events: [], circles: [], places: [] }); }} className="shrink-0 cursor-pointer" style={{ color: '#4a5068' }}>
+                {desktop.query && (
+                  <button onClick={desktop.clear} className="shrink-0 cursor-pointer" style={{ color: '#4a5068' }}>
                     <X size={14} />
                   </button>
                 )}
               </div>
 
               {/* Desktop results dropdown — tabs + grouped results + history */}
-              {searchFocused && (desktopSearchQuery.length >= 2 || desktopHistory.length > 0) && (
+              {searchFocused && (desktop.query.length >= 2 || desktopHistory.length > 0) && (
                 <div
                   ref={dropdownRef}
                   tabIndex={-1}
@@ -677,13 +525,13 @@ export default function WorldPage() {
                   }}
                 >
                   {/* Tabs — hide when showing history only */}
-                  {desktopSearchQuery.length >= 2 && <div className="flex gap-1 px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  {desktop.query.length >= 2 && <div className="flex gap-1 px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                     {['top', 'people', 'businesses', 'events', 'circles', 'places'].map(t => (
                       <button
                         key={t}
-                        onMouseDown={() => { setDesktopTab(t); handleDesktopSearch(desktopSearchQuery, t); }}
+                        onMouseDown={() => desktop.handleTabChange(t, desktop.query)}
                         className="px-2.5 py-1 rounded-lg text-[9px] font-semibold capitalize cursor-pointer"
-                        style={desktopTab === t
+                        style={desktop.tab === t
                           ? { background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }
                           : { color: '#4a5068' }
                         }
@@ -693,14 +541,14 @@ export default function WorldPage() {
 
                   {/* Results */}
                   <div className="overflow-y-auto" style={{ maxHeight: 'calc(60vh - 40px)' }}>
-                    {desktopSearchLoading && (
+                    {desktop.loading && (
                       <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-[#00d4ff]" /></div>
                     )}
 
-                    {!desktopSearchLoading && desktopTab === 'top' && (
+                    {!desktop.loading && desktop.tab === 'top' && (
                       <>
                         {(['people', 'businesses', 'events', 'circles', 'places'] as const).map(section => {
-                          const items = desktopResults[section] || [];
+                          const items = desktop.results[section] || [];
                           if (items.length === 0) return null;
                           const labels: Record<string, { label: string; color: string }> = {
                             people: { label: 'People', color: '#3b82f6' },
@@ -715,7 +563,7 @@ export default function WorldPage() {
                               <div className="px-3 pt-2 pb-1 flex items-center justify-between">
                                 <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color }}>{label}</span>
                                 {items.length >= 3 && (
-                                  <button onMouseDown={() => { setDesktopTab(section); handleDesktopSearch(desktopSearchQuery, section); }} className="text-[9px] font-semibold text-[#00d4ff] cursor-pointer">See all</button>
+                                  <button onMouseDown={() => desktop.handleTabChange(section, desktop.query)} className="text-[9px] font-semibold text-[#00d4ff] cursor-pointer">See all</button>
                                 )}
                               </div>
                               {items.map((r: Record<string, unknown>) => (
@@ -727,18 +575,18 @@ export default function WorldPage() {
                       </>
                     )}
 
-                    {!desktopSearchLoading && desktopTab !== 'top' && (
-                      (desktopResults[desktopTab as keyof typeof desktopResults] || []).map((r: Record<string, unknown>) => (
+                    {!desktop.loading && desktop.tab !== 'top' && (
+                      (desktop.results[desktop.tab as keyof typeof desktop.results] || []).map((r: Record<string, unknown>) => (
                         <DesktopResultRow key={r.id as string} item={r} onSelect={handleDesktopSelect} />
                       ))
                     )}
 
-                    {!desktopSearchLoading && Object.values(desktopResults).every(arr => arr.length === 0) && desktopSearchQuery.length >= 2 && (
+                    {!desktop.loading && Object.values(desktop.results).every(arr => arr.length === 0) && desktop.query.length >= 2 && (
                       <p className="text-center text-[11px] text-[#4a5068] py-4">No results</p>
                     )}
 
                     {/* History — show when no query */}
-                    {!desktopSearchQuery && desktopHistory.length > 0 && (
+                    {!desktop.query && desktopHistory.length > 0 && (
                       <div>
                         <div className="px-3 pt-2 pb-1 flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
@@ -1084,7 +932,7 @@ export default function WorldPage() {
       {/* Kiss Replay Cinematic */}
       {replayKiss && (
         <KissReplayOverlay
-          kiss={replayKiss as Parameters<typeof KissReplayOverlay>[0]['kiss']}
+          kiss={replayKiss as unknown as Parameters<typeof KissReplayOverlay>[0]['kiss']}
           onClose={() => setReplayKiss(null)}
           onFlyStart={() => {
             // KissGlobe handles the flight animation — no map manipulation here

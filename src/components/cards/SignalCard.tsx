@@ -59,7 +59,7 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
           <h3 className="text-sm font-semibold text-white truncate">{s.title as string}</h3>
 
           {/* Description preview */}
-          {s.description && (
+          {!!s.description && (
             <p className="text-[11px] text-[#4a5068] mt-0.5 line-clamp-2">{s.description as string}</p>
           )}
 

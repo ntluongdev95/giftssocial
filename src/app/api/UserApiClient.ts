@@ -8,15 +8,8 @@ import axios, {
 import JSONBig from 'json-bigint';
 import { toast } from 'sonner';
 
-import {
-  deleteAccessTokenFromLocal,
-  deleteRefreshTokenFromLocal,
-  getAccessTokenFromLocal,
-  getDeviceID,
-  getRefreshTokenFromLocal,
-  setAccessTokenToLocal,
-  setRefreshTokenToLocal,
-} from '@/lib/clients/storage.helper';
+import { getDeviceID } from '@/lib/clients/storage.helper';
+import { useAuthStore } from '@/stores/auth-store';
 import {
   isArrayBuffer,
   isArrayBufferView,
@@ -89,8 +82,7 @@ UserApiClient.interceptors.request.use(
 
     // Check if we're in a browser environment
     if (typeof window !== 'undefined') {
-      // check with bearer token
-      const token = getAccessTokenFromLocal();
+      const token = useAuthStore.getState().accessToken;
       if (token) {
         config.headers.set('Authorization', `Bearer ${token}`);
       }
@@ -146,11 +138,10 @@ UserApiClient.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = getRefreshTokenFromLocal();
+      const refreshToken = useAuthStore.getState().refreshToken;
       if (!refreshToken) {
         isRefreshing = false;
-        deleteAccessTokenFromLocal();
-        deleteRefreshTokenFromLocal();
+        useAuthStore.getState().logout();
         window.location.href = '/';
         return Promise.reject(error);
       }
@@ -169,8 +160,7 @@ UserApiClient.interceptors.response.use(
         );
 
         const { access_token, refresh_token } = response.data.data;
-        setAccessTokenToLocal(access_token);
-        setRefreshTokenToLocal(refresh_token);
+        useAuthStore.getState().setTokens(access_token, refresh_token);
 
         processQueue(null, access_token);
 
@@ -183,8 +173,7 @@ UserApiClient.interceptors.response.use(
           toast.error('No internet connection. Please check your network.');
           return Promise.reject(refreshError);
         }
-        deleteAccessTokenFromLocal();
-        deleteRefreshTokenFromLocal();
+        useAuthStore.getState().logout();
         window.location.href = '/';
         return Promise.reject(refreshError);
       } finally {

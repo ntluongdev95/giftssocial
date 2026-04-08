@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import SplashScreen from '@/components/ui/SplashScreen';
+import SplashWrapper from '@/components/ui/SplashWrapper';
 import './globals.css';
 
 const inter = Inter({
@@ -68,7 +68,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body className="h-full bg-[#0a0b0f] text-[#f0f4ff] overflow-x-hidden antialiased">
-        <SplashScreen />
+        <SplashWrapper />
         {children}
       </body>
     </html>

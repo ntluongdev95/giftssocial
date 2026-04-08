@@ -104,8 +104,8 @@ export default function FollowersPage() {
                       <p className="text-[13px] font-semibold text-white truncate">{(f.display_name as string) || 'User'}</p>
                       {mutual && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>Friend</span>}
                     </div>
-                    {f.username && <p className="text-[10px] text-[#4a5068]">@{f.username as string}</p>}
-                    {f.bio && <p className="text-[10px] text-[#a3adc3] truncate mt-0.5">{f.bio as string}</p>}
+                    {!!f.username && <p className="text-[10px] text-[#4a5068]">@{f.username as string}</p>}
+                    {!!f.bio && <p className="text-[10px] text-[#a3adc3] truncate mt-0.5">{f.bio as string}</p>}
                   </div>
                   <div className="flex gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                     <button onClick={() => setSelectedUser(f)} className="h-9 w-9 rounded-xl flex items-center justify-center cursor-pointer" style={{ background: 'rgba(0,212,255,0.08)', color: '#00d4ff' }}>

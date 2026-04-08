@@ -100,7 +100,7 @@ export default function MySignalsPage() {
                   </div>
 
                   {/* Description */}
-                  {s.description && <p className="text-xs text-[#a3adc3] mb-3 line-clamp-2">{s.description as string}</p>}
+                  {!!s.description && <p className="text-xs text-[#a3adc3] mb-3 line-clamp-2">{s.description as string}</p>}
 
                   {/* Meta */}
                   <div className="flex items-center gap-4 mb-4 text-xs text-[#a3adc3]">
