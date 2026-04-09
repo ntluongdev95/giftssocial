@@ -1009,7 +1009,17 @@ export function useMapMarkers(
         window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count: f.properties.point_count, entityType: t } }));
       } catch {}
     });
-    map.on('click', `gao-2d-${t}-count`, (e) => { const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`] }); if (hit.length) map.fire('click', { ...e, features: hit }); });
+    map.on('click', `gao-2d-${t}-count`, async (e) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`, `gao-2d-${t}-count`] });
+      const f = hit[0]; if (!f?.properties?.cluster_id) return;
+      const src = map.getSource(srcId) as maplibregl.GeoJSONSource;
+      try {
+        const leaves = await src.getClusterLeaves(f.properties.cluster_id as number, Math.max((f.properties.point_count || 0) as number, 500), 0);
+        if (!leaves?.length) return;
+        const items = leaves.map(l => { const p = l.properties || {}; const g = l.geometry as GeoJSON.Point; return { id: p.id as string, name: (p.name || '') as string, avatar: '', city: (p.city || '') as string, trust_level: 'verified', lat: g.coordinates[1], lng: g.coordinates[0] }; });
+        window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count: f.properties.point_count, entityType: t } }));
+      } catch {}
+    });
     // Click single
     map.on('click', `gao-2d-${t}-single`, (e) => {
       const f = e.features?.[0]; if (!f) return;
@@ -1079,7 +1089,17 @@ export function useMapMarkers(
         window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count: f.properties.point_count, entityType: t } }));
       } catch {}
     });
-    map.on('click', `gao-2d-${t}-count`, (e) => { const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`] }); if (hit.length) map.fire('click', { ...e, features: hit }); });
+    map.on('click', `gao-2d-${t}-count`, async (e) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`, `gao-2d-${t}-count`] });
+      const f = hit[0]; if (!f?.properties?.cluster_id) return;
+      const src = map.getSource(srcId) as maplibregl.GeoJSONSource;
+      try {
+        const leaves = await src.getClusterLeaves(f.properties.cluster_id as number, Math.max((f.properties.point_count || 0) as number, 500), 0);
+        if (!leaves?.length) return;
+        const items = leaves.map(l => { const p = l.properties || {}; const g = l.geometry as GeoJSON.Point; return { id: p.id as string, name: (p.name || '') as string, avatar: '', city: (p.city || '') as string, trust_level: 'verified', lat: g.coordinates[1], lng: g.coordinates[0] }; });
+        window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count: f.properties.point_count, entityType: t } }));
+      } catch {}
+    });
     // Click single
     map.on('click', `gao-2d-${t}-single`, (e) => {
       const f = e.features?.[0]; if (!f) return;
@@ -1217,7 +1237,18 @@ export function useMapMarkers(
             window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count, entityType: t } }));
           } catch (err) { console.error(`[Globe ${t} cluster]`, err); }
         });
-        map.on('click', `gao-globe-${t}-count`, (e) => { map.fire('click', { ...e, features: map.queryRenderedFeatures(e.point, { layers: [`gao-globe-${t}-clusters`] }) }); });
+        map.on('click', `gao-globe-${t}-count`, async (e) => {
+          const hitF = map.queryRenderedFeatures(e.point, { layers: [`gao-globe-${t}-clusters`, `gao-globe-${t}-count`] });
+          const ff = hitF[0]; if (!ff?.properties?.cluster_id) return;
+          const s = map.getSource(srcId) as maplibregl.GeoJSONSource;
+          try {
+            const count = (ff.properties.point_count || 0) as number;
+            const lvs = await s.getClusterLeaves(ff.properties.cluster_id as number, Math.max(count, 500), 0);
+            if (!lvs?.length) return;
+            const items = lvs.map(l => { const p = l.properties || {}; const g = l.geometry as GeoJSON.Point; return { id: p.id as string, name: (p.name || t) as string, avatar: '', city: (p.city || '') as string, trust_level: 'verified', lat: g.coordinates[1], lng: g.coordinates[0] }; });
+            window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count, entityType: t } }));
+          } catch {}
+        });
 
         // Click — single
         map.on('click', `gao-globe-${t}`, (e) => {
