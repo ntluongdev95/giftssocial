@@ -1309,10 +1309,14 @@ export function useMapMarkers(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, activeLayers, signals, businesses, events, profiles, mapUsers, landmarks, friends, showFriendsOnMap]);
 
+  // Keep buildGlobe ref current for effects that shouldn't re-run on every data change
+  const buildGlobeRef = useRef(buildGlobe);
+  buildGlobeRef.current = buildGlobe;
+
   // Auto-update globe data when entities change (SWR refetch after viewport move)
   useEffect(() => {
     if (!map || useMapStore.getState().viewMode !== '3d' || !globeReady.current) return;
-    buildGlobe();
+    buildGlobeRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businesses, events, signals, profiles, mapUsers]);
 
@@ -1496,15 +1500,15 @@ export function useMapMarkers(
 
     // If globe layers already built, just update data
     if (globeReady.current) {
-      buildGlobe();
+      buildGlobeRef.current();
       return;
     }
 
     // First time entering 3D — wait for style then build
-    const timer = setTimeout(() => buildGlobe(), 600);
+    const timer = setTimeout(() => buildGlobeRef.current(), 600);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, activeLayers, styleVersion, buildGlobe, removeClusterLayers, removeGlobeUserLayers]);
+  }, [map, activeLayers, styleVersion, removeClusterLayers, removeGlobeUserLayers]);
 
   // Globe click handlers registered in buildGlobe per entity type
 
