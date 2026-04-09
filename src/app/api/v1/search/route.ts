@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
           }));
-        }).catch(() => {})
+        }).catch((err) => { console.error('[Search]', err); })
       );
     }
 
@@ -73,22 +73,22 @@ export async function GET(req: NextRequest) {
       const bLimit = tab === 'top' ? 5 : limit;
       queries.push(
         db.prepare(
-          `SELECT id, name, category, address, city, avatar_url, location_lat, location_lng, rating, review_count,
+          `SELECT id, name, category, address, city, cover_image, location_lat, location_lng, rating_avg, rating_count,
                   ${distExpr} AS distance
            FROM businesses
            WHERE (name LIKE ? OR category LIKE ? OR address LIKE ? OR city LIKE ?
                   OR REPLACE(LOWER(name), ' ', '') LIKE ?)
-           ORDER BY ${hasGeo ? 'distance ASC,' : ''} rating DESC
+           ORDER BY ${hasGeo ? 'distance ASC,' : ''} rating_avg DESC
            LIMIT ?`
         ).bind(pattern, pattern, pattern, pattern, normPattern, bLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.businesses = rows.map(r => ({
             id: r.id, type: 'business', title: r.name,
             subtitle: [r.category, r.city].filter(Boolean).join(' · '),
-            image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
+            image: r.cover_image, lat: r.location_lat, lng: r.location_lng,
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
-            rating: r.rating, reviewCount: r.review_count,
+            rating: r.rating_avg, reviewCount: r.rating_count,
           }));
-        }).catch(() => {})
+        }).catch((err) => { console.error('[Search]', err); })
       );
     }
 
@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             startTime: r.start_time, status: r.status,
           }));
-        }).catch(() => {})
+        }).catch((err) => { console.error('[Search]', err); })
       );
     }
 
@@ -138,7 +138,7 @@ export async function GET(req: NextRequest) {
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             memberCount: r.member_count,
           }));
-        }).catch(() => {})
+        }).catch((err) => { console.error('[Search]', err); })
       );
     }
 
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
               lat: parseFloat(r.lat as string), lng: parseFloat(r.lon as string),
             }));
           }
-        }).catch(() => {})
+        }).catch((err) => { console.error('[Search]', err); })
       );
     }
 

@@ -72,24 +72,26 @@ function WorldMapInner({
   const setMapCenter = useMapStore((s) => s.setMapCenter);
   useMapMarkers(map, signals, agents, profiles, businesses, events, circles, mapUsers);
 
-  // Track map center on pan/zoom (debounced)
+  // Track map center on pan/zoom (debounced — longer for 3D to avoid excessive API calls)
+  const viewMode = useMapStore((s) => s.viewMode);
   useEffect(() => {
     if (!map) return;
     let timer: ReturnType<typeof setTimeout>;
+    const debounceMs = viewMode === '3d' ? 1500 : 400;
     const onMoveEnd = () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
         const c = map.getCenter();
         const z = map.getZoom();
         setMapCenter(c.lat, c.lng, z);
-      }, 400);
+      }, debounceMs);
     };
     map.on('moveend', onMoveEnd);
     // Set initial center
     const c = map.getCenter();
     setMapCenter(c.lat, c.lng, map.getZoom());
     return () => { clearTimeout(timer); map.off('moveend', onMoveEnd); };
-  }, [map, setMapCenter]);
+  }, [map, setMapCenter, viewMode]);
 
   return null;
 }
@@ -194,17 +196,14 @@ export default function WorldPage() {
     });
   }, [granted, requestLocation]);
 
-  // Build query params — in 2D, follow map center (100km); in 3D, fetch all
+  // Build query params — follow map center, 3D uses larger radius + debounce
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
-    if (viewMode === '2d' && mapCenter) {
+    if (mapCenter) {
       params.set('lat', String(mapCenter.lat));
       params.set('lng', String(mapCenter.lng));
-      params.set('radius', '100000');
-    } else if (viewMode === '3d') {
-      params.set('lat', '0');
-      params.set('lng', '0');
-      params.set('radius', '0');
+      // 3D: larger viewport → 500km radius, 2D: 100km
+      params.set('radius', viewMode === '3d' ? '500000' : '100000');
     } else {
       // Fallback before map is ready
       params.set('lat', String(lat ?? 32.7767));
@@ -257,9 +256,9 @@ export default function WorldPage() {
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
-  // Fetch all users for map (people layer) — no radius limit, cluster handles density
+  // Fetch users for map (people layer) — follows viewport like other entities
   const { data: mapUsersData } = useSWR<{ data: MapUser[] }>(
-    `/api/v1/users/map?limit=500`,
+    `/api/v1/users/map?${queryParams}&limit=500`,
     fetcher,
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );

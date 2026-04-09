@@ -1309,6 +1309,13 @@ export function useMapMarkers(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, activeLayers, signals, businesses, events, profiles, mapUsers, landmarks, friends, showFriendsOnMap]);
 
+  // Auto-update globe data when entities change (SWR refetch after viewport move)
+  useEffect(() => {
+    if (!map || useMapStore.getState().viewMode !== '3d' || !globeReady.current) return;
+    buildGlobe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businesses, events, signals, profiles, mapUsers]);
+
   // ── Globe user cluster (separate clustered source for 3D) ────────────────
   const GLOBE_USERS_SRC = 'gao-globe-users';
   const GLOBE_USER_LAYERS = ['gao-globe-user-ring', 'gao-globe-user-count', 'gao-globe-user-single', 'gao-globe-user-label'];

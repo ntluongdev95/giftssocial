@@ -10,6 +10,7 @@ import {
   Store, Star, CheckCircle, Bookmark,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { rewriteImageUrl } from '@/lib/image-url';
 
 const CATEGORIES = [
   'Restaurant', 'Cafe', 'Bar', 'Beauty', 'Fitness', 'Health', 'Dental',
@@ -117,8 +118,14 @@ export default function BusinessEditPage() {
     if (q.length < 3) { setAddressResults([]); return; }
     searchTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
-        const data = await res.json();
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+        let data = await res.json();
+        // Fallback: if no results and query has 3+ words, retry with fewer words
+        if (data.length === 0 && q.split(/\s+/).length >= 3) {
+          const shorter = q.split(/\s+/).slice(-2).join(' ');
+          const res2 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(shorter)}&limit=5&addressdetails=1`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+          data = await res2.json();
+        }
         setAddressResults(data.map((r: Record<string, unknown>) => ({
           name: r.display_name as string,
           lat: parseFloat(r.lat as string),
@@ -247,7 +254,7 @@ export default function BusinessEditPage() {
               <div className="lg:col-span-2 relative">
                 <Input label="Address" placeholder="Search address..." value={form.address} onChange={v => searchAddress(v)} icon={addressCoords ? <CheckCircle size={14} className="text-[#34d399]" /> : <MapPin size={14} />} />
                 {addressResults.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+                  <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl overflow-hidden max-h-[200px] overflow-y-auto" style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(0,212,255,0.12)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
                     {addressResults.map((r, i) => (
                       <button key={i} onMouseDown={() => selectAddress(r)} className="w-full text-left px-3 py-2.5 text-xs text-[#a3adc3] hover:bg-[rgba(0,212,255,0.06)] cursor-pointer truncate" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                         📍 {r.name}
@@ -365,7 +372,7 @@ export default function BusinessEditPage() {
             <div className="relative rounded-xl overflow-hidden h-40" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
               {form.cover_image ? (
                 <>
-                  <img src={form.cover_image} alt="" className="h-full w-full object-cover" />
+                  <img src={rewriteImageUrl(form.cover_image)} alt="" className="h-full w-full object-cover" />
                   <button onClick={() => updateField('cover_image', '')} className="absolute top-2 right-2 h-7 w-7 rounded-full flex items-center justify-center cursor-pointer text-white text-xs font-bold" style={{ background: 'rgba(239,68,68,0.8)' }}>✕</button>
                 </>
               ) : (
@@ -383,7 +390,7 @@ export default function BusinessEditPage() {
             <div className="grid grid-cols-4 gap-2.5">
               {form.images.map((url, i) => (
                 <div key={i} className="relative aspect-square rounded-xl overflow-hidden">
-                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <img src={rewriteImageUrl(url)} alt="" className="h-full w-full object-cover" />
                   <button onClick={() => removeImage(i)} className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full flex items-center justify-center cursor-pointer text-white text-[10px] font-bold" style={{ background: 'rgba(239,68,68,0.85)' }}>✕</button>
                 </div>
               ))}
@@ -414,7 +421,7 @@ export default function BusinessEditPage() {
               {/* Cover preview */}
               {form.cover_image && (
                 <div className="h-28 overflow-hidden">
-                  <img src={form.cover_image} alt="" className="h-full w-full object-cover" />
+                  <img src={rewriteImageUrl(form.cover_image)} alt="" className="h-full w-full object-cover" />
                 </div>
               )}
               <div className="relative px-5 pt-5 pb-4">
@@ -472,7 +479,7 @@ export default function BusinessEditPage() {
                     <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">
                       {form.images.slice(0, 3).map((url, i) => (
                         <div key={i} className="aspect-square overflow-hidden">
-                          <img src={url} alt="" className="h-full w-full object-cover" />
+                          <img src={rewriteImageUrl(url)} alt="" className="h-full w-full object-cover" />
                         </div>
                       ))}
                     </div>
