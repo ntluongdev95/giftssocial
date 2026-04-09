@@ -139,6 +139,8 @@ export default function WorldPage() {
   const [searchUser, setSearchUser] = useState<{ id: string; preview: { title: string; subtitle?: string; image?: string } } | null>(null);
   const [replayKiss, setReplayKiss] = useState<Record<string, unknown> | null>(null);
   const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
+  const [clusterUsers, setClusterUsers] = useState<{ users: Array<{ id: string; name: string; avatar: string; city: string; trust_level: string; lat: number; lng: number }>; count: number; entityType?: string } | null>(null);
+  const [clusterFilter, setClusterFilter] = useState('');
 
   // ── Search ──────────────────────────────────────────────────────────────
   const [searchFocused, setSearchFocused] = useState(false);
@@ -255,9 +257,9 @@ export default function WorldPage() {
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
-  // Fetch all users for map (people layer)
+  // Fetch all users for map (people layer) — no radius limit, cluster handles density
   const { data: mapUsersData } = useSWR<{ data: MapUser[] }>(
-    `/api/v1/users/map?${queryParams}`,
+    `/api/v1/users/map?limit=500`,
     fetcher,
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
@@ -316,6 +318,11 @@ export default function WorldPage() {
   // Check if selected marker is a circle
   const selectedCircle = selectedMarkerId
     ? circles.find((c) => c.id === selectedMarkerId)
+    : null;
+
+  // Check if selected marker is a map user (from cluster click)
+  const selectedMapUser = selectedMarkerId?.startsWith('user_')
+    ? { id: selectedMarkerId.replace('user_', ''), marker: selectedMarker }
     : null;
 
   const handleMapReady = useCallback(() => {
@@ -408,6 +415,16 @@ export default function WorldPage() {
     window.addEventListener('gao-pin-detail', handler);
     return () => window.removeEventListener('gao-pin-detail', handler);
   }, [showSearchEntityDetail]);
+
+  // Listen for cluster click → show React user list
+  useEffect(() => {
+    const handler = (e: globalThis.Event) => {
+      const { users, count, entityType } = (e as CustomEvent).detail;
+      setClusterUsers({ users, count, entityType });
+    };
+    window.addEventListener('gao-cluster-click', handler);
+    return () => window.removeEventListener('gao-cluster-click', handler);
+  }, []);
 
   // Handle summary card click — 1 item: fly + select, 2+: show list popup
   const handleSummaryClick = useCallback((type: 'signals' | 'events' | 'offers' | 'businesses') => {
@@ -797,13 +814,103 @@ export default function WorldPage() {
           </div>
         )}
 
+        {/* ── Cluster User List ─────────────────────── */}
+        {clusterUsers && !selectedMarkerId && (() => {
+          const q = clusterFilter.toLowerCase().replace(/\s+/g, '');
+          const filtered = q
+            ? clusterUsers.users.filter(u => u.name.toLowerCase().replace(/\s+/g, '').includes(q) || u.city.toLowerCase().includes(q))
+            : clusterUsers.users;
+          return (
+          <div className="absolute inset-0 z-40 flex items-end justify-center pb-[calc(64px+env(safe-area-inset-bottom,0px)+12px)] lg:items-center lg:pb-0">
+            <div className="absolute inset-0" onClick={() => { setClusterUsers(null); setClusterFilter(''); }} />
+            <div
+              className="relative mx-3 w-full max-w-sm rounded-2xl overflow-hidden"
+              style={{ background: 'rgba(10,11,15,0.97)', border: '1px solid rgba(59,130,246,0.12)', backdropFilter: 'blur(20px)', boxShadow: '0 12px 40px rgba(0,0,0,0.7)' }}
+            >
+              {/* Header */}
+              <div className="px-4 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-sm font-semibold" style={{ color: { business: '#22C55E', event: '#EF4444', offer: '#EAB308', profile: '#818CF8' }[clusterUsers.entityType || ''] || '#3B82F6' }}>
+                  {{ business: '🏪', event: '🎉', offer: '🏷', profile: '👤' }[clusterUsers.entityType || ''] || '👥'} {clusterUsers.count} {{ business: 'businesses', event: 'events', offer: 'offers', profile: 'profiles' }[clusterUsers.entityType || ''] || 'people'}
+                </span>
+                  <button onClick={() => { setClusterUsers(null); setClusterFilter(''); }} className="text-[#4a5068] hover:text-white transition-colors cursor-pointer">
+                    <X size={16} />
+                  </button>
+                </div>
+                {/* Search input */}
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <Search size={14} className="shrink-0 text-[#4a5068]" />
+                  <input
+                    value={clusterFilter}
+                    onChange={(e) => setClusterFilter(e.target.value)}
+                    placeholder="Search by name or city..."
+                    className="flex-1 bg-transparent text-xs text-white placeholder:text-[#4a5068] outline-none"
+                    autoFocus
+                  />
+                  {clusterFilter && (
+                    <button onClick={() => setClusterFilter('')} className="text-[#4a5068] cursor-pointer">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* List */}
+              <div className="max-h-[50vh] overflow-y-auto">
+                {filtered.length === 0 && (
+                  <p className="text-center text-[11px] text-[#4a5068] py-6">No results for &ldquo;{clusterFilter}&rdquo;</p>
+                )}
+                {filtered.map((u) => {
+                  const trustColors: Record<string, string> = { highly_trusted: '#eab308', trusted: '#22c55e', verified: '#3b82f6' };
+                  const dotColor = trustColors[u.trust_level];
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => {
+                        setClusterUsers(null);
+                        setClusterFilter('');
+                        const et = clusterUsers.entityType;
+                        if (et === 'business') {
+                          showSearchEntityDetail(u.id, 'business', { title: u.name, subtitle: u.city });
+                        } else if (et === 'event') {
+                          showSearchEntityDetail(u.id, 'event', { title: u.name, subtitle: u.city });
+                        } else {
+                          setSearchUser({ id: u.id, preview: { title: u.name, subtitle: u.city, image: u.avatar || undefined } });
+                        }
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04] active:bg-white/[0.08] cursor-pointer"
+                      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                    >
+                      {u.avatar ? (
+                        <img src={u.avatar} alt="" className="h-9 w-9 rounded-full object-cover shrink-0" style={{ border: '2px solid rgba(59,130,246,0.3)' }} />
+                      ) : (
+                        <div className="h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold" style={{ background: 'rgba(59,130,246,0.12)', border: '2px solid rgba(59,130,246,0.25)', color: '#3B82F6' }}>
+                          {u.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[13px] font-semibold text-[#f0f4ff] truncate">{u.name}</p>
+                          {dotColor && <span className="shrink-0 h-1.5 w-1.5 rounded-full" style={{ background: dotColor }} />}
+                        </div>
+                        {u.city && <p className="text-[10px] text-[#4a5068] truncate mt-0.5">{u.city}</p>}
+                      </div>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4a5068" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+
         {/* ── Friend Side Panel ─────────────────────── */}
         {selectedFriend && (
           <FriendSidePanel data={{ name: selectedFriend.title, ...selectedFriend.metadata }} />
         )}
 
         {/* ── Marker Detail Sheet ─────────────────────── */}
-        {selectedMarker && !selectedFriend && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && !selectedCircle && (
+        {selectedMarker && !selectedFriend && !selectedDeveloper && !selectedProfile && !selectedBusiness && !selectedEvent && !selectedSignal && !selectedCircle && !selectedMapUser && (
           <MarkerDetailSheet
             entityType={selectedMarker.entity_type as EntityType}
             data={selectedMarker.metadata ?? { name: selectedMarker.title }}
@@ -898,6 +1005,15 @@ export default function WorldPage() {
           userId={searchUser.id}
           preview={searchUser.preview}
           onClose={() => setSearchUser(null)}
+        />
+      )}
+
+      {/* User detail from map single dot click */}
+      {selectedMapUser && !searchUser && (
+        <UserSheet
+          userId={selectedMapUser.id}
+          preview={{ title: selectedMapUser.marker?.title || 'User' }}
+          onClose={() => setSelectedMarker(null)}
         />
       )}
 

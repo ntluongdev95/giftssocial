@@ -137,25 +137,6 @@ const MARKER_STYLES = `
     overflow: hidden; text-overflow: ellipsis; text-align: center;
   }
 
-  /* User cluster popup */
-  .gao-cluster-popup .maplibregl-popup-content {
-    background: rgba(10,11,15,0.95) !important;
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(59,130,246,0.2) !important;
-    border-radius: 12px !important;
-    padding: 0 !important;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
-    max-height: 280px; overflow-y: auto;
-    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
-    min-width: 200px;
-  }
-  .gao-cluster-popup .maplibregl-popup-tip {
-    border-top-color: rgba(10,11,15,0.95) !important;
-  }
-  .gao-cluster-popup .maplibregl-popup-close-button {
-    color: #4a5068; font-size: 16px; top: 4px; right: 6px;
-  }
-
   /* Landmark popup */
   .gao-landmark-popup .maplibregl-popup-content {
     background: rgba(10,11,15,0.92) !important;
@@ -646,69 +627,7 @@ export function useMapMarkers(
       }
     }
 
-    // User markers handled via GeoJSON cluster layer (separate useEffect below)
-
-    // Add / update business markers
-    if (activeLayers.has('business')) {
-      for (const biz of businesses) {
-        if (!biz.location_lat || !biz.location_lng) continue;
-        const bid = biz.id;
-        currentIds.add(bid);
-        if (markersRef.current.has(bid)) continue;
-
-        const el = createImageMarkerElement('/icons/business.png', '#34d399', biz.name);
-        el.addEventListener('click', () => setSelectedMarker(bid));
-
-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-          .setLngLat([biz.location_lng, biz.location_lat])
-          .addTo(map);
-
-        markersRef.current.set(bid, marker);
-        addMarker({
-          id: bid, entity_type: 'business',
-          lat: biz.location_lat, lng: biz.location_lng,
-          title: biz.name, state: biz.open_now ? 'live' : 'default',
-          trust_level: biz.trust_level as TrustLevel | undefined,
-          metadata: { category: biz.category, open_now: biz.open_now },
-        });
-      }
-    } else {
-      for (const biz of businesses) {
-        const existing = markersRef.current.get(biz.id);
-        if (existing) { existing.remove(); markersRef.current.delete(biz.id); removeMarker(biz.id); }
-      }
-    }
-
-    // Add / update event markers
-    if (activeLayers.has('event')) {
-      for (const evt of events) {
-        if (!evt.location_lat || !evt.location_lng) continue;
-        const eid = evt.id;
-        currentIds.add(eid);
-        if (markersRef.current.has(eid)) continue;
-
-        const isLive = evt.status === 'live';
-        const el = createImageMarkerElement('/icons/event.png', '#f87171', evt.title, isLive);
-        el.addEventListener('click', () => setSelectedMarker(eid));
-
-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-          .setLngLat([evt.location_lng, evt.location_lat])
-          .addTo(map);
-
-        markersRef.current.set(eid, marker);
-        addMarker({
-          id: eid, entity_type: 'event',
-          lat: evt.location_lat, lng: evt.location_lng,
-          title: evt.title, state: isLive ? 'live' : 'default',
-          metadata: { start_time: evt.start_time, joined_count: evt.joined_count, capacity: evt.capacity },
-        });
-      }
-    } else {
-      for (const evt of events) {
-        const existing = markersRef.current.get(evt.id);
-        if (existing) { existing.remove(); markersRef.current.delete(evt.id); removeMarker(evt.id); }
-      }
-    }
+    // User, business, event markers handled via GeoJSON cluster layers (separate useEffects below)
 
     // Add / update circle markers
     if (activeLayers.has('circle')) {
@@ -774,15 +693,27 @@ export function useMapMarkers(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, signals, agents, profiles, businesses, events, circles, mapUsers, friends, showFriendsOnMap, developers, showDevsOnMap, landmarks, showLandmarksOnMap, activeLayers, setSelectedMarker, addMarker, removeMarker, styleVersion]);
 
-  // ── User cluster layer (GeoJSON native clustering) ──────────────────────
-  const clusterPopupRef = useRef<maplibregl.Popup | null>(null);
+  // ── User cluster layer (GeoJSON native clustering — Google Maps style) ──
+  const clusterLayersReady = useRef(false);
+  const CLUSTER_SRC = 'gao-users-cluster';
+  const CLUSTER_LAYERS = ['gao-user-cluster-ring', 'gao-user-clusters', 'gao-user-cluster-count', 'gao-user-single', 'gao-user-label'];
+
+  // Helper: remove cluster layers + source
+  const removeClusterLayers = useCallback(() => {
+    if (!map) return;
+    for (const id of CLUSTER_LAYERS) {
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
+    }
+    try { if (map.getSource(CLUSTER_SRC)) map.removeSource(CLUSTER_SRC); } catch {}
+    clusterLayersReady.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
 
   useEffect(() => {
     if (!map) return;
     const isGlobe = useMapStore.getState().viewMode === '3d';
-    if (isGlobe) return;
+    if (isGlobe) { removeClusterLayers(); return; }
 
-    const SRC = 'gao-users-cluster';
     const showPeople = activeLayers.has('people');
 
     // Build GeoJSON from mapUsers (skip users with profiles)
@@ -803,213 +734,379 @@ export function useMapMarkers(
 
     const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: showPeople ? features : [] };
 
-    // Update or create source
-    const existing = map.getSource(SRC) as maplibregl.GeoJSONSource | undefined;
-    if (existing) {
-      existing.setData(geo);
-    } else {
-      map.addSource(SRC, {
-        type: 'geojson',
-        data: geo,
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
-      });
-
-      // Cluster circle layer
-      map.addLayer({
-        id: 'gao-user-clusters',
-        type: 'circle',
-        source: SRC,
-        filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': [
-            'step', ['get', 'point_count'],
-            'rgba(59,130,246,0.85)',  // < 10: blue
-            10, 'rgba(99,102,241,0.85)', // 10-30: indigo
-            30, 'rgba(168,85,247,0.85)', // 30+: purple
-          ],
-          'circle-radius': [
-            'step', ['get', 'point_count'],
-            18,   // < 10
-            10, 24, // 10-30
-            30, 32, // 30+
-          ],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': 'rgba(255,255,255,0.15)',
-        },
-      });
-
-      // Cluster count label
-      map.addLayer({
-        id: 'gao-user-cluster-count',
-        type: 'symbol',
-        source: SRC,
-        filter: ['has', 'point_count'],
-        layout: {
-          'text-field': '{point_count_abbreviated}',
-          'text-size': 12,
-          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-        },
-        paint: {
-          'text-color': '#ffffff',
-        },
-      });
-
-      // Single user dot
-      map.addLayer({
-        id: 'gao-user-single',
-        type: 'circle',
-        source: SRC,
-        filter: ['!', ['has', 'point_count']],
-        paint: {
-          'circle-color': '#3B82F6',
-          'circle-radius': 6,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#0a0b0f',
-        },
-      });
-
-      // Single user name label
-      map.addLayer({
-        id: 'gao-user-label',
-        type: 'symbol',
-        source: SRC,
-        filter: ['!', ['has', 'point_count']],
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 10,
-          'text-offset': [0, 1.2],
-          'text-anchor': 'top',
-          'text-max-width': 8,
-          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'],
-        },
-        paint: {
-          'text-color': '#f0f4ff',
-          'text-halo-color': '#0a0b0f',
-          'text-halo-width': 1,
-        },
-      });
-
-      // ── Cluster click → show popup with user list ──
-      map.on('click', 'gao-user-clusters', async (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-        const clusterId = feature.properties?.cluster_id;
-        const coords = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number];
-        const src = map.getSource(SRC) as maplibregl.GeoJSONSource;
-
-        // Get leaves (individual users in this cluster)
-        const leaves = await new Promise<GeoJSON.Feature[]>((resolve) => {
-          (src as unknown as { getClusterLeaves: (id: number, limit: number, offset: number, cb: (err: unknown, features: GeoJSON.Feature[]) => void) => void })
-            .getClusterLeaves(clusterId, 20, 0, (err, feats) => {
-              resolve(err ? [] : feats || []);
-            });
-        });
-
-        if (leaves.length === 0) return;
-
-        // Build popup HTML
-        const listHtml = leaves.map(leaf => {
-          const p = leaf.properties || {};
-          const avatar = p.avatar
-            ? `<img src="${escapeHtml(p.avatar)}" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
-            : `<div style="width:28px;height:28px;border-radius:50%;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:700;color:#3B82F6;">${escapeHtml((p.name || 'U').charAt(0))}</div>`;
-          return `<button class="gao-cluster-item" data-user-id="${escapeHtml(p.id)}" style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px;border:none;background:none;cursor:pointer;text-align:left;transition:background 0.15s;border-bottom:1px solid rgba(255,255,255,0.04);" onmouseover="this.style.background='rgba(59,130,246,0.08)'" onmouseout="this.style.background='none'">
-            ${avatar}
-            <div style="min-width:0;flex:1;">
-              <div style="font-size:12px;font-weight:600;color:#f0f4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name)}</div>
-              ${p.city ? `<div style="font-size:9px;color:#4a5068;margin-top:1px;">${escapeHtml(p.city)}</div>` : ''}
-            </div>
-          </button>`;
-        }).join('');
-
-        const count = feature.properties?.point_count || leaves.length;
-        const html = `<div style="padding:10px 12px 6px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:between;">
-          <span style="font-size:11px;font-weight:700;color:#3B82F6;">${count} people</span>
-        </div>${listHtml}`;
-
-        // Close old popup
-        clusterPopupRef.current?.remove();
-
-        const popup = new maplibregl.Popup({ className: 'gao-cluster-popup', closeButton: true, maxWidth: '260px' })
-          .setLngLat(coords)
-          .setHTML(html)
-          .addTo(map);
-
-        clusterPopupRef.current = popup;
-
-        // Handle click on individual user in popup
-        const el = popup.getElement();
-        el?.addEventListener('click', (evt) => {
-          const btn = (evt.target as HTMLElement).closest('.gao-cluster-item') as HTMLElement | null;
-          if (!btn) return;
-          const userId = btn.dataset.userId;
-          if (userId) {
-            popup.remove();
-            setSelectedMarker(`user_${userId}`);
-            // Add to store so sheets can read it
-            const leaf = leaves.find(l => l.properties?.id === userId);
-            if (leaf) {
-              const lp = leaf.properties || {};
-              const geo = leaf.geometry as GeoJSON.Point;
-              addMarker({
-                id: `user_${userId}`,
-                entity_type: 'people',
-                lat: geo.coordinates[1],
-                lng: geo.coordinates[0],
-                title: lp.name || 'User',
-                state: 'default',
-                metadata: { city: lp.city, userId },
-              });
-            }
-          }
-        });
-      });
-
-      // Single user click
-      map.on('click', 'gao-user-single', (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-        const props = feature.properties || {};
-        const geo = feature.geometry as GeoJSON.Point;
-        const userId = props.id;
-
-        addMarker({
-          id: `user_${userId}`,
-          entity_type: 'people',
-          lat: geo.coordinates[1],
-          lng: geo.coordinates[0],
-          title: props.name || 'User',
-          state: 'default',
-          metadata: { city: props.city, userId },
-        });
-        setSelectedMarker(`user_${userId}`);
-      });
-
-      // Cursor changes
-      map.on('mouseenter', 'gao-user-clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'gao-user-clusters', () => { map.getCanvas().style.cursor = ''; });
-      map.on('mouseenter', 'gao-user-single', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'gao-user-single', () => { map.getCanvas().style.cursor = ''; });
+    // Update existing source data, or create fresh
+    const existingSrc = map.getSource(CLUSTER_SRC) as maplibregl.GeoJSONSource | undefined;
+    if (existingSrc && clusterLayersReady.current) {
+      existingSrc.setData(geo);
+      return; // layers + handlers already exist
     }
 
-    return () => {
-      clusterPopupRef.current?.remove();
+    // Clean stale layers if source exists but layers were lost (style change)
+    if (existingSrc && !clusterLayersReady.current) {
+      removeClusterLayers();
+    }
+
+    map.addSource(CLUSTER_SRC, {
+      type: 'geojson',
+      data: geo,
+      cluster: true,
+      clusterMaxZoom: 15,
+      clusterRadius: 60,
+    });
+
+    // Generate person-icon cluster images for 2D (same as globe)
+    const clusterSizes2D = [
+      { name: 'gao-cluster-2d-sm', radius: 18, color: '#3B82F6', ringColor: 'rgba(59,130,246,0.2)' },
+      { name: 'gao-cluster-2d-md', radius: 24, color: '#6366F1', ringColor: 'rgba(99,102,241,0.2)' },
+      { name: 'gao-cluster-2d-lg', radius: 30, color: '#A855F7', ringColor: 'rgba(168,85,247,0.2)' },
+      { name: 'gao-cluster-2d-xl', radius: 36, color: '#EC4899', ringColor: 'rgba(236,72,153,0.2)' },
+    ];
+    for (const cfg of clusterSizes2D) {
+      if (!map.hasImage(cfg.name)) {
+        const s = (cfg.radius + 6) * 2;
+        const c = document.createElement('canvas'); c.width = s; c.height = s;
+        const ctx = c.getContext('2d')!;
+        const cx = s / 2, cy = s / 2;
+        // Outer ring
+        ctx.beginPath(); ctx.arc(cx, cy, cfg.radius + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = cfg.ringColor; ctx.lineWidth = 4; ctx.stroke();
+        // Solid circle
+        ctx.beginPath(); ctx.arc(cx, cy, cfg.radius, 0, Math.PI * 2);
+        ctx.fillStyle = cfg.color; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2.5; ctx.stroke();
+        // Person icon silhouette
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        const sc = cfg.radius / 24;
+        ctx.beginPath(); ctx.arc(cx, cy - 4 * sc, 5 * sc, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx, cy + 6 * sc, 7 * sc, 5 * sc, 0, Math.PI, 0, true); ctx.fill();
+        map.addImage(cfg.name, ctx.getImageData(0, 0, s, s), { pixelRatio: 2 });
+      }
+    }
+
+    // Cluster — person icon (replaces plain circle)
+    map.addLayer({
+      id: 'gao-user-cluster-ring',
+      type: 'symbol',
+      source: CLUSTER_SRC,
+      filter: ['has', 'point_count'],
+      layout: {
+        'icon-image': ['step', ['get', 'point_count'], 'gao-cluster-2d-sm', 10, 'gao-cluster-2d-md', 50, 'gao-cluster-2d-lg', 100, 'gao-cluster-2d-xl'],
+        'icon-allow-overlap': true,
+        'icon-anchor': 'center',
+        'icon-pitch-alignment': 'viewport',
+        'icon-rotation-alignment': 'viewport',
+      },
+    });
+
+    // Keep circle layers for click hit area (invisible — icon renders on top)
+    map.addLayer({
+      id: 'gao-user-clusters',
+      type: 'circle',
+      source: CLUSTER_SRC,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': 'transparent',
+        'circle-radius': ['step', ['get', 'point_count'], 22, 10, 30, 50, 38, 100, 44],
+      },
+    });
+
+    // Cluster count label
+    map.addLayer({
+      id: 'gao-user-cluster-count',
+      type: 'symbol',
+      source: CLUSTER_SRC,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': ['step', ['get', 'point_count'], 11, 10, 13, 100, 15],
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-allow-overlap': true,
+        'text-offset': [0, 0.8],
+        'text-pitch-alignment': 'viewport',
+        'text-rotation-alignment': 'viewport',
+      },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,0.3)', 'text-halo-width': 1 },
+    });
+
+    // Single user — person icon (reuse globe image)
+    if (!map.hasImage('gao-user-dot')) {
+      const s = 28;
+      const c = document.createElement('canvas'); c.width = s; c.height = s;
+      const ctx = c.getContext('2d')!;
+      const cx = s / 2, cy = s / 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+      ctx.fillStyle = '#3B82F6'; ctx.fill();
+      ctx.strokeStyle = '#0a0b0f'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(cx, cy - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, 3.5, 2.5, 0, Math.PI, 0, true); ctx.fill();
+      map.addImage('gao-user-dot', ctx.getImageData(0, 0, s, s), { pixelRatio: 2 });
+    }
+
+    map.addLayer({
+      id: 'gao-user-single',
+      type: 'symbol',
+      source: CLUSTER_SRC,
+      filter: ['!', ['has', 'point_count']],
+      layout: {
+        'icon-image': 'gao-user-dot',
+        'icon-allow-overlap': true,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 14, 1, 18, 1.4],
+        'icon-anchor': 'center',
+        'icon-pitch-alignment': 'viewport',
+        'icon-rotation-alignment': 'viewport',
+      },
+    });
+
+    // Single user name label (show only at higher zoom)
+    map.addLayer({
+      id: 'gao-user-label',
+      type: 'symbol',
+      source: CLUSTER_SRC,
+      filter: ['!', ['has', 'point_count']],
+      minzoom: 12,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 9, 16, 11],
+        'text-offset': [0, 1.4],
+        'text-anchor': 'top',
+        'text-max-width': 8,
+        'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'],
+        'text-allow-overlap': false,
+        'text-pitch-alignment': 'viewport',
+        'text-rotation-alignment': 'viewport',
+      },
+      paint: {
+        'text-color': '#e2e8f0',
+        'text-halo-color': 'rgba(10,11,15,0.9)',
+        'text-halo-width': 1.5,
+      },
+    });
+
+    // ── Cluster click → show popup with full user list ──
+    const handleClusterClick = async (e: maplibregl.MapMouseEvent & { features?: maplibregl.GeoJSONFeature[] }) => {
+      // Query both circle + count layers at click point
+      const hitFeatures = map.queryRenderedFeatures(e.point, { layers: ['gao-user-clusters', 'gao-user-cluster-count'] });
+      const feature = hitFeatures[0];
+      if (!feature || !feature.properties?.cluster_id) return;
+
+      const clusterId = feature.properties.cluster_id as number;
+      const totalCount = (feature.properties.point_count || 0) as number;
+      const coords = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number];
+      const src = map.getSource(CLUSTER_SRC) as maplibregl.GeoJSONSource;
+
+      try {
+        // MapLibre v5: Promise-based API
+        const leaves = await src.getClusterLeaves(clusterId, Math.max(totalCount, 500), 0);
+        if (!leaves || leaves.length === 0) return;
+
+        // Dispatch to React — no MapLibre popup, pure React rendering
+        const users = leaves.map(leaf => {
+          const p = leaf.properties || {};
+          const g = leaf.geometry as GeoJSON.Point;
+          return { id: p.id as string, name: (p.name || 'User') as string, avatar: (p.avatar || '') as string, city: (p.city || '') as string, trust_level: (p.trust_level || 'new') as string, lat: g.coordinates[1], lng: g.coordinates[0] };
+        });
+        window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users, count: totalCount, coords } }));
+      } catch (err) {
+        console.error('[Cluster] Failed to get leaves:', err);
+      }
     };
+
+    // Register on both circle and count label layers
+    map.on('click', 'gao-user-clusters', handleClusterClick);
+    map.on('click', 'gao-user-cluster-count', handleClusterClick);
+
+    // Single user click
+    map.on('click', 'gao-user-single', (e) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const props = feature.properties || {};
+      const geo = feature.geometry as GeoJSON.Point;
+      addMarker({ id: `user_${props.id}`, entity_type: 'people', lat: geo.coordinates[1], lng: geo.coordinates[0], title: props.name || 'User', state: 'default', metadata: { city: props.city, userId: props.id } });
+      setSelectedMarker(`user_${props.id}`);
+    });
+
+    // Cursor
+    for (const layer of ['gao-user-clusters', 'gao-user-cluster-count', 'gao-user-single']) {
+      map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    clusterLayersReady.current = true;
+
+    return undefined;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, mapUsers, profiles, activeLayers, styleVersion]);
+  }, [map, mapUsers, profiles, activeLayers, styleVersion, removeClusterLayers]);
+
+  // ── 2D clustered sources for business + event ─────────────────────────
+  const ENTITY_CLUSTER_CFG: Record<string, { emoji: string; color: string; radius: number }> = {
+    business: { emoji: '🏪', color: '#22C55E', radius: 50 },
+    event:    { emoji: '🎉', color: '#EF4444', radius: 50 },
+  };
+  const entityClusterReady = useRef<Set<string>>(new Set());
+
+  const removeEntityClusterLayers = useCallback((t: string) => {
+    if (!map) return;
+    const layers = [`gao-2d-${t}-ring`, `gao-2d-${t}-clusters`, `gao-2d-${t}-count`, `gao-2d-${t}-single`, `gao-2d-${t}-label`];
+    for (const id of layers) { try { if (map.getLayer(id)) map.removeLayer(id); } catch {} }
+    try { if (map.getSource(`gao-2d-${t}-src`)) map.removeSource(`gao-2d-${t}-src`); } catch {}
+    entityClusterReady.current.delete(t);
+  }, [map]);
+
+  // Business cluster
+  useEffect(() => {
+    if (!map) return;
+    if (useMapStore.getState().viewMode === '3d') { removeEntityClusterLayers('business'); return; }
+
+    const t = 'business';
+    const cfg = ENTITY_CLUSTER_CFG[t];
+    const srcId = `gao-2d-${t}-src`;
+    const show = activeLayers.has(t);
+
+    const features: GeoJSON.Feature[] = businesses
+      .filter(b => b.location_lat && b.location_lng)
+      .map(b => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [b.location_lng, b.location_lat] }, properties: { id: b.id, name: b.name, city: b.city || '', category: b.category || '' } }));
+    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: show ? features : [] };
+
+    const existingSrc = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
+    if (existingSrc && entityClusterReady.current.has(t)) { existingSrc.setData(geo); return; }
+    if (existingSrc && !entityClusterReady.current.has(t)) removeEntityClusterLayers(t);
+
+    // Icon images
+    const dotImg = `gao-2d-${t}-dot`;
+    if (!map.hasImage(dotImg)) {
+      const sz = 48; const cnv = document.createElement('canvas'); cnv.width = sz; cnv.height = sz;
+      const ct = cnv.getContext('2d')!;
+      ct.beginPath(); ct.arc(sz/2, sz/2, sz/2-3, 0, Math.PI*2); ct.fillStyle = cfg.color; ct.fill(); ct.strokeStyle = '#fff'; ct.lineWidth = 2; ct.stroke();
+      ct.font = '22px serif'; ct.textAlign = 'center'; ct.textBaseline = 'middle'; ct.fillText(cfg.emoji, sz/2, sz/2+1);
+      map.addImage(dotImg, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
+    }
+    const clImg = `gao-2d-${t}-cluster`;
+    if (!map.hasImage(clImg)) {
+      const sz = 64; const cnv = document.createElement('canvas'); cnv.width = sz; cnv.height = sz;
+      const ct = cnv.getContext('2d')!;
+      ct.beginPath(); ct.arc(sz/2, sz/2, sz/2-2, 0, Math.PI*2); ct.strokeStyle = cfg.color+'40'; ct.lineWidth = 3; ct.stroke();
+      ct.beginPath(); ct.arc(sz/2, sz/2, sz/2-6, 0, Math.PI*2); ct.fillStyle = cfg.color; ct.fill(); ct.strokeStyle = 'rgba(255,255,255,0.3)'; ct.lineWidth = 2; ct.stroke();
+      ct.font = '24px serif'; ct.textAlign = 'center'; ct.textBaseline = 'middle'; ct.fillText(cfg.emoji, sz/2, sz/2+1);
+      map.addImage(clImg, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
+    }
+
+    map.addSource(srcId, { type: 'geojson', data: geo, cluster: true, clusterMaxZoom: 14, clusterRadius: cfg.radius });
+    map.addLayer({ id: `gao-2d-${t}-ring`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'icon-image': clImg, 'icon-size': 0.8, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
+    map.addLayer({ id: `gao-2d-${t}-count`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true, 'text-offset': [0, 0.8], 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#fff' } });
+    map.addLayer({ id: `gao-2d-${t}-single`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], layout: { 'icon-image': dotImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
+    map.addLayer({ id: `gao-2d-${t}-label`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], minzoom: 12, layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-max-width': 8, 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'], 'text-allow-overlap': false, 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#e2e8f0', 'text-halo-color': 'rgba(10,11,15,0.9)', 'text-halo-width': 1.5 } });
+
+    // Click cluster
+    map.on('click', `gao-2d-${t}-ring`, async (e) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`, `gao-2d-${t}-count`] });
+      const f = hit[0]; if (!f?.properties?.cluster_id) return;
+      const src = map.getSource(srcId) as maplibregl.GeoJSONSource;
+      try {
+        const leaves = await src.getClusterLeaves(f.properties.cluster_id as number, Math.max((f.properties.point_count || 0) as number, 500), 0);
+        if (!leaves?.length) return;
+        const items = leaves.map(l => { const p = l.properties || {}; const g = l.geometry as GeoJSON.Point; return { id: p.id as string, name: (p.name || '') as string, avatar: '', city: (p.city || '') as string, trust_level: 'verified', lat: g.coordinates[1], lng: g.coordinates[0] }; });
+        window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count: f.properties.point_count, entityType: t } }));
+      } catch {}
+    });
+    map.on('click', `gao-2d-${t}-count`, (e) => { const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`] }); if (hit.length) map.fire('click', { ...e, features: hit }); });
+    // Click single
+    map.on('click', `gao-2d-${t}-single`, (e) => {
+      const f = e.features?.[0]; if (!f) return;
+      const p = f.properties || {}; const g = f.geometry as GeoJSON.Point;
+      window.dispatchEvent(new CustomEvent('gao-pin-detail', { detail: { entityId: p.id as string, entityType: t, label: (p.name || '') as string } }));
+    });
+    for (const l of [`gao-2d-${t}-ring`, `gao-2d-${t}-count`, `gao-2d-${t}-single`]) {
+      map.on('mouseenter', l, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', l, () => { map.getCanvas().style.cursor = ''; });
+    }
+    entityClusterReady.current.add(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, businesses, activeLayers, styleVersion, removeEntityClusterLayers]);
+
+  // Event cluster
+  useEffect(() => {
+    if (!map) return;
+    if (useMapStore.getState().viewMode === '3d') { removeEntityClusterLayers('event'); return; }
+
+    const t = 'event';
+    const cfg = ENTITY_CLUSTER_CFG[t];
+    const srcId = `gao-2d-${t}-src`;
+    const show = activeLayers.has(t);
+
+    const features: GeoJSON.Feature[] = events
+      .filter(e => e.location_lat && e.location_lng)
+      .map(e => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [e.location_lng!, e.location_lat!] }, properties: { id: e.id, name: e.title, city: e.city || '' } }));
+    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: show ? features : [] };
+
+    const existingSrc = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
+    if (existingSrc && entityClusterReady.current.has(t)) { existingSrc.setData(geo); return; }
+    if (existingSrc && !entityClusterReady.current.has(t)) removeEntityClusterLayers(t);
+
+    const dotImg = `gao-2d-${t}-dot`;
+    if (!map.hasImage(dotImg)) {
+      const sz = 48; const cnv = document.createElement('canvas'); cnv.width = sz; cnv.height = sz;
+      const ct = cnv.getContext('2d')!;
+      ct.beginPath(); ct.arc(sz/2, sz/2, sz/2-3, 0, Math.PI*2); ct.fillStyle = cfg.color; ct.fill(); ct.strokeStyle = '#fff'; ct.lineWidth = 2; ct.stroke();
+      ct.font = '22px serif'; ct.textAlign = 'center'; ct.textBaseline = 'middle'; ct.fillText(cfg.emoji, sz/2, sz/2+1);
+      map.addImage(dotImg, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
+    }
+    const clImg = `gao-2d-${t}-cluster`;
+    if (!map.hasImage(clImg)) {
+      const sz = 64; const cnv = document.createElement('canvas'); cnv.width = sz; cnv.height = sz;
+      const ct = cnv.getContext('2d')!;
+      ct.beginPath(); ct.arc(sz/2, sz/2, sz/2-2, 0, Math.PI*2); ct.strokeStyle = cfg.color+'40'; ct.lineWidth = 3; ct.stroke();
+      ct.beginPath(); ct.arc(sz/2, sz/2, sz/2-6, 0, Math.PI*2); ct.fillStyle = cfg.color; ct.fill(); ct.strokeStyle = 'rgba(255,255,255,0.3)'; ct.lineWidth = 2; ct.stroke();
+      ct.font = '24px serif'; ct.textAlign = 'center'; ct.textBaseline = 'middle'; ct.fillText(cfg.emoji, sz/2, sz/2+1);
+      map.addImage(clImg, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
+    }
+
+    map.addSource(srcId, { type: 'geojson', data: geo, cluster: true, clusterMaxZoom: 14, clusterRadius: cfg.radius });
+    map.addLayer({ id: `gao-2d-${t}-ring`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'icon-image': clImg, 'icon-size': 0.8, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
+    map.addLayer({ id: `gao-2d-${t}-count`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true, 'text-offset': [0, 0.8], 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#fff' } });
+    map.addLayer({ id: `gao-2d-${t}-single`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], layout: { 'icon-image': dotImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
+    map.addLayer({ id: `gao-2d-${t}-label`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], minzoom: 12, layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-max-width': 8, 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'], 'text-allow-overlap': false, 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#e2e8f0', 'text-halo-color': 'rgba(10,11,15,0.9)', 'text-halo-width': 1.5 } });
+
+    // Click cluster
+    map.on('click', `gao-2d-${t}-ring`, async (e) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`, `gao-2d-${t}-count`] });
+      const f = hit[0]; if (!f?.properties?.cluster_id) return;
+      const src = map.getSource(srcId) as maplibregl.GeoJSONSource;
+      try {
+        const leaves = await src.getClusterLeaves(f.properties.cluster_id as number, Math.max((f.properties.point_count || 0) as number, 500), 0);
+        if (!leaves?.length) return;
+        const items = leaves.map(l => { const p = l.properties || {}; const g = l.geometry as GeoJSON.Point; return { id: p.id as string, name: (p.name || '') as string, avatar: '', city: (p.city || '') as string, trust_level: 'verified', lat: g.coordinates[1], lng: g.coordinates[0] }; });
+        window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count: f.properties.point_count, entityType: t } }));
+      } catch {}
+    });
+    map.on('click', `gao-2d-${t}-count`, (e) => { const hit = map.queryRenderedFeatures(e.point, { layers: [`gao-2d-${t}-ring`] }); if (hit.length) map.fire('click', { ...e, features: hit }); });
+    // Click single
+    map.on('click', `gao-2d-${t}-single`, (e) => {
+      const f = e.features?.[0]; if (!f) return;
+      const p = f.properties || {}; const g = f.geometry as GeoJSON.Point;
+      window.dispatchEvent(new CustomEvent('gao-pin-detail', { detail: { entityId: p.id as string, entityType: t, label: (p.name || '') as string } }));
+    });
+    for (const l of [`gao-2d-${t}-ring`, `gao-2d-${t}-count`, `gao-2d-${t}-single`]) {
+      map.on('mouseenter', l, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', l, () => { map.getCanvas().style.cursor = ''; });
+    }
+    entityClusterReady.current.add(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, events, activeLayers, styleVersion, removeEntityClusterLayers]);
 
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {
     function handleStyleChanged() {
       console.log('[STYLE-CHANGED] fired — clearing markers, bumping styleVersion');
-      // Clear refs so markers get re-created on next render
+      // Clear DOM markers
       for (const marker of markersRef.current.values()) {
         marker.remove();
       }
       markersRef.current.clear();
-      // Trigger re-render to re-create markers
+      // Clear cluster layers (style swap removes them)
+      clusterLayersReady.current = false;
+      entityClusterReady.current.clear();
+      // Trigger re-render to re-create everything
       setStyleVersion((v: number) => v + 1);
     }
     window.addEventListener('gao-style-changed', handleStyleChanged);
@@ -1017,127 +1114,322 @@ export function useMapMarkers(
   }, []);
 
 
-  // ── 3D Globe: GeoJSON layers ─────────────────────────────────────────────
-  const GLOBE_SRC = 'gao-globe-src';
-  const GLOBE_TYPES = ['business', 'event', 'people', 'offer', 'profile', 'landmark', 'friend'] as const;
-  const GLOBE_COLORS: Record<string, string> = { business: '#22C55E', event: '#EF4444', people: '#3B82F6', offer: '#EAB308', profile: '#818CF8', landmark: '#fbbf24', friend: '#00d4ff' };
-  const GLOBE_ICONS: Record<string, { src: string; size: number }> = {
-    business: { src: '/icons/business.png', size: 0.12 },
-    event: { src: '/icons/event.png', size: 0.03 },
-  };
+  // ── 3D Globe: per-entity clustered GeoJSON sources ───────────────────────
   const globeReady = useRef(false);
 
-  // Build globe layers (called after delay or on layer toggle)
+  // Entity config for globe clustered sources
+  const GLOBE_ENTITY_CFG: Record<string, { emoji: string; color: string; clusterRadius: number }> = {
+    business: { emoji: '🏪', color: '#22C55E', clusterRadius: 60 },
+    event:    { emoji: '🎉', color: '#EF4444', clusterRadius: 60 },
+    people:   { emoji: '📍', color: '#3B82F6', clusterRadius: 50 },
+    offer:    { emoji: '🏷', color: '#EAB308', clusterRadius: 50 },
+    profile:  { emoji: '👤', color: '#818CF8', clusterRadius: 50 },
+  };
+  const GLOBE_ENTITY_TYPES = Object.keys(GLOBE_ENTITY_CFG);
+
+  // Build globe layers — one clustered source per entity type
   const buildGlobe = useCallback(async () => {
     if (!map || useMapStore.getState().viewMode !== '3d') return;
 
-    // Ensure icons are loaded (style swap removes them)
-    for (const [key, cfg] of Object.entries(GLOBE_ICONS)) {
-      const name = `globe-icon-${key}`;
-      if (!map.hasImage(name)) {
-        try { const img = await map.loadImage(cfg.src); map.addImage(name, img.data); } catch {}
-      }
-    }
-
-    // Build features
-    const features: GeoJSON.Feature[] = [];
+    // Collect features per entity type
+    const featuresByType: Record<string, GeoJSON.Feature[]> = { business: [], event: [], people: [], offer: [], profile: [] };
     for (const b of businesses) {
-      if (b.location_lat && b.location_lng) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [b.location_lng, b.location_lat] }, properties: { id: b.id, entityType: 'business' } });
+      if (b.location_lat && b.location_lng) featuresByType.business.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [b.location_lng, b.location_lat] }, properties: { id: b.id, name: b.name, city: b.city || '' } });
     }
     for (const e of events) {
-      if (e.location_lat && e.location_lng) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.location_lng!, e.location_lat!] }, properties: { id: e.id, entityType: 'event' } });
+      if (e.location_lat && e.location_lng) featuresByType.event.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.location_lng!, e.location_lat!] }, properties: { id: e.id, name: e.title, city: e.city || '' } });
     }
     for (const s of signals) {
-      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: s.location.coordinates as [number, number] }, properties: { id: s.id, entityType: s.type === 'offer' ? 'offer' : 'people' } });
+      const et = s.type === 'offer' ? 'offer' : 'people';
+      featuresByType[et].push({ type: 'Feature', geometry: { type: 'Point', coordinates: s.location.coordinates as [number, number] }, properties: { id: s.id, name: s.title } });
     }
     for (const p of profiles) {
-      if (p.location) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: p.location.coordinates as [number, number] }, properties: { id: p._id, entityType: 'profile' } });
+      if (p.location) featuresByType.profile.push({ type: 'Feature', geometry: { type: 'Point', coordinates: p.location.coordinates as [number, number] }, properties: { id: p._id, name: p.headline } });
     }
-    for (const lm of landmarks) {
-      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lm.lng, lm.lat] }, properties: { id: lm.id, entityType: 'landmark', name: lm.name, icon: lm.icon } });
-    }
-    if (showFriendsOnMap) {
-      for (const f of friends) {
-        if (f.location_sharing !== 'off' && f.location) {
-          features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: f.location.coordinates as [number, number] }, properties: { id: f.id, entityType: 'friend', name: f.display_name, avatar_url: f.avatar_url || '', gao_domain: f.gao_domain || '', trust_level: f.trust_level, trust_score: f.trust_score, is_online: f.is_online, last_seen_at: f.last_seen_at || '' } });
-        }
-      }
-    }
-
-    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
 
     try {
-      // Source
-      if (map.getSource(GLOBE_SRC)) {
-        (map.getSource(GLOBE_SRC) as maplibregl.GeoJSONSource).setData(geo);
-      } else {
-        map.addSource(GLOBE_SRC, { type: 'geojson', data: geo });
-      }
+      for (const t of GLOBE_ENTITY_TYPES) {
+        const srcId = `gao-globe-${t}-src`;
+        const cfg = GLOBE_ENTITY_CFG[t];
+        const visible = activeLayers.has(t);
+        const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: visible ? featuresByType[t] : [] };
 
-      // Layers
-      for (const t of GLOBE_TYPES) {
-        const id = `gao-globe-${t}`;
-        const visible = t === 'friend' ? showFriendsOnMap : activeLayers.has(t);
+        // Generate icon images once
+        const singleImg = `globe-${t}-dot`;
+        if (!map.hasImage(singleImg)) {
+          const sz = 48; const cnv = document.createElement('canvas'); cnv.width = sz; cnv.height = sz;
+          const ct = cnv.getContext('2d')!;
+          ct.beginPath(); ct.arc(sz / 2, sz / 2, sz / 2 - 3, 0, Math.PI * 2);
+          ct.fillStyle = cfg.color; ct.fill(); ct.strokeStyle = '#fff'; ct.lineWidth = 2; ct.stroke();
+          ct.font = '22px serif'; ct.textAlign = 'center'; ct.textBaseline = 'middle';
+          ct.fillText(cfg.emoji, sz / 2, sz / 2 + 1);
+          map.addImage(singleImg, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
+        }
+        // Cluster icon
+        const clusterImg = `globe-${t}-cluster`;
+        if (!map.hasImage(clusterImg)) {
+          const sz = 64; const cnv = document.createElement('canvas'); cnv.width = sz; cnv.height = sz;
+          const ct = cnv.getContext('2d')!;
+          // Outer ring
+          ct.beginPath(); ct.arc(sz / 2, sz / 2, sz / 2 - 2, 0, Math.PI * 2);
+          ct.strokeStyle = cfg.color + '40'; ct.lineWidth = 3; ct.stroke();
+          // Inner circle
+          ct.beginPath(); ct.arc(sz / 2, sz / 2, sz / 2 - 6, 0, Math.PI * 2);
+          ct.fillStyle = cfg.color; ct.fill(); ct.strokeStyle = 'rgba(255,255,255,0.3)'; ct.lineWidth = 2; ct.stroke();
+          // Emoji
+          ct.font = '24px serif'; ct.textAlign = 'center'; ct.textBaseline = 'middle';
+          ct.fillText(cfg.emoji, sz / 2, sz / 2 + 1);
+          map.addImage(clusterImg, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
+        }
 
-        if (!map.getLayer(id)) {
-          if (t === 'landmark') {
-            // Generate emoji images for each unique landmark icon
-            const uniqueIcons = new Set(landmarks.map(lm => lm.icon));
-            for (const emoji of uniqueIcons) {
-              const imgName = `lm-${emoji}`;
-              if (!map.hasImage(imgName)) {
-                const size = 64;
-                const canvas = document.createElement('canvas');
-                canvas.width = size; canvas.height = size;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  // Gold circle background
-                  ctx.beginPath();
-                  ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
-                  ctx.fillStyle = 'rgba(251,191,36,0.95)';
-                  ctx.fill();
-                  ctx.strokeStyle = '#ffffff';
-                  ctx.lineWidth = 3;
-                  ctx.stroke();
-                  // Emoji
-                  ctx.font = '30px serif';
-                  ctx.textAlign = 'center';
-                  ctx.textBaseline = 'middle';
-                  ctx.fillText(emoji, size / 2, size / 2 + 2);
-                  const imgData = ctx.getImageData(0, 0, size, size);
-                  map.addImage(imgName, imgData, { pixelRatio: 2 });
-                }
-              }
-            }
-            // Icon layer
-            map.addLayer({ id, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'landmark'], layout: { 'icon-image': ['concat', 'lm-', ['get', 'icon']], 'icon-size': 0.6, 'icon-allow-overlap': true, visibility: visible ? 'visible' : 'none' } });
-            // Name label below
-            map.addLayer({ id: `${id}-label`, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'landmark'], layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 2], 'text-anchor': 'top', 'text-allow-overlap': false, visibility: visible ? 'visible' : 'none' }, paint: { 'text-color': '#fbbf24', 'text-halo-color': '#000000', 'text-halo-width': 1.5 } });
-          } else if (t === 'friend') {
-            // Friend: cyan circle + name label
-            map.addLayer({ id, type: 'circle', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'friend'], paint: { 'circle-radius': 9, 'circle-color': '#00d4ff', 'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff' }, layout: { visibility: visible ? 'visible' : 'none' } });
-            map.addLayer({ id: `${id}-label`, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], 'friend'], layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'text-allow-overlap': true, visibility: visible ? 'visible' : 'none' }, paint: { 'text-color': '#00d4ff', 'text-halo-color': '#000000', 'text-halo-width': 1.5 } });
-          } else {
-            const iconCfg = GLOBE_ICONS[t];
-            if (iconCfg && map.hasImage(`globe-icon-${t}`)) {
-              map.addLayer({ id, type: 'symbol', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], layout: { 'icon-image': `globe-icon-${t}`, 'icon-size': iconCfg.size, 'icon-allow-overlap': true, visibility: visible ? 'visible' : 'none' } });
-            } else {
-              map.addLayer({ id, type: 'circle', source: GLOBE_SRC, filter: ['==', ['get', 'entityType'], t], paint: { 'circle-radius': 7, 'circle-color': GLOBE_COLORS[t] || '#fff', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' }, layout: { visibility: visible ? 'visible' : 'none' } });
-            }
-          }
-        } else {
-          map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-          if (t === 'landmark' || t === 'friend') {
-            if (map.getLayer(`${id}-label`)) map.setLayoutProperty(`${id}-label`, 'visibility', visible ? 'visible' : 'none');
-          }
+        // Source
+        const existingSrc = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
+        if (existingSrc) { existingSrc.setData(geo); continue; }
+
+        map.addSource(srcId, { type: 'geojson', data: geo, cluster: true, clusterMaxZoom: 12, clusterRadius: cfg.clusterRadius });
+
+        // Cluster icon
+        map.addLayer({ id: `gao-globe-${t}-clusters`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: {
+          'icon-image': clusterImg, 'icon-size': 0.8, 'icon-allow-overlap': true, 'icon-anchor': 'center',
+          'icon-pitch-alignment': 'map',
+        }});
+        // Cluster count
+        map.addLayer({ id: `gao-globe-${t}-count`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: {
+          'text-field': '{point_count_abbreviated}', 'text-size': 11, 'text-offset': [0, 0.7],
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true,
+        }, paint: { 'text-color': '#fff', 'text-halo-color': 'rgba(0,0,0,0.4)', 'text-halo-width': 1 }});
+        // Single dot
+        map.addLayer({ id: `gao-globe-${t}`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], layout: {
+          'icon-image': singleImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center',
+          'icon-pitch-alignment': 'map',
+        }});
+
+        // Click handlers — cluster
+        map.on('click', `gao-globe-${t}-clusters`, async (e) => {
+          const feature = e.features?.[0];
+          if (!feature?.properties?.cluster_id) return;
+          const src = map.getSource(srcId) as maplibregl.GeoJSONSource;
+          const count = (feature.properties.point_count || 0) as number;
+          try {
+            const leaves = await src.getClusterLeaves(feature.properties.cluster_id as number, Math.max(count, 500), 0);
+            if (!leaves?.length) return;
+            const items = leaves.map(l => { const p = l.properties || {}; const g = l.geometry as GeoJSON.Point; return { id: p.id as string, name: (p.name || t) as string, avatar: '', city: (p.city || '') as string, trust_level: 'verified', lat: g.coordinates[1], lng: g.coordinates[0] }; });
+            window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users: items, count, entityType: t } }));
+          } catch (err) { console.error(`[Globe ${t} cluster]`, err); }
+        });
+        map.on('click', `gao-globe-${t}-count`, (e) => { map.fire('click', { ...e, features: map.queryRenderedFeatures(e.point, { layers: [`gao-globe-${t}-clusters`] }) }); });
+
+        // Click — single
+        map.on('click', `gao-globe-${t}`, (e) => {
+          const feature = e.features?.[0];
+          if (!feature) return;
+          const props = feature.properties || {};
+          const geo = feature.geometry as GeoJSON.Point;
+          addMarker({ id: props.id as string, entity_type: t as EntityType, lat: geo.coordinates[1], lng: geo.coordinates[0], title: (props.name || t) as string, state: 'default', metadata: { ...props } });
+          setSelectedMarker(props.id as string);
+        });
+
+        // Cursor
+        for (const layer of [`gao-globe-${t}-clusters`, `gao-globe-${t}-count`, `gao-globe-${t}`]) {
+          map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+          map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
         }
       }
+
+      // ── Landmarks (no clustering — unique icons) ──
+      const lmSrc = 'gao-globe-landmark-src';
+      const lmFeatures: GeoJSON.Feature[] = landmarks.map(lm => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [lm.lng, lm.lat] }, properties: { id: lm.id, name: lm.name, icon: lm.icon } }));
+      const lmGeo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: activeLayers.has('landmark') ? lmFeatures : [] };
+      if (map.getSource(lmSrc)) {
+        (map.getSource(lmSrc) as maplibregl.GeoJSONSource).setData(lmGeo);
+      } else {
+        for (const emoji of new Set(landmarks.map(lm => lm.icon))) {
+          const imgName = `lm-${emoji}`;
+          if (!map.hasImage(imgName)) {
+            const sz = 64; const cnv = document.createElement('canvas'); cnv.width = sz; cnv.height = sz;
+            const ct = cnv.getContext('2d')!;
+            ct.beginPath(); ct.arc(sz / 2, sz / 2, sz / 2 - 2, 0, Math.PI * 2);
+            ct.fillStyle = 'rgba(251,191,36,0.95)'; ct.fill(); ct.strokeStyle = '#fff'; ct.lineWidth = 3; ct.stroke();
+            ct.font = '30px serif'; ct.textAlign = 'center'; ct.textBaseline = 'middle'; ct.fillText(emoji, sz / 2, sz / 2 + 2);
+            map.addImage(imgName, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
+          }
+        }
+        map.addSource(lmSrc, { type: 'geojson', data: lmGeo });
+        map.addLayer({ id: 'gao-globe-landmark', type: 'symbol', source: lmSrc, layout: { 'icon-image': ['concat', 'lm-', ['get', 'icon']], 'icon-size': 0.6, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'map' } });
+        map.addLayer({ id: 'gao-globe-landmark-label', type: 'symbol', source: lmSrc, layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 2], 'text-anchor': 'top' }, paint: { 'text-color': '#fbbf24', 'text-halo-color': '#000', 'text-halo-width': 1.5 } });
+      }
+
+      // ── Friends (no clustering) ──
+      const frSrc = 'gao-globe-friend-src';
+      const frFeatures: GeoJSON.Feature[] = showFriendsOnMap ? friends.filter(f => f.location_sharing !== 'off' && f.location).map(f => ({ type: 'Feature', geometry: { type: 'Point', coordinates: f.location!.coordinates as [number, number] }, properties: { id: f.id, name: f.display_name, is_online: f.is_online } })) : [];
+      const frGeo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: frFeatures };
+      if (map.getSource(frSrc)) {
+        (map.getSource(frSrc) as maplibregl.GeoJSONSource).setData(frGeo);
+      } else {
+        map.addSource(frSrc, { type: 'geojson', data: frGeo });
+        map.addLayer({ id: 'gao-globe-friend', type: 'circle', source: frSrc, paint: { 'circle-radius': 8, 'circle-color': '#00d4ff', 'circle-stroke-width': 3, 'circle-stroke-color': '#fff' } });
+        map.addLayer({ id: 'gao-globe-friend-label', type: 'symbol', source: frSrc, layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.8], 'text-anchor': 'top', 'text-allow-overlap': true }, paint: { 'text-color': '#00d4ff', 'text-halo-color': '#000', 'text-halo-width': 1.5 } });
+      }
+
       globeReady.current = true;
     } catch (err) {
       console.warn('[GLOBE] build error', err);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, activeLayers, signals, businesses, events, profiles, landmarks, friends, showFriendsOnMap]);
+  }, [map, activeLayers, signals, businesses, events, profiles, mapUsers, landmarks, friends, showFriendsOnMap]);
+
+  // ── Globe user cluster (separate clustered source for 3D) ────────────────
+  const GLOBE_USERS_SRC = 'gao-globe-users';
+  const GLOBE_USER_LAYERS = ['gao-globe-user-ring', 'gao-globe-user-count', 'gao-globe-user-single', 'gao-globe-user-label'];
+  const globeUserLayersReady = useRef(false);
+
+  const removeGlobeUserLayers = useCallback(() => {
+    if (!map) return;
+    for (const id of GLOBE_USER_LAYERS) {
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
+    }
+    try { if (map.getSource(GLOBE_USERS_SRC)) map.removeSource(GLOBE_USERS_SRC); } catch {}
+    globeUserLayersReady.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
+
+  useEffect(() => {
+    if (!map) return;
+    const isGlobe = useMapStore.getState().viewMode === '3d';
+    if (!isGlobe) { removeGlobeUserLayers(); return; }
+
+    const showPeople = activeLayers.has('people');
+    const profileUserIds = new Set(profiles.map(p => p.user_id));
+    const userFeatures: GeoJSON.Feature[] = mapUsers
+      .filter(u => u.location_lat && u.location_lng && !profileUserIds.has(u.id))
+      .map(u => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [u.location_lng, u.location_lat] },
+        properties: { id: u.id, name: u.display_name || u.username || 'User', avatar: u.avatar_url || '', city: u.city || '', trust_level: u.trust_level || 'new' },
+      }));
+
+    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: showPeople ? userFeatures : [] };
+
+    const existingSrc = map.getSource(GLOBE_USERS_SRC) as maplibregl.GeoJSONSource | undefined;
+    if (existingSrc && globeUserLayersReady.current) {
+      existingSrc.setData(geo);
+      return;
+    }
+    if (existingSrc && !globeUserLayersReady.current) {
+      removeGlobeUserLayers();
+    }
+
+    map.addSource(GLOBE_USERS_SRC, { type: 'geojson', data: geo, cluster: true, clusterMaxZoom: 12, clusterRadius: 80 });
+
+    // Generate person-icon cluster images (canvas) so clusters look distinct from signals
+    const clusterSizes = [
+      { name: 'gao-cluster-sm', radius: 18, color: '#3B82F6', ringColor: 'rgba(59,130,246,0.25)' },
+      { name: 'gao-cluster-md', radius: 24, color: '#6366F1', ringColor: 'rgba(99,102,241,0.25)' },
+      { name: 'gao-cluster-lg', radius: 30, color: '#A855F7', ringColor: 'rgba(168,85,247,0.25)' },
+    ];
+    for (const cfg of clusterSizes) {
+      if (!map.hasImage(cfg.name)) {
+        const s = (cfg.radius + 6) * 2;
+        const c = document.createElement('canvas'); c.width = s; c.height = s;
+        const ctx = c.getContext('2d')!;
+        const cx = s / 2, cy = s / 2;
+        // Outer ring
+        ctx.beginPath(); ctx.arc(cx, cy, cfg.radius + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = cfg.ringColor; ctx.lineWidth = 3; ctx.stroke();
+        // Solid circle
+        ctx.beginPath(); ctx.arc(cx, cy, cfg.radius, 0, Math.PI * 2);
+        ctx.fillStyle = cfg.color; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
+        // Person icon (head + body)
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        const iconScale = cfg.radius / 24;
+        ctx.beginPath(); ctx.arc(cx, cy - 4 * iconScale, 5 * iconScale, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx, cy + 6 * iconScale, 7 * iconScale, 5 * iconScale, 0, Math.PI, 0, true); ctx.fill();
+        map.addImage(cfg.name, ctx.getImageData(0, 0, s, s), { pixelRatio: 2 });
+      }
+    }
+
+    // Single user person icon
+    if (!map.hasImage('gao-user-dot')) {
+      const s = 28;
+      const c = document.createElement('canvas'); c.width = s; c.height = s;
+      const ctx = c.getContext('2d')!;
+      const cx = s / 2, cy = s / 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+      ctx.fillStyle = '#3B82F6'; ctx.fill();
+      ctx.strokeStyle = '#0a0b0f'; ctx.lineWidth = 2; ctx.stroke();
+      // Tiny person
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(cx, cy - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, cy + 3, 3.5, 2.5, 0, Math.PI, 0, true); ctx.fill();
+      map.addImage('gao-user-dot', ctx.getImageData(0, 0, s, s), { pixelRatio: 2 });
+    }
+
+    // Cluster — icon layer (person silhouette inside colored circle)
+    map.addLayer({ id: 'gao-globe-user-ring', type: 'symbol', source: GLOBE_USERS_SRC, filter: ['has', 'point_count'], layout: {
+      'icon-image': ['step', ['get', 'point_count'], 'gao-cluster-sm', 10, 'gao-cluster-md', 50, 'gao-cluster-lg'],
+      'icon-allow-overlap': true,
+    }});
+
+    // Count label on top
+    map.addLayer({ id: 'gao-globe-user-count', type: 'symbol', source: GLOBE_USERS_SRC, filter: ['has', 'point_count'], layout: {
+      'text-field': '{point_count_abbreviated}', 'text-size': ['step', ['get', 'point_count'], 11, 10, 13, 100, 15],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true,
+      'text-offset': [0, 0.8],
+    }, paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,0.3)', 'text-halo-width': 1 }});
+
+    // Single user — person icon
+    map.addLayer({ id: 'gao-globe-user-single', type: 'symbol', source: GLOBE_USERS_SRC, filter: ['!', ['has', 'point_count']], layout: {
+      'icon-image': 'gao-user-dot', 'icon-allow-overlap': true,
+    }});
+
+    // Single label
+    map.addLayer({ id: 'gao-globe-user-label', type: 'symbol', source: GLOBE_USERS_SRC, filter: ['!', ['has', 'point_count']], minzoom: 8, layout: {
+      'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-max-width': 8,
+      'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'], 'text-allow-overlap': false,
+    }, paint: { 'text-color': '#e2e8f0', 'text-halo-color': 'rgba(0,0,0,0.8)', 'text-halo-width': 1.5 }});
+
+    // Cluster click → dispatch to React (same as 2D)
+    const handleGlobeClusterClick = async (e: maplibregl.MapMouseEvent) => {
+      const hitFeatures = map.queryRenderedFeatures(e.point, { layers: ['gao-globe-user-ring', 'gao-globe-user-count'] });
+      const feature = hitFeatures[0];
+      if (!feature || !feature.properties?.cluster_id) return;
+      const clusterId = feature.properties.cluster_id as number;
+      const totalCount = (feature.properties.point_count || 0) as number;
+      const src = map.getSource(GLOBE_USERS_SRC) as maplibregl.GeoJSONSource;
+      try {
+        const leaves = await src.getClusterLeaves(clusterId, Math.max(totalCount, 500), 0);
+        if (!leaves || leaves.length === 0) return;
+        const users = leaves.map(leaf => {
+          const p = leaf.properties || {};
+          const g = leaf.geometry as GeoJSON.Point;
+          return { id: p.id as string, name: (p.name || 'User') as string, avatar: (p.avatar || '') as string, city: (p.city || '') as string, trust_level: (p.trust_level || 'new') as string, lat: g.coordinates[1], lng: g.coordinates[0] };
+        });
+        window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users, count: totalCount } }));
+      } catch (err) { console.error('[Globe Cluster]', err); }
+    };
+    map.on('click', 'gao-globe-user-ring', handleGlobeClusterClick);
+    map.on('click', 'gao-globe-user-count', handleGlobeClusterClick);
+
+    // Single user click
+    map.on('click', 'gao-globe-user-single', (e) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const props = feature.properties || {};
+      const geo = feature.geometry as GeoJSON.Point;
+      addMarker({ id: `user_${props.id}`, entity_type: 'people', lat: geo.coordinates[1], lng: geo.coordinates[0], title: props.name || 'User', state: 'default', metadata: { city: props.city, userId: props.id } });
+      setSelectedMarker(`user_${props.id}`);
+    });
+
+    // Cursor
+    for (const layer of ['gao-globe-user-ring', 'gao-globe-user-count', 'gao-globe-user-single']) {
+      map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+    }
+
+    globeUserLayersReady.current = true;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, mapUsers, profiles, activeLayers, styleVersion, removeGlobeUserLayers]);
 
   // Toggle between 2D DOM markers and 3D globe layers
   useEffect(() => {
@@ -1150,19 +1442,22 @@ export function useMapMarkers(
     }
 
     if (!isGlobe) {
-      // Clean globe layers + label layers
-      for (const t of GLOBE_TYPES) {
-        try { if (map.getLayer(`gao-globe-${t}-label`)) map.removeLayer(`gao-globe-${t}-label`); } catch {}
-        try { if (map.getLayer(`gao-globe-${t}-bg`)) map.removeLayer(`gao-globe-${t}-bg`); } catch {}
-        try { if (map.getLayer(`gao-globe-${t}`)) map.removeLayer(`gao-globe-${t}`); } catch {}
-      }
-      try { if (map.getSource(GLOBE_SRC)) map.removeSource(GLOBE_SRC); } catch {}
+      // Clean all globe sources + layers
+      const allGlobeLayers = map.getStyle()?.layers?.filter(l => l.id.startsWith('gao-globe-')).map(l => l.id) || [];
+      for (const id of allGlobeLayers) { try { map.removeLayer(id); } catch {} }
+      const allGlobeSources = Object.keys(map.getStyle()?.sources || {}).filter(s => s.startsWith('gao-globe-'));
+      for (const id of allGlobeSources) { try { map.removeSource(id); } catch {} }
       globeReady.current = false;
+      removeGlobeUserLayers();
+      // Cluster layers will be re-created by the cluster useEffect
       return;
     }
 
-    // If globe layers already built, just update visibility
-    if (globeReady.current && map.getSource(GLOBE_SRC)) {
+    // Entering 3D — remove cluster layers (globe has its own rendering)
+    removeClusterLayers();
+
+    // If globe layers already built, just update data
+    if (globeReady.current) {
       buildGlobe();
       return;
     }
@@ -1171,37 +1466,9 @@ export function useMapMarkers(
     const timer = setTimeout(() => buildGlobe(), 600);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, activeLayers, styleVersion, buildGlobe]);
+  }, [map, activeLayers, styleVersion, buildGlobe, removeClusterLayers, removeGlobeUserLayers]);
 
-  // Globe click handler — register marker in store so sheets can read it
-  useEffect(() => {
-    if (!map) return;
-    const handler = (e: maplibregl.MapMouseEvent) => {
-      const layers = GLOBE_TYPES.map(t => `gao-globe-${t}`).filter(id => map.getLayer(id));
-      if (layers.length === 0) return;
-      const features = map.queryRenderedFeatures(e.point, { layers });
-      if (features.length === 0) return;
-      const props = features[0].properties || {};
-      const geo = features[0].geometry as GeoJSON.Point;
-      const id = props.id as string;
-      const entityType = (props.entityType || 'people') as string;
-      // Ensure marker exists in store for sheets to read
-      if (!useMapStore.getState().markers.has(id)) {
-        addMarker({
-          id,
-          entity_type: entityType as import('@/types').EntityType,
-          lat: geo.coordinates[1],
-          lng: geo.coordinates[0],
-          title: (props.name as string) || id,
-          state: props.is_online ? 'live' : 'default',
-          metadata: { ...props },
-        });
-      }
-      setSelectedMarker(id);
-    };
-    map.on('click', handler);
-    return () => { map.off('click', handler); };
-  }, [map, setSelectedMarker, addMarker]);
+  // Globe click handlers registered in buildGlobe per entity type
 
   // Cleanup all on unmount
   useEffect(() => {
