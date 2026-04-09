@@ -216,7 +216,7 @@ export default function WorldPage() {
 
   // Fetch signals
   const { data: signalsData } = useSWR<{ data: Signal[] }>(
-    `/api/v1/signals?${queryParams}`,
+    `/api/v1/signals?${queryParams}&limit=${viewMode === '3d' ? 100 : 30}`,
     fetcher,
     { refreshInterval: 30000, fallbackData: { data: [] } }
   );
@@ -230,21 +230,21 @@ export default function WorldPage() {
 
   // Fetch profiles
   const { data: profilesData } = useSWR<{ data: Profile[] }>(
-    `/api/v1/profiles?${queryParams}&available=true`,
+    `/api/v1/profiles?${queryParams}&available=true&limit=${viewMode === '3d' ? 100 : 20}`,
     fetcher,
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
-  // Fetch businesses
+  // Fetch businesses — 3D needs all, 2D uses viewport
   const { data: businessesData } = useSWR<{ data: Business[] }>(
-    `/api/v1/businesses?${queryParams}`,
+    `/api/v1/businesses?${queryParams}&limit=${viewMode === '3d' ? 200 : 50}`,
     fetcher,
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );
 
   // Fetch events
   const { data: eventsData } = useSWR<{ data: Event[] }>(
-    `/api/v1/events?${queryParams}`,
+    `/api/v1/events?${queryParams}&limit=${viewMode === '3d' ? 200 : 50}`,
     fetcher,
     { refreshInterval: 60000, fallbackData: { data: [] } }
   );

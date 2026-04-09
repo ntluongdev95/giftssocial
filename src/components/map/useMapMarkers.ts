@@ -1202,26 +1202,41 @@ export function useMapMarkers(
           map.addImage(clusterImg, ct.getImageData(0, 0, sz, sz), { pixelRatio: 2 });
         }
 
-        // Source
+        // Source — remove + recreate if visibility changed (avoids empty cluster state)
         const existingSrc = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
-        if (existingSrc) { existingSrc.setData(geo); continue; }
+        if (existingSrc) {
+          existingSrc.setData(geo);
+          // Toggle layer visibility
+          const layerIds = [`gao-globe-${t}-clusters`, `gao-globe-${t}-count`, `gao-globe-${t}`];
+          for (const lid of layerIds) {
+            if (map.getLayer(lid)) map.setLayoutProperty(lid, 'visibility', visible ? 'visible' : 'none');
+          }
+          continue;
+        }
+
+        // Skip creating source if nothing to show — create later when visible
+        if (!visible || geo.features.length === 0) continue;
 
         map.addSource(srcId, { type: 'geojson', data: geo, cluster: true, clusterMaxZoom: 12, clusterRadius: cfg.clusterRadius });
 
-        // Cluster icon
-        map.addLayer({ id: `gao-globe-${t}-clusters`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: {
-          'icon-image': clusterImg, 'icon-size': 0.8, 'icon-allow-overlap': true, 'icon-anchor': 'center',
-          'icon-pitch-alignment': 'map',
+        // Cluster — circle (reliable rendering on globe)
+        map.addLayer({ id: `gao-globe-${t}-clusters`, type: 'circle', source: srcId, filter: ['has', 'point_count'], paint: {
+          'circle-color': cfg.color,
+          'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 28],
+          'circle-stroke-width': 3,
+          'circle-stroke-color': 'rgba(255,255,255,0.3)',
         }});
         // Cluster count
         map.addLayer({ id: `gao-globe-${t}-count`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: {
-          'text-field': '{point_count_abbreviated}', 'text-size': 11, 'text-offset': [0, 0.7],
+          'text-field': '{point_count_abbreviated}', 'text-size': 12,
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true,
-        }, paint: { 'text-color': '#fff', 'text-halo-color': 'rgba(0,0,0,0.4)', 'text-halo-width': 1 }});
-        // Single dot
-        map.addLayer({ id: `gao-globe-${t}`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], layout: {
-          'icon-image': singleImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center',
-          'icon-pitch-alignment': 'map',
+        }, paint: { 'text-color': '#fff' }});
+        // Single dot — circle
+        map.addLayer({ id: `gao-globe-${t}`, type: 'circle', source: srcId, filter: ['!', ['has', 'point_count']], paint: {
+          'circle-color': cfg.color,
+          'circle-radius': 7,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#fff',
         }});
 
         // Click handlers — cluster
