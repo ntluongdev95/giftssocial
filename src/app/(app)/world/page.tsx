@@ -72,26 +72,23 @@ function WorldMapInner({
   const setMapCenter = useMapStore((s) => s.setMapCenter);
   useMapMarkers(map, signals, agents, profiles, businesses, events, circles, mapUsers);
 
-  // Track map center on pan/zoom (debounced — longer for 3D to avoid excessive API calls)
-  const viewMode = useMapStore((s) => s.viewMode);
+  // Track map center on pan/zoom (debounced) — used by 2D viewport fetch
   useEffect(() => {
     if (!map) return;
     let timer: ReturnType<typeof setTimeout>;
-    const debounceMs = viewMode === '3d' ? 1500 : 400;
     const onMoveEnd = () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
         const c = map.getCenter();
         const z = map.getZoom();
         setMapCenter(c.lat, c.lng, z);
-      }, debounceMs);
+      }, 400);
     };
     map.on('moveend', onMoveEnd);
-    // Set initial center
     const c = map.getCenter();
     setMapCenter(c.lat, c.lng, map.getZoom());
     return () => { clearTimeout(timer); map.off('moveend', onMoveEnd); };
-  }, [map, setMapCenter, viewMode]);
+  }, [map, setMapCenter]);
 
   return null;
 }
@@ -196,16 +193,19 @@ export default function WorldPage() {
     });
   }, [granted, requestLocation]);
 
-  // Build query params — follow map center, 3D uses larger radius + debounce
+  // Build query params — 2D: follow map center (100km), 3D: fetch all
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
-    if (mapCenter) {
+    if (viewMode === '3d') {
+      // 3D globe: fetch everything, no geo filter — cluster handles density
+      params.set('lat', '0');
+      params.set('lng', '0');
+      params.set('radius', '0');
+    } else if (mapCenter) {
       params.set('lat', String(mapCenter.lat));
       params.set('lng', String(mapCenter.lng));
-      // 3D: larger viewport → 500km radius, 2D: 100km
-      params.set('radius', viewMode === '3d' ? '500000' : '100000');
+      params.set('radius', '100000');
     } else {
-      // Fallback before map is ready
       params.set('lat', String(lat ?? 32.7767));
       params.set('lng', String(lng ?? -96.797));
       params.set('radius', '100000');
