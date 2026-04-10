@@ -199,7 +199,7 @@ export default function EventCreatePage() {
             {form.visibility === 'circle' && (
               <div className="mt-2">
                 {myCircles.length === 0 ? (
-                  <p className="text-xs text-[#4a5068]">You haven't joined any circles yet.</p>
+                  <p className="text-xs text-[#4a5068]">You haven&apos;t joined any circles yet.</p>
                 ) : (
                   <select
                     value={form.target_circle_id}

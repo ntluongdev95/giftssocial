@@ -103,7 +103,7 @@ export function playRomanticBg(): () => void {
 
   let useFallback = false;
   let stopped = false;
-  let timeouts: ReturnType<typeof setTimeout>[] = [];
+  const timeouts: ReturnType<typeof setTimeout>[] = [];
 
   audio.play().catch(() => {
     // File not found or autoplay blocked — fallback to Web Audio

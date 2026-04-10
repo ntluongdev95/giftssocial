@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // OpenNext compiled output — large bundles, not source
+    ".open-next/**",
+    // PWA generated service worker files — not source
+    "public/sw.js",
+    "public/workbox-*.js",
   ]),
 ]);
 

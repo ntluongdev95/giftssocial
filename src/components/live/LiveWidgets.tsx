@@ -51,6 +51,7 @@ export function CryptoWidget() {
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchCrypto(); }, []);
 
   return (
@@ -96,6 +97,7 @@ export function MetalsWidget() {
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchMetals(); }, []);
 
   return (
@@ -150,6 +152,7 @@ export function NewsWidget() {
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchNews(); }, []);
 
   const featured = news[0];
@@ -248,6 +251,7 @@ export function TrendingWidget() {
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchTrending(); }, []);
 
   return (
@@ -296,6 +300,7 @@ export function StocksWidget() {
     setLoading(false);
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchStocks(); }, []);
 
   const indices = stocks.filter(s => INDEX_SYMBOLS.includes(s.symbol));

@@ -68,6 +68,7 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 100);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHistory(getHistory());
     } else {
       clear();

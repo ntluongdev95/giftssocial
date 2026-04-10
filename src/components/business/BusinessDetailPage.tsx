@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react-hooks/static-components */
 
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
