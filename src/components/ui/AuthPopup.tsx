@@ -210,7 +210,7 @@
 //                   </div>
 //                 ) : (
 //                   <div className="relative mx-auto h-14 w-14 rounded-[1.2rem] flex items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a0b0f, #111318)', border: '1px solid rgba(0,212,255,0.15)', boxShadow: '0 0 30px rgba(0,212,255,0.1)' }}>
-//                     <img src="/images/gao-logo.png" alt="Gao" width={36} height={36} />
+//                     <img src="/images/gao-logo-v2.png" alt="Gao" width={36} height={36} />
 //                   </div>
 //                 )}
 //               </div>
@@ -554,7 +554,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
                   </div>
                 ) : (
                   <div className="relative mx-auto h-14 w-14 rounded-[1.2rem] flex items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a0b0f, #111318)', border: '1px solid rgba(0,212,255,0.15)', boxShadow: '0 0 30px rgba(0,212,255,0.1)' }}>
-                    <img src="/images/gao-logo.png" alt="Gao" width={36} height={36} />
+                    <img src="/images/gao-logo-v2.png" alt="Gao" width={36} height={36} />
                   </div>
                 )}
               </div>

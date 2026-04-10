@@ -915,6 +915,7 @@ function FlightHUD({ from, to, progress, senderName, receiverName, emoji, turbul
 export default function KissGlobe() {
   const { map } = useMap();
   const currentUserId = useAuthStore(s => s.user?.id);
+  const isAuthed = useAuthStore(s => s.isAuthed);
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendBackTo, setSendBackTo] = useState<string | null>(null);
   const [showAuthGate, setShowAuthGate] = useState(false);
@@ -935,6 +936,11 @@ export default function KissGlobe() {
       useMapStore.getState().toggleLayer('gift');
     }
   }, [kissParam]);
+
+  // Auto-dismiss auth gate if user becomes authenticated (e.g. hydration completes or login succeeds)
+  useEffect(() => {
+    if (isAuthed && showAuthGate) setShowAuthGate(false);
+  }, [isAuthed, showAuthGate]);
 
   const { data, mutate } = useSWR<{ data: Kiss[] }>(giftLayerOn ? '/api/v1/kisses?limit=30' : null, fetcher, { refreshInterval: 30000 });
   const kisses = data?.data ?? [];
@@ -1529,8 +1535,9 @@ export default function KissGlobe() {
       {/* Send Kiss Button — only visible when gift layer is on */}
       {giftLayerOn && <button
         onClick={() => {
-          const token = localStorage.getItem('access_token');
-          if (!token) { setShowAuthGate(true); return; }
+          // Check Zustand store (primary) or gao_logged_in cookie (auth still hydrating)
+          const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+          if (!isAuthed && !hasCookie) { setShowAuthGate(true); return; }
           setShowSendModal(true);
         }}
         className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+100px)] lg:bottom-24 right-4 z-30 h-12 w-12 rounded-full flex items-center justify-center cursor-pointer shadow-lg"

@@ -31,8 +31,13 @@ export const useAuthStore = create<AuthState>()((set) => ({
 
   setUser: (user) => set({ user, isAuthed: !!user, isGuest: !user }),
 
-  setTokens: (accessToken, refreshToken) =>
-    set({ accessToken, refreshToken: refreshToken ?? null }),
+  setTokens: (accessToken, refreshToken) => {
+    set({ accessToken, refreshToken: refreshToken ?? null });
+    // Sync to localStorage — many components read access_token from there for API calls
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem('access_token', accessToken); } catch { /* ignore */ }
+    }
+  },
 
   hydrateFromMe: (raw) => {
     const src = raw?.data ?? raw ?? {};
@@ -76,6 +81,9 @@ export const useAuthStore = create<AuthState>()((set) => ({
       accessToken: null,
       refreshToken: null,
     });
+    if (typeof window !== 'undefined') {
+      try { localStorage.removeItem('access_token'); } catch { /* ignore */ }
+    }
   },
 }));
 
