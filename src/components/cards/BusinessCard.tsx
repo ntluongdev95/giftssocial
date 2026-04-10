@@ -83,7 +83,7 @@ export default function BusinessCard({ business: b, distance, onClick }: Busines
                 <MapPin size={9} /> {formatDistance(distKm)}
               </span>
             )}
-            <span className="capitalize">{b.subcategories?.join(', ') || b.category}</span>
+            <span className="capitalize">{Array.isArray(b.subcategories) ? b.subcategories.join(', ') : b.category}</span>
           </div>
         </div>
       </div>
