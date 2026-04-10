@@ -8,7 +8,7 @@ if (process.env.NODE_ENV === 'development') {
 
 const withPWA = withPWAInit({
   dest: 'public',
-  disable: process.env.NODE_ENV === 'development',
+  disable: true, // Disabled: next-pwa v5 does not support Turbopack; stale SW causes white-screen crashes
   register: true,
   skipWaiting: true,
   fallbacks: {
