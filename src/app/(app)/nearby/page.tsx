@@ -232,14 +232,15 @@ export default function NearbyPage() {
     }
   );
 
-  const nearby = data?.data ?? {
-    people: [],
-    businesses: [],
-    events: [],
-    offers: [],
-    agents: [],
-    profiles: [],
-    circles: [],
+  const raw = data?.data;
+  const nearby = {
+    people: Array.isArray(raw?.people) ? raw.people : [],
+    businesses: Array.isArray(raw?.businesses) ? raw.businesses : [],
+    events: Array.isArray(raw?.events) ? raw.events : [],
+    offers: Array.isArray(raw?.offers) ? raw.offers : [],
+    agents: Array.isArray(raw?.agents) ? raw.agents : [],
+    profiles: Array.isArray(raw?.profiles) ? raw.profiles : [],
+    circles: Array.isArray(raw?.circles) ? raw.circles : [],
   };
 
   // Sort helper
@@ -285,7 +286,8 @@ export default function NearbyPage() {
       }
 
       case 'Signals': {
-        const sigs = ((nearby as unknown as Record<string, unknown>).signals as Record<string, unknown>[]) || [];
+        const rawSignals = (data?.data as Record<string, unknown> | undefined)?.signals;
+        const sigs = (Array.isArray(rawSignals) ? rawSignals : []) as Record<string, unknown>[];
         return sigs.length === 0 ? (
           <EmptyState lat={lat ?? undefined} lng={lng ?? undefined} onSelectBusiness={setSelectedBusiness} onSelectCircle={setSelectedCircle} onSelectEvent={setSelectedEvent} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
