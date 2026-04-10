@@ -28,7 +28,21 @@ const withPWA = withPWAInit({
       },
     },
     {
-      urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+      urlPattern: /\/(?:icons\/|favicon|apple-touch-icon|og-image|splash)/i,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'logo-assets',
+        networkTimeoutSeconds: 3,
+        expiration: {
+          maxEntries: 20,
+          maxAgeSeconds: 86400,
+        },
+      },
+    },
+    {
+      urlPattern: ({ url }: { url: URL }) =>
+        /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i.test(url.pathname) &&
+        !/\/(?:icons\/|favicon|apple-touch-icon|og-image|splash)/i.test(url.pathname),
       handler: 'CacheFirst',
       options: {
         cacheName: 'image-cache',
@@ -79,6 +93,16 @@ const nextConfig: NextConfig = {
   bundlePagesRouterDependencies: true,
   turbopack: {},
   typescript: { tsconfigPath: './tsconfig.build.json' },
+  async headers() {
+    const noCache = [{ key: 'Cache-Control', value: 'no-cache' }];
+    return [
+      { source: '/icons/(.*)',            headers: noCache },
+      { source: '/favicon.png',           headers: noCache },
+      { source: '/apple-touch-icon.png',  headers: noCache },
+      { source: '/og-image.png',          headers: noCache },
+      { source: '/splash-screen.png',     headers: noCache },
+    ];
+  },
 };
 
 export default withPWA(nextConfig);
