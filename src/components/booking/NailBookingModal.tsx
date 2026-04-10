@@ -41,8 +41,9 @@ function generateSlots(openTime: string, closeTime: string, durationMin: number)
 type Step = 'service' | 'datetime' | 'staff' | 'confirm';
 
 export default function NailBookingModal({ business: biz, initialService, onClose, onBooked }: Props) {
-  const services = (biz.services || []) as BusinessService[];
-  const hours = biz.hours || {};
+  const rawSvc = biz.services;
+  const services = (Array.isArray(rawSvc) ? rawSvc : typeof rawSvc === 'string' ? (() => { try { return JSON.parse(rawSvc); } catch { return []; } })() : []) as BusinessService[];
+  const hours = typeof biz.hours === 'string' ? (() => { try { return JSON.parse(biz.hours); } catch { return {}; } })() : biz.hours || {};
 
   // Skip service step if no services or pre-selected
   const hasServices = services.length > 0;
