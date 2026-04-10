@@ -33,7 +33,8 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
     ...(b.images && b.images.length > 0 ? b.images : []),
   ];
   const images = allImages.length > 0 ? allImages : PLACEHOLDER_IMAGES;
-  const services = (b.services || []) as { name: string; price: number; duration: number }[];
+  const rawServices = b.services;
+  const services = (Array.isArray(rawServices) ? rawServices : typeof rawServices === 'string' ? (() => { try { return JSON.parse(rawServices); } catch { return []; } })() : []) as { name: string; price: number; duration: number }[];
   const todayIdx = new Date().getDay();
   const todayKey = DAYS[todayIdx];
   const hours = b.hours || {};
