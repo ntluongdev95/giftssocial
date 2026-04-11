@@ -35,11 +35,11 @@ bucket_name = "gao-social-dev"
 
 [env.dev.vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"
 
 [vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"
 
 # ─── Production ──────────────────────────────────────────────────────────────
 [env.production]
@@ -61,4 +61,4 @@ bucket_name = "gao-social-prod"
 
 [env.production.vars]
 NEXT_PUBLIC_APP_URL = "https://app.gao.social"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"
