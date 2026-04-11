@@ -80,7 +80,7 @@
 //     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 //     if (!clientId) { toast.error('Google not configured'); return; }
 
-//     const redirectUri = window.location.origin + '/auth/google/callback';
+//     const redirectUri = window.location.origin + '/api/auth/google/callback';
 //     const scope = 'openid email profile';
 //     const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
 //     sessionStorage.setItem('gao_google_state', state);
@@ -417,7 +417,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) { toast.error('Google not configured'); return; }
 
-    const redirectUri = window.location.origin + '/auth/google/callback';
+    const redirectUri = window.location.origin + '/api/auth/google/callback';
     const scope = 'openid email profile';
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
     sessionStorage.setItem('gao_google_state', state);
