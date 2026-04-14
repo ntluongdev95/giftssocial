@@ -33,12 +33,17 @@ export async function GET(req: NextRequest) {
       headers: { Accept: 'application/json' },
       next: { revalidate: 60 },
     });
-    if (!res.ok) throw new Error(`upstream ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '(unreadable)');
+      console.error(`[live] upstream error type=${type} status=${res.status} url=${url} body=${body.slice(0, 300)}`);
+      throw new Error(`upstream ${res.status}`);
+    }
     const data = await res.json();
     return NextResponse.json(data, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (e) {
+    console.error(`[live] fetch failed type=${type} error=${String(e)}`);
     return NextResponse.json({ error: String(e) }, { status: 502 });
   }
 }
@@ -57,7 +62,8 @@ async function handleStocks() {
     });
 
     if (!res.ok) {
-      // Fallback: try v6 endpoint
+      const body = await res.text().catch(() => '(unreadable)');
+      console.error(`[live] stocks upstream error status=${res.status} body=${body.slice(0, 300)}`);
       return handleStocksFallback();
     }
 
@@ -95,7 +101,11 @@ async function handleStocksFallback() {
       next: { revalidate: 120 },
     });
 
-    if (!res.ok) throw new Error(`yahoo ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '(unreadable)');
+      console.error(`[live] stocks fallback upstream error status=${res.status} body=${body.slice(0, 300)}`);
+      throw new Error(`yahoo ${res.status}`);
+    }
     const data = await res.json();
 
     const result = Object.entries(data).map(([symbol, val]: [string, unknown]) => {
@@ -120,6 +130,7 @@ async function handleStocksFallback() {
       headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' },
     });
   } catch (e) {
+    console.error(`[live] stocks fallback failed error=${String(e)}`);
     return NextResponse.json({ error: String(e) }, { status: 502 });
   }
 }
