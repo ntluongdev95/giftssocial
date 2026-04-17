@@ -435,6 +435,7 @@ export function useMapMarkers(
   const { developers, showOnMap: showDevsOnMap } = useDeveloperStore();
   const { landmarks, showOnMap: showLandmarksOnMap } = useLandmarkStore();
   const isAuthed = useAuthStore((s) => s.isAuthed);
+  const viewMode = useMapStore((s) => s.viewMode);
 
   // Paint-your-map: which venues has the current user unlocked (checked in)?
   const { data: unlockedData } = useSWR<{ data: { businesses: { id: string; verified: boolean }[]; events: { id: string; verified: boolean }[] } }>(
@@ -1627,6 +1628,117 @@ export function useMapMarkers(
   }, [map, activeLayers, styleVersion, removeClusterLayers, removeGlobeUserLayers]);
 
   // Globe click handlers registered in buildGlobe per entity type
+
+  // ── Live Signal pulse layer (3D globe only) ────────────────────────────
+  //
+  // Every live signal gets an animated pulsing dot rendered on top of the
+  // globe. Conveys "the world is doing stuff right now" at a glance.
+  useEffect(() => {
+    if (!map) return;
+    const PULSE_IMG = 'gao-signal-pulse';
+    const PULSE_SRC = 'gao-signal-pulse-src';
+    const PULSE_LAYER = 'gao-signal-pulse-layer';
+
+    const cleanup = () => {
+      try { if (map.getLayer(PULSE_LAYER)) map.removeLayer(PULSE_LAYER); } catch {}
+      try { if (map.getSource(PULSE_SRC)) map.removeSource(PULSE_SRC); } catch {}
+      try { if (map.hasImage(PULSE_IMG)) map.removeImage(PULSE_IMG); } catch {}
+    };
+
+    if (viewMode !== '3d') { cleanup(); return; }
+
+    const size = 120;
+    // MapLibre StyleImageInterface — redraws per frame, triggers repaint
+    const pulsingDot: maplibregl.StyleImageInterface = {
+      width: size,
+      height: size,
+      data: new Uint8Array(size * size * 4),
+      context: null as CanvasRenderingContext2D | null,
+      // @ts-expect-error — StyleImageInterface allows extra fields
+      onAdd(this: { context: CanvasRenderingContext2D | null; width: number; height: number }) {
+        const cvs = document.createElement('canvas');
+        cvs.width = this.width; cvs.height = this.height;
+        this.context = cvs.getContext('2d');
+      },
+      // @ts-expect-error — StyleImageInterface allows extra fields
+      render(this: { context: CanvasRenderingContext2D | null; width: number; height: number; data: Uint8Array }) {
+        const duration = 2200;
+        const t = (performance.now() % duration) / duration;
+        const ctx = this.context;
+        if (!ctx) return false;
+        const radius = (this.width / 2) * 0.22;
+        const outerRadius = (this.width / 2) * 0.7 * t + radius;
+        const cx = this.width / 2;
+        const cy = this.height / 2;
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        // Expanding ring
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerRadius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0, 212, 255, ${0.35 * (1 - t)})`;
+        ctx.fill();
+
+        // Inner solid dot
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 212, 255, 1)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = 2 + 3 * (1 - t);
+        ctx.fill();
+        ctx.stroke();
+
+        this.data = new Uint8Array(ctx.getImageData(0, 0, this.width, this.height).data.buffer);
+        map.triggerRepaint();
+        return true;
+      },
+    };
+
+    if (!map.hasImage(PULSE_IMG)) {
+      try { map.addImage(PULSE_IMG, pulsingDot as maplibregl.StyleImageInterface, { pixelRatio: 2 }); } catch {}
+    }
+
+    // Build source from signals with valid coords
+    const features: GeoJSON.Feature[] = signals
+      .filter((s) => s.location?.coordinates && s.location.coordinates.length === 2)
+      .slice(0, 80)
+      .map((s) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: s.location.coordinates as [number, number] },
+        properties: { id: s.id, type: s.type },
+      }));
+    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+
+    const addLayer = () => {
+      try {
+        const existing = map.getSource(PULSE_SRC) as maplibregl.GeoJSONSource | undefined;
+        if (existing) {
+          existing.setData(geo);
+        } else {
+          map.addSource(PULSE_SRC, { type: 'geojson', data: geo });
+          map.addLayer({
+            id: PULSE_LAYER,
+            type: 'symbol',
+            source: PULSE_SRC,
+            layout: {
+              'icon-image': PULSE_IMG,
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true,
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 0, 0.28, 3, 0.4, 8, 0.55, 15, 0.75],
+              'icon-pitch-alignment': 'viewport',
+              'icon-rotation-alignment': 'viewport',
+            },
+            paint: { 'icon-opacity': 0.9 },
+          });
+        }
+      } catch {}
+    };
+
+    if (map.isStyleLoaded()) addLayer();
+    else map.once('style.load', addLayer);
+
+    return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, signals, styleVersion, viewMode]);
 
   // Cleanup all on unmount
   useEffect(() => {
