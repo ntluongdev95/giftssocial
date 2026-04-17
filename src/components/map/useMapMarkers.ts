@@ -1629,27 +1629,57 @@ export function useMapMarkers(
 
   // Globe click handlers registered in buildGlobe per entity type
 
-  // ── Live Signal pulse layer (3D globe only) ────────────────────────────
+  // ── Live Signal pulse + connection layer (3D globe only) ──────────────
   //
-  // Every live signal gets an animated pulsing dot rendered on top of the
-  // globe. Conveys "the world is doing stuff right now" at a glance.
+  // Every live signal gets a small animated pulsing dot on the globe, plus
+  // a handful of great-circle connection arcs between random pairs so the
+  // planet looks like a network at rest.
   useEffect(() => {
     if (!map) return;
     const PULSE_IMG = 'gao-signal-pulse';
     const PULSE_SRC = 'gao-signal-pulse-src';
     const PULSE_LAYER = 'gao-signal-pulse-layer';
+    const ARC_SRC = 'gao-signal-arc-src';
+    const ARC_LAYER = 'gao-signal-arc-layer';
 
     const removeAll = () => {
+      try { if (map.getLayer(ARC_LAYER)) map.removeLayer(ARC_LAYER); } catch {}
+      try { if (map.getSource(ARC_SRC)) map.removeSource(ARC_SRC); } catch {}
       try { if (map.getLayer(PULSE_LAYER)) map.removeLayer(PULSE_LAYER); } catch {}
       try { if (map.getSource(PULSE_SRC)) map.removeSource(PULSE_SRC); } catch {}
       try { if (map.hasImage(PULSE_IMG)) map.removeImage(PULSE_IMG); } catch {}
     };
 
+    // Great-circle arc between two [lng,lat] pairs, sampled as `steps` points.
+    const greatCircle = (a: [number, number], b: [number, number], steps = 64): [number, number][] => {
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const toDeg = (r: number) => (r * 180) / Math.PI;
+      const [lng1, lat1] = [toRad(a[0]), toRad(a[1])];
+      const [lng2, lat2] = [toRad(b[0]), toRad(b[1])];
+      const dLat = lat2 - lat1;
+      const dLng = lng2 - lng1;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      const d = 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+      if (d === 0) return [a, b];
+      const pts: [number, number][] = [];
+      for (let i = 0; i <= steps; i++) {
+        const f = i / steps;
+        const A = Math.sin((1 - f) * d) / Math.sin(d);
+        const B = Math.sin(f * d) / Math.sin(d);
+        const x = A * Math.cos(lat1) * Math.cos(lng1) + B * Math.cos(lat2) * Math.cos(lng2);
+        const y = A * Math.cos(lat1) * Math.sin(lng1) + B * Math.cos(lat2) * Math.sin(lng2);
+        const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+        const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+        const lng = Math.atan2(y, x);
+        pts.push([toDeg(lng), toDeg(lat)]);
+      }
+      return pts;
+    };
+
     if (viewMode !== '3d') { removeAll(); return; }
 
-    const size = 120;
-    // Animated pulsing dot — StyleImageInterface. Follows the official
-    // MapLibre "add-image-animated" pattern.
+    const size = 64;
+    // Small animated pulsing dot — StyleImageInterface.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pulsingDot: any = {
       width: size,
@@ -1663,7 +1693,7 @@ export function useMapMarkers(
         this.context = canvas.getContext('2d');
       },
       render() {
-        const duration = 1800;
+        const duration = 2200;
         const t = (performance.now() % duration) / duration;
         const context: CanvasRenderingContext2D | null = this.context;
         if (!context) return false;
@@ -1671,44 +1701,32 @@ export function useMapMarkers(
         const h = this.height as number;
         const cx = w / 2;
         const cy = h / 2;
-        const coreRadius = (w / 2) * 0.28;
-        const outerRadius = (w / 2) * 0.85 * t + coreRadius;
-        const midRadius = (w / 2) * 0.55 * t + coreRadius;
+        const coreRadius = 3.5;
+        const ringRadius = 3.5 + (w / 2 - 4) * t;
 
         context.clearRect(0, 0, w, h);
 
-        // Outer expanding ring
+        // One subtle expanding ring
         context.beginPath();
-        context.arc(cx, cy, outerRadius, 0, Math.PI * 2);
-        context.fillStyle = `rgba(0, 212, 255, ${0.55 * (1 - t)})`;
+        context.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+        context.fillStyle = `rgba(0, 212, 255, ${0.35 * (1 - t)})`;
         context.fill();
 
-        // Mid ring
-        context.beginPath();
-        context.arc(cx, cy, midRadius, 0, Math.PI * 2);
-        context.fillStyle = `rgba(0, 194, 224, ${0.35 * (1 - t)})`;
-        context.fill();
-
-        // Cyan glow halo
-        const glow = context.createRadialGradient(cx, cy, 0, cx, cy, coreRadius * 1.8);
-        glow.addColorStop(0, 'rgba(0, 212, 255, 1)');
-        glow.addColorStop(0.6, 'rgba(0, 212, 255, 0.55)');
+        // Small bright core — solid dot with tiny glow
+        const glow = context.createRadialGradient(cx, cy, 0, cx, cy, coreRadius * 2.2);
+        glow.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        glow.addColorStop(0.4, 'rgba(0, 212, 255, 0.85)');
         glow.addColorStop(1, 'rgba(0, 212, 255, 0)');
         context.beginPath();
-        context.arc(cx, cy, coreRadius * 1.8, 0, Math.PI * 2);
+        context.arc(cx, cy, coreRadius * 2.2, 0, Math.PI * 2);
         context.fillStyle = glow;
         context.fill();
 
-        // White core with cyan outline
         context.beginPath();
         context.arc(cx, cy, coreRadius, 0, Math.PI * 2);
         context.fillStyle = '#ffffff';
-        context.strokeStyle = 'rgba(0, 212, 255, 1)';
-        context.lineWidth = 3;
         context.fill();
-        context.stroke();
 
-        // Copy pixels back to image data — must be Uint8Array/Uint8ClampedArray
         this.data = context.getImageData(0, 0, w, h).data;
         map.triggerRepaint();
         return true;
@@ -1723,22 +1741,66 @@ export function useMapMarkers(
         return;
       }
 
-      const features: GeoJSON.Feature[] = signals
+      const pts = signals
         .filter((s) => s.location?.coordinates && s.location.coordinates.length === 2)
-        .slice(0, 80)
-        .map((s) => ({
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: s.location.coordinates as [number, number] },
-          properties: { id: s.id, type: s.type },
-        }));
-      const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+        .slice(0, 80);
+
+      const pointFeatures: GeoJSON.Feature[] = pts.map((s) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: s.location.coordinates as [number, number] },
+        properties: { id: s.id, type: s.type },
+      }));
+      const pointGeo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: pointFeatures };
+
+      // Connection arcs — 12 random pairs, great-circle interpolated
+      const arcFeatures: GeoJSON.Feature[] = [];
+      const pairCount = Math.min(12, Math.floor(pts.length / 2));
+      const usedPairs = new Set<string>();
+      let guard = 0;
+      while (arcFeatures.length < pairCount && guard++ < 200 && pts.length >= 2) {
+        const i = Math.floor(Math.random() * pts.length);
+        const j = Math.floor(Math.random() * pts.length);
+        if (i === j) continue;
+        const key = i < j ? `${i}-${j}` : `${j}-${i}`;
+        if (usedPairs.has(key)) continue;
+        usedPairs.add(key);
+        const a = pts[i].location.coordinates as [number, number];
+        const b = pts[j].location.coordinates as [number, number];
+        arcFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: greatCircle(a, b, 64) },
+          properties: { id: `arc-${key}` },
+        });
+      }
+      const arcGeo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: arcFeatures };
 
       try {
+        // Arc source + layer (draw under pulses)
+        const existingArc = map.getSource(ARC_SRC) as maplibregl.GeoJSONSource | undefined;
+        if (existingArc) {
+          existingArc.setData(arcGeo);
+        } else {
+          map.addSource(ARC_SRC, { type: 'geojson', data: arcGeo });
+          map.addLayer({
+            id: ARC_LAYER,
+            type: 'line',
+            source: ARC_SRC,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              'line-color': '#00C2E0',
+              'line-opacity': 0.28,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.6, 3, 0.9, 8, 1.2],
+              'line-blur': 0.3,
+            },
+          });
+        }
+
+        // Pulse source + layer (draw on top)
         const existing = map.getSource(PULSE_SRC) as maplibregl.GeoJSONSource | undefined;
         if (existing) {
-          existing.setData(geo);
+          existing.setData(pointGeo);
         } else {
-          map.addSource(PULSE_SRC, { type: 'geojson', data: geo });
+          map.addSource(PULSE_SRC, { type: 'geojson', data: pointGeo });
           map.addLayer({
             id: PULSE_LAYER,
             type: 'symbol',
@@ -1747,20 +1809,27 @@ export function useMapMarkers(
               'icon-image': PULSE_IMG,
               'icon-allow-overlap': true,
               'icon-ignore-placement': true,
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 0, 0.45, 3, 0.6, 8, 0.75, 15, 0.9],
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 0, 0.7, 3, 0.9, 8, 1.1, 15, 1.3],
               'icon-pitch-alignment': 'viewport',
               'icon-rotation-alignment': 'viewport',
             },
           });
         }
-        // Always raise to top so later-added entity layers do not cover it.
+
+        // Keep pulse above arcs and other entity layers.
+        if (map.getLayer(ARC_LAYER)) map.moveLayer(ARC_LAYER);
         if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER);
       } catch (err) {
         console.warn('[PulseLayer] add source/layer failed', err);
       }
     };
 
-    const raiseToTop = () => { try { if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER); } catch {} };
+    const raiseToTop = () => {
+      try {
+        if (map.getLayer(ARC_LAYER)) map.moveLayer(ARC_LAYER);
+        if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER);
+      } catch {}
+    };
     if (map.isStyleLoaded()) {
       ensureLayer();
     } else {
