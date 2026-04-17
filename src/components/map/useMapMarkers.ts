@@ -1802,8 +1802,8 @@ export function useMapMarkers(
             source: ARC_SRC,
             layout: { 'line-cap': 'butt', 'line-join': 'round' },
             paint: {
-              'line-color': '#00d4ff',
-              'line-opacity': 0.75,
+              'line-color': '#ffffff',
+              'line-opacity': 0.9,
               'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.8, 3, 1.1, 8, 1.5],
               'line-dasharray': [0, 4, 3],
             },
