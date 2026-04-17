@@ -1679,6 +1679,11 @@ export function useMapMarkers(
 
     if (viewMode !== '3d') { removeAll(); return; }
 
+    // Hoisted so both ensureLayer + the arc spawner read from the same list.
+    const pts = signals
+      .filter((s) => s.location?.coordinates && s.location.coordinates.length === 2)
+      .slice(0, 80);
+
     const size = 64;
     // Small animated pulsing dot — StyleImageInterface.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1742,10 +1747,6 @@ export function useMapMarkers(
         return;
       }
 
-      const pts = signals
-        .filter((s) => s.location?.coordinates && s.location.coordinates.length === 2)
-        .slice(0, 80);
-
       const pointFeatures: GeoJSON.Feature[] = pts.map((s) => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: s.location.coordinates as [number, number] },
@@ -1753,59 +1754,25 @@ export function useMapMarkers(
       }));
       const pointGeo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: pointFeatures };
 
-      // Connection arcs — 12 random pairs, great-circle interpolated
-      const arcFeatures: GeoJSON.Feature[] = [];
-      const pairCount = Math.min(12, Math.floor(pts.length / 2));
-      const usedPairs = new Set<string>();
-      let guard = 0;
-      while (arcFeatures.length < pairCount && guard++ < 200 && pts.length >= 2) {
-        const i = Math.floor(Math.random() * pts.length);
-        const j = Math.floor(Math.random() * pts.length);
-        if (i === j) continue;
-        const key = i < j ? `${i}-${j}` : `${j}-${i}`;
-        if (usedPairs.has(key)) continue;
-        usedPairs.add(key);
-        const a = pts[i].location.coordinates as [number, number];
-        const b = pts[j].location.coordinates as [number, number];
-        arcFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: greatCircle(a, b, 64) },
-          properties: { id: `arc-${key}` },
-        });
-      }
-      const arcGeo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: arcFeatures };
-
       try {
-        // Arc source + layer (draw under pulses)
+        // Arc source — starts empty; rAF will inject active arcs each frame
         const existingArc = map.getSource(ARC_SRC) as maplibregl.GeoJSONSource | undefined;
-        if (existingArc) {
-          existingArc.setData(arcGeo);
-        } else {
-          map.addSource(ARC_SRC, { type: 'geojson', data: arcGeo });
-          // Base arc (soft glow underneath the flowing dashes)
+        if (!existingArc) {
+          map.addSource(ARC_SRC, {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+          // Single line layer per arc — opacity and width driven by feature props
           map.addLayer({
             id: ARC_LAYER,
             type: 'line',
             source: ARC_SRC,
             layout: { 'line-cap': 'round', 'line-join': 'round' },
             paint: {
-              'line-color': '#00C2E0',
-              'line-opacity': 0.18,
-              'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.6, 3, 0.9, 8, 1.2],
-              'line-blur': 0.5,
-            },
-          });
-          // Dashed overlay — animated for "traffic flowing" feel
-          map.addLayer({
-            id: ARC_LAYER + '-dash',
-            type: 'line',
-            source: ARC_SRC,
-            layout: { 'line-cap': 'butt', 'line-join': 'round' },
-            paint: {
               'line-color': '#ffffff',
-              'line-opacity': 0.9,
-              'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.8, 3, 1.1, 8, 1.5],
-              'line-dasharray': [0, 4, 3],
+              'line-opacity': ['coalesce', ['get', 'opacity'], 1],
+              'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1.0, 3, 1.3, 8, 1.8],
+              'line-blur': 0.4,
             },
           });
         }
@@ -1833,45 +1800,79 @@ export function useMapMarkers(
 
         // Keep pulse above arcs and other entity layers.
         if (map.getLayer(ARC_LAYER)) map.moveLayer(ARC_LAYER);
-        if (map.getLayer(ARC_LAYER + '-dash')) map.moveLayer(ARC_LAYER + '-dash');
         if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER);
       } catch (err) {
         console.warn('[PulseLayer] add source/layer failed', err);
       }
     };
 
-    // Animated dash sequence — MapLibre "animate a line" pattern
-    const dashSequence: number[][] = [
-      [0, 4, 3],
-      [0.5, 4, 2.5],
-      [1, 4, 2],
-      [1.5, 4, 1.5],
-      [2, 4, 1],
-      [2.5, 4, 0.5],
-      [3, 4, 0],
-      [0, 0.5, 3, 3.5],
-      [0, 1, 3, 3],
-      [0, 1.5, 3, 2.5],
-      [0, 2, 3, 2],
-      [0, 2.5, 3, 1.5],
-      [0, 3, 3, 1],
-      [0, 3.5, 3, 0.5],
-    ];
-    let lastStep = -1;
-    let rafId = 0;
-    const animateDash = (ts: number) => {
-      const step = Math.floor((ts / 55) % dashSequence.length);
-      if (step !== lastStep) {
-        try {
-          if (map.getLayer(ARC_LAYER + '-dash')) {
-            map.setPaintProperty(ARC_LAYER + '-dash', 'line-dasharray', dashSequence[step]);
-          }
-        } catch {}
-        lastStep = step;
-      }
-      rafId = requestAnimationFrame(animateDash);
+    // GitHub-style traveling arcs — spawn random pairs continuously,
+    // each arc draws from A to B then fades out.
+    interface LiveArc {
+      points: [number, number][];
+      startTime: number;
+      drawMs: number;  // time to draw fully
+      fadeMs: number;  // time to fade after drawn
+    }
+    const liveArcs: LiveArc[] = [];
+    const spawnArc = () => {
+      if (pts.length < 2) return;
+      const i = Math.floor(Math.random() * pts.length);
+      let j = Math.floor(Math.random() * pts.length);
+      if (j === i) j = (j + 1) % pts.length;
+      const a = pts[i].location.coordinates as [number, number];
+      const b = pts[j].location.coordinates as [number, number];
+      liveArcs.push({
+        points: greatCircle(a, b, 80),
+        startTime: performance.now(),
+        drawMs: 1400 + Math.random() * 800,
+        fadeMs: 1200,
+      });
     };
-    rafId = requestAnimationFrame(animateDash);
+
+    // Seed a few immediately so the globe is alive on first paint
+    for (let i = 0; i < 5; i++) {
+      setTimeout(spawnArc, i * 180);
+    }
+    const spawnInterval = setInterval(spawnArc, 420);
+
+    let rafId = 0;
+    const tickArcs = () => {
+      const now = performance.now();
+      // Drop finished arcs
+      for (let i = liveArcs.length - 1; i >= 0; i--) {
+        const a = liveArcs[i];
+        if (now - a.startTime > a.drawMs + a.fadeMs) liveArcs.splice(i, 1);
+      }
+      const features: GeoJSON.Feature[] = liveArcs.map((arc) => {
+        const elapsed = now - arc.startTime;
+        let visibleEnd: number;
+        let opacity: number;
+        if (elapsed < arc.drawMs) {
+          // Drawing phase: eased ease-out quad
+          const raw = elapsed / arc.drawMs;
+          visibleEnd = 1 - (1 - raw) * (1 - raw);
+          opacity = 0.95;
+        } else {
+          // Fade phase: full line, opacity drops
+          const f = Math.min(1, (elapsed - arc.drawMs) / arc.fadeMs);
+          visibleEnd = 1;
+          opacity = 0.95 * (1 - f);
+        }
+        const count = Math.max(2, Math.floor(arc.points.length * visibleEnd));
+        return {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: arc.points.slice(0, count) },
+          properties: { opacity },
+        };
+      });
+      try {
+        const src = map.getSource(ARC_SRC) as maplibregl.GeoJSONSource | undefined;
+        if (src) src.setData({ type: 'FeatureCollection', features });
+      } catch {}
+      rafId = requestAnimationFrame(tickArcs);
+    };
+    rafId = requestAnimationFrame(tickArcs);
 
     const raiseToTop = () => {
       try {
@@ -1897,6 +1898,7 @@ export function useMapMarkers(
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      clearInterval(spawnInterval);
       if (rafId) cancelAnimationFrame(rafId);
       removeAll();
     };
