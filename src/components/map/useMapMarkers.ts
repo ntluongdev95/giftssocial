@@ -1643,6 +1643,7 @@ export function useMapMarkers(
     const ARC_LAYER = 'gao-signal-arc-layer';
 
     const removeAll = () => {
+      try { if (map.getLayer(ARC_LAYER + '-dash')) map.removeLayer(ARC_LAYER + '-dash'); } catch {}
       try { if (map.getLayer(ARC_LAYER)) map.removeLayer(ARC_LAYER); } catch {}
       try { if (map.getSource(ARC_SRC)) map.removeSource(ARC_SRC); } catch {}
       try { if (map.getLayer(PULSE_LAYER)) map.removeLayer(PULSE_LAYER); } catch {}
@@ -1781,6 +1782,7 @@ export function useMapMarkers(
           existingArc.setData(arcGeo);
         } else {
           map.addSource(ARC_SRC, { type: 'geojson', data: arcGeo });
+          // Base arc (soft glow underneath the flowing dashes)
           map.addLayer({
             id: ARC_LAYER,
             type: 'line',
@@ -1788,9 +1790,22 @@ export function useMapMarkers(
             layout: { 'line-cap': 'round', 'line-join': 'round' },
             paint: {
               'line-color': '#00C2E0',
-              'line-opacity': 0.28,
+              'line-opacity': 0.18,
               'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.6, 3, 0.9, 8, 1.2],
-              'line-blur': 0.3,
+              'line-blur': 0.5,
+            },
+          });
+          // Dashed overlay — animated for "traffic flowing" feel
+          map.addLayer({
+            id: ARC_LAYER + '-dash',
+            type: 'line',
+            source: ARC_SRC,
+            layout: { 'line-cap': 'butt', 'line-join': 'round' },
+            paint: {
+              'line-color': '#00d4ff',
+              'line-opacity': 0.75,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.8, 3, 1.1, 8, 1.5],
+              'line-dasharray': [0, 4, 3],
             },
           });
         }
@@ -1818,11 +1833,45 @@ export function useMapMarkers(
 
         // Keep pulse above arcs and other entity layers.
         if (map.getLayer(ARC_LAYER)) map.moveLayer(ARC_LAYER);
+        if (map.getLayer(ARC_LAYER + '-dash')) map.moveLayer(ARC_LAYER + '-dash');
         if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER);
       } catch (err) {
         console.warn('[PulseLayer] add source/layer failed', err);
       }
     };
+
+    // Animated dash sequence — MapLibre "animate a line" pattern
+    const dashSequence: number[][] = [
+      [0, 4, 3],
+      [0.5, 4, 2.5],
+      [1, 4, 2],
+      [1.5, 4, 1.5],
+      [2, 4, 1],
+      [2.5, 4, 0.5],
+      [3, 4, 0],
+      [0, 0.5, 3, 3.5],
+      [0, 1, 3, 3],
+      [0, 1.5, 3, 2.5],
+      [0, 2, 3, 2],
+      [0, 2.5, 3, 1.5],
+      [0, 3, 3, 1],
+      [0, 3.5, 3, 0.5],
+    ];
+    let lastStep = -1;
+    let rafId = 0;
+    const animateDash = (ts: number) => {
+      const step = Math.floor((ts / 55) % dashSequence.length);
+      if (step !== lastStep) {
+        try {
+          if (map.getLayer(ARC_LAYER + '-dash')) {
+            map.setPaintProperty(ARC_LAYER + '-dash', 'line-dasharray', dashSequence[step]);
+          }
+        } catch {}
+        lastStep = step;
+      }
+      rafId = requestAnimationFrame(animateDash);
+    };
+    rafId = requestAnimationFrame(animateDash);
 
     const raiseToTop = () => {
       try {
@@ -1848,6 +1897,7 @@ export function useMapMarkers(
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      if (rafId) cancelAnimationFrame(rafId);
       removeAll();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
