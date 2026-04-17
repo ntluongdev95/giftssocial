@@ -40,9 +40,11 @@ const withPWA = withPWAInit({
       },
     },
     {
-      urlPattern: ({ url }: { url: URL }) =>
+      // Function urlPattern is accepted at runtime (workbox) but not in
+      // next-pwa's type; cast keeps the function without weakening runtime.
+      urlPattern: (({ url }: { url: URL }) =>
         /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i.test(url.pathname) &&
-        !/\/(?:icons\/|favicon|apple-touch-icon|og-image|splash)/i.test(url.pathname),
+        !/\/(?:icons\/|favicon|apple-touch-icon|og-image|splash)/i.test(url.pathname)) as unknown as RegExp,
       handler: 'CacheFirst',
       options: {
         cacheName: 'image-cache',
