@@ -1662,28 +1662,44 @@ export function useMapMarkers(
       },
       // @ts-expect-error — StyleImageInterface allows extra fields
       render(this: { context: CanvasRenderingContext2D | null; width: number; height: number; data: Uint8Array }) {
-        const duration = 2200;
+        const duration = 1800;
         const t = (performance.now() % duration) / duration;
         const ctx = this.context;
         if (!ctx) return false;
-        const radius = (this.width / 2) * 0.22;
-        const outerRadius = (this.width / 2) * 0.7 * t + radius;
+        const radius = (this.width / 2) * 0.28;
+        const outerRadius = (this.width / 2) * 0.85 * t + radius;
         const cx = this.width / 2;
         const cy = this.height / 2;
         ctx.clearRect(0, 0, this.width, this.height);
 
-        // Expanding ring
+        // Expanding outer ring — bright fade
         ctx.beginPath();
         ctx.arc(cx, cy, outerRadius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0, 212, 255, ${0.35 * (1 - t)})`;
+        ctx.fillStyle = `rgba(0, 212, 255, ${0.55 * (1 - t)})`;
         ctx.fill();
 
-        // Inner solid dot
+        // Second ring slightly delayed
+        const outerRadius2 = (this.width / 2) * 0.55 * t + radius;
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerRadius2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0, 194, 224, ${0.35 * (1 - t)})`;
+        ctx.fill();
+
+        // Inner solid dot with cyan glow
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.6);
+        glow.addColorStop(0, 'rgba(0, 212, 255, 1)');
+        glow.addColorStop(0.6, 'rgba(0, 212, 255, 0.6)');
+        glow.addColorStop(1, 'rgba(0, 212, 255, 0)');
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 1.6, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 212, 255, 1)';
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-        ctx.lineWidth = 2 + 3 * (1 - t);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(0,212,255,1)';
+        ctx.lineWidth = 3;
         ctx.fill();
         ctx.stroke();
 
@@ -1723,7 +1739,7 @@ export function useMapMarkers(
               'icon-image': PULSE_IMG,
               'icon-allow-overlap': true,
               'icon-ignore-placement': true,
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 0, 0.28, 3, 0.4, 8, 0.55, 15, 0.75],
+              'icon-size': ['interpolate', ['linear'], ['zoom'], 0, 0.45, 3, 0.6, 8, 0.75, 15, 0.9],
               'icon-pitch-alignment': 'viewport',
               'icon-rotation-alignment': 'viewport',
             },
