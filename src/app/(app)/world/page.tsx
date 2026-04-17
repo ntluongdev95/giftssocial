@@ -136,10 +136,10 @@ export default function WorldPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
-  const [searchUser, setSearchUser] = useState<{ id: string; preview: { title: string; subtitle?: string; image?: string } } | null>(null);
+  const [searchUser, setSearchUser] = useState<{ id: string; preview: { title: string; subtitle?: string; image?: string }; visibility?: { reason: string; event_id?: string; circle_id?: string } } | null>(null);
   const [replayKiss, setReplayKiss] = useState<Record<string, unknown> | null>(null);
   const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
-  const [clusterUsers, setClusterUsers] = useState<{ users: Array<{ id: string; name: string; avatar: string; city: string; trust_level: string; lat: number; lng: number }>; count: number; entityType?: string } | null>(null);
+  const [clusterUsers, setClusterUsers] = useState<{ users: Array<{ id: string; name: string; avatar: string; city: string; trust_level: string; lat: number; lng: number; visibility_reason?: string; shared_event_id?: string; shared_circle_id?: string }>; count: number; entityType?: string } | null>(null);
   const [clusterFilter, setClusterFilter] = useState('');
 
   // ── Search ──────────────────────────────────────────────────────────────
@@ -874,7 +874,15 @@ export default function WorldPage() {
                         } else if (et === 'event') {
                           showSearchEntityDetail(u.id, 'event', { title: u.name, subtitle: u.city });
                         } else {
-                          setSearchUser({ id: u.id, preview: { title: u.name, subtitle: u.city, image: u.avatar || undefined } });
+                          setSearchUser({
+                            id: u.id,
+                            preview: { title: u.name, subtitle: u.city, image: u.avatar || undefined },
+                            visibility: u.visibility_reason ? {
+                              reason: u.visibility_reason,
+                              event_id: u.shared_event_id || undefined,
+                              circle_id: u.shared_circle_id || undefined,
+                            } : undefined,
+                          });
                         }
                       }}
                       className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04] active:bg-white/[0.08] cursor-pointer"
@@ -891,6 +899,7 @@ export default function WorldPage() {
                         <div className="flex items-center gap-1.5">
                           <p className="text-[13px] font-semibold text-[#f0f4ff] truncate">{u.name}</p>
                           {dotColor && <span className="shrink-0 h-1.5 w-1.5 rounded-full" style={{ background: dotColor }} />}
+                          <ReasonPill reason={u.visibility_reason} />
                         </div>
                         {u.city && <p className="text-[10px] text-[#4a5068] truncate mt-0.5">{u.city}</p>}
                       </div>
@@ -1004,6 +1013,7 @@ export default function WorldPage() {
         <UserSheet
           userId={searchUser.id}
           preview={searchUser.preview}
+          visibility={searchUser.visibility}
           onClose={() => setSearchUser(null)}
         />
       )}
@@ -1056,5 +1066,21 @@ export default function WorldPage() {
         />
       )}
     </div>
+  );
+}
+
+function ReasonPill({ reason }: { reason?: string }) {
+  if (!reason || reason === 'public' || reason === 'self') return null;
+  const config: Record<string, { bg: string; color: string; label: string }> = {
+    friend: { bg: 'rgba(52,211,153,0.14)', color: '#34d399', label: 'Friend' },
+    circle: { bg: 'rgba(0,194,224,0.14)', color: '#00C2E0', label: 'Circle' },
+    event:  { bg: 'rgba(168,85,247,0.14)', color: '#A855F7', label: 'Event' },
+  };
+  const cfg = config[reason];
+  if (!cfg) return null;
+  return (
+    <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-medium" style={{ background: cfg.bg, color: cfg.color }}>
+      {cfg.label}
+    </span>
   );
 }

@@ -34,6 +34,7 @@ interface UserData {
 interface Props {
   userId: string;
   preview?: { title: string; subtitle?: string; image?: string };
+  visibility?: { reason: string; event_id?: string; circle_id?: string };
   onClose: () => void;
 }
 
@@ -54,7 +55,7 @@ function timeAgo(dateStr: string) {
 const GUEST_PHOTO_LIMIT = 2;
 const GUEST_ACTIVITY_LIMIT = 2;
 
-export default function UserSheet({ userId, preview, onClose }: Props) {
+export default function UserSheet({ userId, preview, visibility, onClose }: Props) {
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [photoViewer, setPhotoViewer] = useState<string | null>(null);
@@ -183,6 +184,11 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
 
           {/* Scrollable content */}
           <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+            {/* Visibility reason banner */}
+            {visibility && visibility.reason && visibility.reason !== 'public' && visibility.reason !== 'self' && (
+              <VisibilityBanner visibility={visibility} />
+            )}
+
             {/* Bio */}
             {bio && <p className="text-sm text-[#a3adc3] leading-relaxed">{bio}</p>}
 
@@ -411,5 +417,42 @@ export default function UserSheet({ userId, preview, onClose }: Props) {
       />
     )}
     </>
+  );
+}
+
+function VisibilityBanner({ visibility }: { visibility: { reason: string; event_id?: string; circle_id?: string } }) {
+  const [contextName, setContextName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
+    if (visibility.reason === 'event' && visibility.event_id) {
+      fetch(`/api/v1/events/${visibility.event_id}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json()).then(j => { if (j?.data?.title) setContextName(j.data.title); })
+        .catch(() => {});
+    } else if (visibility.reason === 'circle' && visibility.circle_id) {
+      fetch(`/api/v1/circles/${visibility.circle_id}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json()).then(j => { if (j?.data?.name) setContextName(j.data.name); })
+        .catch(() => {});
+    }
+  }, [visibility.reason, visibility.event_id, visibility.circle_id]);
+
+  const config: Record<string, { bg: string; border: string; color: string; emoji: string; title: string; fallback: string }> = {
+    friend: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.2)', color: '#34d399', emoji: '👤', title: 'Friend of yours', fallback: 'You follow each other' },
+    circle: { bg: 'rgba(0,194,224,0.08)', border: 'rgba(0,194,224,0.2)', color: '#00C2E0', emoji: '👥', title: 'Same circle', fallback: 'You share a circle' },
+    event:  { bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.2)', color: '#A855F7', emoji: '🎉', title: 'Co-attendee',     fallback: 'Both booked for the same event' },
+  };
+  const cfg = config[visibility.reason];
+  if (!cfg) return null;
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
+      <span className="text-lg leading-none">{cfg.emoji}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-semibold" style={{ color: cfg.color }}>{cfg.title}</p>
+        <p className="text-[10px] text-[#a3adc3] truncate">
+          {contextName ? `via ${contextName}` : cfg.fallback}
+        </p>
+      </div>
+    </div>
   );
 }

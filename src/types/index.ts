@@ -356,6 +356,8 @@ export interface Profile {
 
 // ─── Map User (lightweight, for map display) ─────────────────────────────
 
+export type VisibilityReason = 'self' | 'public' | 'friend' | 'circle' | 'event';
+
 export interface MapUser {
   id: string;
   display_name: string;
@@ -366,6 +368,9 @@ export interface MapUser {
   city?: string;
   trust_level?: string;
   trust_score?: number;
+  visibility_reason?: VisibilityReason;
+  shared_event_id?: string | null;
+  shared_circle_id?: string | null;
 }
 
 // ─── Map Marker ───────────────────────────────────────────────────────────

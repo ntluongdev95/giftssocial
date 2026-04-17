@@ -696,7 +696,7 @@ export function useMapMarkers(
   // ── User cluster layer (GeoJSON native clustering — Google Maps style) ──
   const clusterLayersReady = useRef(false);
   const CLUSTER_SRC = 'gao-users-cluster';
-  const CLUSTER_LAYERS = ['gao-user-cluster-ring', 'gao-user-clusters', 'gao-user-cluster-count', 'gao-user-single', 'gao-user-label'];
+  const CLUSTER_LAYERS = ['gao-user-cluster-ring', 'gao-user-clusters', 'gao-user-cluster-count', 'gao-user-single', 'gao-user-reason-badge', 'gao-user-label'];
 
   // Helper: remove cluster layers + source
   const removeClusterLayers = useCallback(() => {
@@ -729,6 +729,9 @@ export function useMapMarkers(
           avatar: u.avatar_url || '',
           city: u.city || '',
           trust_level: u.trust_level || 'new',
+          visibility_reason: u.visibility_reason || 'public',
+          shared_event_id: u.shared_event_id || '',
+          shared_circle_id: u.shared_circle_id || '',
         },
       }));
 
@@ -858,6 +861,50 @@ export function useMapMarkers(
       },
     });
 
+    // Visibility-reason badge overlay (friend / circle / event) on single markers.
+    const makeBadge = (name: string, color: string, letter: string) => {
+      if (map.hasImage(name)) return;
+      const s = 18;
+      const c = document.createElement('canvas'); c.width = s; c.height = s;
+      const ctx = c.getContext('2d')!;
+      const cx = s / 2, cy = s / 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = '#0a0b0f'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(letter, cx, cy);
+      map.addImage(name, ctx.getImageData(0, 0, s, s), { pixelRatio: 2 });
+    };
+    makeBadge('gao-reason-event', '#A855F7', 'E');
+    makeBadge('gao-reason-circle', '#00C2E0', 'C');
+    makeBadge('gao-reason-friend', '#34d399', 'F');
+
+    map.addLayer({
+      id: 'gao-user-reason-badge',
+      type: 'symbol',
+      source: CLUSTER_SRC,
+      filter: ['all',
+        ['!', ['has', 'point_count']],
+        ['in', ['get', 'visibility_reason'], ['literal', ['friend', 'circle', 'event']]],
+      ],
+      layout: {
+        'icon-image': ['match', ['get', 'visibility_reason'],
+          'event', 'gao-reason-event',
+          'circle', 'gao-reason-circle',
+          'friend', 'gao-reason-friend',
+          '',
+        ],
+        'icon-allow-overlap': true,
+        'icon-offset': [9, -9],
+        'icon-anchor': 'center',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.7, 14, 1, 18, 1.2],
+        'icon-pitch-alignment': 'viewport',
+        'icon-rotation-alignment': 'viewport',
+      },
+    });
+
     // Single user name label (show only at higher zoom)
     map.addLayer({
       id: 'gao-user-label',
@@ -904,7 +951,17 @@ export function useMapMarkers(
         const users = leaves.map(leaf => {
           const p = leaf.properties || {};
           const g = leaf.geometry as GeoJSON.Point;
-          return { id: p.id as string, name: (p.name || 'User') as string, avatar: (p.avatar || '') as string, city: (p.city || '') as string, trust_level: (p.trust_level || 'new') as string, lat: g.coordinates[1], lng: g.coordinates[0] };
+          return {
+            id: p.id as string,
+            name: (p.name || 'User') as string,
+            avatar: (p.avatar || '') as string,
+            city: (p.city || '') as string,
+            trust_level: (p.trust_level || 'new') as string,
+            visibility_reason: (p.visibility_reason || 'public') as string,
+            shared_event_id: (p.shared_event_id || '') as string,
+            shared_circle_id: (p.shared_circle_id || '') as string,
+            lat: g.coordinates[1], lng: g.coordinates[0],
+          };
         });
         window.dispatchEvent(new CustomEvent('gao-cluster-click', { detail: { users, count: totalCount, coords } }));
       } catch (err) {
