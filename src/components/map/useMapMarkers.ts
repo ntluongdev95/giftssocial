@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import useSWR from 'swr';
 import maplibregl from 'maplibre-gl';
 import { escapeHtml } from '@/lib/sanitize';
 import type { Signal, Agent, Friend, Developer, Profile, Business, Event, Circle, MapUser, EntityType, TrustLevel, MarkerState } from '@/types';
@@ -8,8 +9,14 @@ import { ENTITY_MARKER_CONFIG, AGENT_COLORS } from '@/styles/tokens';
 import { useMapStore } from '@/stores/mapStore';
 import { useFriendStore } from '@/stores/friendStore';
 import { useDeveloperStore } from '@/stores/developerStore';
+import { useAuthStore } from '@/stores/auth-store';
 import { parseUTC } from '@/lib/date';
 import { useLandmarkStore, type Landmark } from '@/stores/landmarkStore';
+
+const unlockedFetcher = (url: string) => fetch(url, {
+  cache: 'no-store',
+  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+}).then(r => r.json());
 
 // ─── SVG Marker Generators ───────────────────────────────────────────────
 
@@ -427,6 +434,21 @@ export function useMapMarkers(
   const { friends, showOnMap: showFriendsOnMap } = useFriendStore();
   const { developers, showOnMap: showDevsOnMap } = useDeveloperStore();
   const { landmarks, showOnMap: showLandmarksOnMap } = useLandmarkStore();
+  const isAuthed = useAuthStore((s) => s.isAuthed);
+
+  // Paint-your-map: which venues has the current user unlocked (checked in)?
+  const { data: unlockedData } = useSWR<{ data: { businesses: { id: string; verified: boolean }[]; events: { id: string; verified: boolean }[] } }>(
+    isAuthed ? '/api/v1/me/unlocked' : null,
+    unlockedFetcher,
+  );
+  const unlockedBusinessIds = useMemo(
+    () => new Set((unlockedData?.data?.businesses || []).map(b => b.id)),
+    [unlockedData],
+  );
+  const unlockedEventIds = useMemo(
+    () => new Set((unlockedData?.data?.events || []).map(e => e.id)),
+    [unlockedData],
+  );
 
   useEffect(() => {
     injectStyles();
@@ -1022,7 +1044,7 @@ export function useMapMarkers(
 
     const features: GeoJSON.Feature[] = businesses
       .filter(b => b.location_lat && b.location_lng)
-      .map(b => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [b.location_lng, b.location_lat] }, properties: { id: b.id, name: b.name, city: b.city || '', category: b.category || '' } }));
+      .map(b => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [b.location_lng, b.location_lat] }, properties: { id: b.id, name: b.name, city: b.city || '', category: b.category || '', unlocked: unlockedBusinessIds.has(b.id) ? 1 : 0 } }));
     const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: show ? features : [] };
 
     const existingSrc = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
@@ -1051,8 +1073,19 @@ export function useMapMarkers(
     map.addSource(srcId, { type: 'geojson', data: geo, cluster: true, clusterMaxZoom: 14, clusterRadius: cfg.radius });
     map.addLayer({ id: `gao-2d-${t}-ring`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'icon-image': clImg, 'icon-size': 0.8, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
     map.addLayer({ id: `gao-2d-${t}-count`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true, 'text-offset': [0, 0.8], 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#fff' } });
-    map.addLayer({ id: `gao-2d-${t}-single`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], layout: { 'icon-image': dotImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
-    map.addLayer({ id: `gao-2d-${t}-label`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], minzoom: 12, layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-max-width': 8, 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'], 'text-allow-overlap': false, 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#e2e8f0', 'text-halo-color': 'rgba(10,11,15,0.9)', 'text-halo-width': 1.5 } });
+    map.addLayer({
+      id: `gao-2d-${t}-single`, type: 'symbol', source: srcId,
+      filter: ['!', ['has', 'point_count']],
+      layout: { 'icon-image': dotImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' },
+      // Paint-your-map: dim pins the viewer has not unlocked yet.
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'unlocked'], 1], 1, 0.35] },
+    });
+    map.addLayer({
+      id: `gao-2d-${t}-label`, type: 'symbol', source: srcId,
+      filter: ['!', ['has', 'point_count']], minzoom: 12,
+      layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-max-width': 8, 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'], 'text-allow-overlap': false, 'text-pitch-alignment': 'viewport' },
+      paint: { 'text-color': '#e2e8f0', 'text-halo-color': 'rgba(10,11,15,0.9)', 'text-halo-width': 1.5, 'text-opacity': ['case', ['==', ['get', 'unlocked'], 1], 1, 0.45] },
+    });
 
     // Click cluster
     map.on('click', `gao-2d-${t}-ring`, async (e) => {
@@ -1089,7 +1122,7 @@ export function useMapMarkers(
     }
     entityClusterReady.current.add(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, businesses, activeLayers, styleVersion, removeEntityClusterLayers]);
+  }, [map, businesses, unlockedBusinessIds, activeLayers, styleVersion, removeEntityClusterLayers]);
 
   // Event cluster
   useEffect(() => {
@@ -1103,7 +1136,7 @@ export function useMapMarkers(
 
     const features: GeoJSON.Feature[] = events
       .filter(e => e.location_lat && e.location_lng)
-      .map(e => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [e.location_lng!, e.location_lat!] }, properties: { id: e.id, name: e.title, city: e.city || '' } }));
+      .map(e => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [e.location_lng!, e.location_lat!] }, properties: { id: e.id, name: e.title, city: e.city || '', unlocked: unlockedEventIds.has(e.id) ? 1 : 0 } }));
     const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: show ? features : [] };
 
     const existingSrc = map.getSource(srcId) as maplibregl.GeoJSONSource | undefined;
@@ -1131,8 +1164,19 @@ export function useMapMarkers(
     map.addSource(srcId, { type: 'geojson', data: geo, cluster: true, clusterMaxZoom: 14, clusterRadius: cfg.radius });
     map.addLayer({ id: `gao-2d-${t}-ring`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'icon-image': clImg, 'icon-size': 0.8, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
     map.addLayer({ id: `gao-2d-${t}-count`, type: 'symbol', source: srcId, filter: ['has', 'point_count'], layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true, 'text-offset': [0, 0.8], 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#fff' } });
-    map.addLayer({ id: `gao-2d-${t}-single`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], layout: { 'icon-image': dotImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' } });
-    map.addLayer({ id: `gao-2d-${t}-label`, type: 'symbol', source: srcId, filter: ['!', ['has', 'point_count']], minzoom: 12, layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-max-width': 8, 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'], 'text-allow-overlap': false, 'text-pitch-alignment': 'viewport' }, paint: { 'text-color': '#e2e8f0', 'text-halo-color': 'rgba(10,11,15,0.9)', 'text-halo-width': 1.5 } });
+    map.addLayer({
+      id: `gao-2d-${t}-single`, type: 'symbol', source: srcId,
+      filter: ['!', ['has', 'point_count']],
+      layout: { 'icon-image': dotImg, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-anchor': 'center', 'icon-pitch-alignment': 'viewport' },
+      // Paint-your-map: dim pins the viewer has not unlocked yet.
+      paint: { 'icon-opacity': ['case', ['==', ['get', 'unlocked'], 1], 1, 0.35] },
+    });
+    map.addLayer({
+      id: `gao-2d-${t}-label`, type: 'symbol', source: srcId,
+      filter: ['!', ['has', 'point_count']], minzoom: 12,
+      layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-max-width': 8, 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Regular'], 'text-allow-overlap': false, 'text-pitch-alignment': 'viewport' },
+      paint: { 'text-color': '#e2e8f0', 'text-halo-color': 'rgba(10,11,15,0.9)', 'text-halo-width': 1.5, 'text-opacity': ['case', ['==', ['get', 'unlocked'], 1], 1, 0.45] },
+    });
 
     // Click cluster
     map.on('click', `gao-2d-${t}-ring`, async (e) => {
@@ -1169,7 +1213,7 @@ export function useMapMarkers(
     }
     entityClusterReady.current.add(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, events, activeLayers, styleVersion, removeEntityClusterLayers]);
+  }, [map, events, unlockedEventIds, activeLayers, styleVersion, removeEntityClusterLayers]);
 
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {

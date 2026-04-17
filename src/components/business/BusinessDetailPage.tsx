@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { mutate as globalMutate } from 'swr';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import {
   ArrowLeft, ArrowRight, MapPin, Phone, Globe, Clock, Star, Shield, CheckCircle,
-  Sparkles, ChevronRight, X,
+  Sparkles, ChevronRight, X, Lock, Unlock, Loader2,
 } from 'lucide-react';
 import type { Business } from '@/types';
 import NailBookingModal from '@/components/booking/NailBookingModal';
@@ -27,6 +29,54 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
   const [showBooking, setShowBooking] = useState(false);
   const [bookingService, setBookingService] = useState<string | undefined>();
   const [imgIdx, setImgIdx] = useState(0);
+  const [unlocked, setUnlocked] = useState<boolean | null>(null);
+  const [checkingIn, setCheckingIn] = useState(false);
+
+  // Fetch current unlock state for this venue
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
+    if (!token) { setUnlocked(false); return; }
+    fetch('/api/v1/me/unlocked', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(j => {
+        const ids: string[] = (j?.data?.businesses || []).map((x: { id: string }) => x.id);
+        setUnlocked(ids.includes(b.id));
+      }).catch(() => setUnlocked(false));
+  }, [b.id]);
+
+  const handleCheckIn = async () => {
+    if (checkingIn || unlocked) return;
+    setCheckingIn(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+        navigator.geolocation.getCurrentPosition(resolve, (e) => reject(new Error(e.message)), {
+          enableHighAccuracy: true, timeout: 10000, maximumAge: 30000,
+        });
+      });
+      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
+      const res = await fetch('/api/v1/checkins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          target_type: 'business', target_id: b.id,
+          location_lat: pos.coords.latitude, location_lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy, method: 'location',
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json?.error?.message || 'Failed to check in');
+      } else {
+        setUnlocked(true);
+        toast.success(`Unlocked! +${json?.data?.points_earned || 5} Gao Points`);
+        globalMutate('/api/v1/me/unlocked');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Unable to get your location');
+    } finally {
+      setCheckingIn(false);
+    }
+  };
   const coverImage = (b as unknown as Record<string, unknown>).cover_image as string;
   const allImages = [
     ...(coverImage ? [coverImage] : []),
@@ -127,6 +177,30 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
         </div>
         <ChevronRight size={16} className="text-[#4a5068]" />
       </div>
+
+      {/* Paint-your-map unlock */}
+      <button
+        onClick={handleCheckIn}
+        disabled={checkingIn || !!unlocked}
+        className="w-full flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer disabled:cursor-default transition-colors"
+        style={{
+          background: unlocked ? 'rgba(52,211,153,0.08)' : 'rgba(0,212,255,0.06)',
+          border: `1px solid ${unlocked ? 'rgba(52,211,153,0.2)' : 'rgba(0,212,255,0.15)'}`,
+        }}
+      >
+        {checkingIn ? <Loader2 size={16} className="animate-spin text-[#00d4ff]" />
+          : unlocked ? <Unlock size={16} className="text-[#34d399]" />
+          : <Lock size={16} className="text-[#00d4ff]" />}
+        <div className="flex-1 text-left">
+          <p className="text-sm font-semibold" style={{ color: unlocked ? '#34d399' : '#00d4ff' }}>
+            {unlocked ? 'Unlocked on your map' : 'Unlock this place'}
+          </p>
+          <p className="text-[11px] text-[#4a5068]">
+            {unlocked ? 'Pin is lit up — part of your Hanoi map' : checkingIn ? 'Verifying you\'re here…' : 'Check in at the venue to light this pin on your map · +5 pts'}
+          </p>
+        </div>
+        {!unlocked && !checkingIn && <ChevronRight size={14} className="text-[#4a5068]" />}
+      </button>
 
       {b.description && <p className="text-sm text-[#a3adc3] leading-relaxed">{b.description}</p>}
 
