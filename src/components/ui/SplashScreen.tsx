@@ -187,7 +187,7 @@ export default function SplashScreen() {
       {/* Logo + text overlay */}
       <div className="absolute bottom-[15%] flex flex-col items-center">
         <div className="animate-[scaleIn_0.8s_ease-out]" style={{ filter: 'drop-shadow(0 0 30px rgba(0,212,255,0.4))' }}>
-          <img src="/images/gao-logo.png" alt="Gao" width={80} height={80} />
+          <img src="/images/gao-logo-v2.png" alt="Gao" width={80} height={80} />
         </div>
 
         <h1 className="mt-5 text-xl font-bold tracking-[0.25em] text-white animate-[fadeUp_0.6s_ease-out_0.4s_both]">

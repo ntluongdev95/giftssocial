@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react-hooks/static-components */
 
 import { useState, useRef, useEffect } from 'react';
 import { mutate as globalMutate } from 'swr';

@@ -180,7 +180,7 @@ export default function NotificationsPage() {
                       <p className="text-[10px] text-[#2d3548]">
                         {n.created_at ? formatDistanceToNow(parseUTC(n.created_at as string)!, { addSuffix: true }) : ''}
                       </p>
-                      {n.ref_type && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,212,255,0.06)', color: '#4a5068' }}>Tap for details</span>}
+                      {!!n.ref_type && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,212,255,0.06)', color: '#4a5068' }}>Tap for details</span>}
                     </div>
                   </div>
                   {loadingId === n.id && <Loader2 size={14} className="text-[#00d4ff] animate-spin shrink-0" />}

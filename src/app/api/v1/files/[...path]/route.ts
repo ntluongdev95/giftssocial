@@ -10,6 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
   const key = path.join('/');
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { env } = (getCloudflareContext as any)() as { env: { R2_BUCKET: R2Bucket } };
     const object = await env.R2_BUCKET.get(key);
 
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
     headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
     headers.set('Cache-Control', 'public, max-age=31536000, immutable');
 
-    return new NextResponse(object.body as ReadableStream, { headers });
+    return new NextResponse((object as unknown as { body: ReadableStream }).body, { headers });
   } catch (err) {
     console.error('[Files]', err);
     return NextResponse.json({ error: 'Failed to fetch file' }, { status: 500 });

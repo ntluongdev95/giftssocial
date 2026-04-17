@@ -115,13 +115,13 @@ function EmptyState({ lat, lng, onSelectBusiness, onSelectCircle, onSelectEvent,
     const items: { id: string; type: string; name: string; subtitle: string; distance_km?: number; color: string; icon: string; raw: unknown }[] = [];
 
     for (const b of (suggestData.data.businesses || [])) {
-      items.push({ id: b.id, type: 'business', name: b.name, subtitle: `${b.category}${b.city ? ` · ${b.city}` : ''}`, distance_km: (b as Record<string, unknown>).distance_km as number, color: '#22c55e', icon: '🏪', raw: b });
+      items.push({ id: b.id, type: 'business', name: b.name, subtitle: `${b.category}${b.city ? ` · ${b.city}` : ''}`, distance_km: (b as unknown as Record<string, unknown>).distance_km as number, color: '#22c55e', icon: '🏪', raw: b });
     }
     for (const c of (suggestData.data.circles || [])) {
-      items.push({ id: c.id, type: 'circle', name: c.name, subtitle: `${c.category} · ${c.member_count} members`, distance_km: (c as Record<string, unknown>).distance_km as number, color: '#3b82f6', icon: '👥', raw: c });
+      items.push({ id: c.id, type: 'circle', name: c.name, subtitle: `${c.category} · ${c.member_count} members`, distance_km: (c as unknown as Record<string, unknown>).distance_km as number, color: '#3b82f6', icon: '👥', raw: c });
     }
     for (const e of (suggestData.data.events || [])) {
-      items.push({ id: e.id, type: 'event', name: e.title, subtitle: `${e.location_name || e.city || 'Event'}`, distance_km: (e as Record<string, unknown>).distance_km as number, color: '#ef4444', icon: '📅', raw: e });
+      items.push({ id: e.id, type: 'event', name: e.title, subtitle: `${e.location_name || e.city || 'Event'}`, distance_km: (e as unknown as Record<string, unknown>).distance_km as number, color: '#ef4444', icon: '📅', raw: e });
     }
 
     return items.sort((a, b) => (a.distance_km ?? 9999) - (b.distance_km ?? 9999)).slice(0, 8);
@@ -232,14 +232,15 @@ export default function NearbyPage() {
     }
   );
 
-  const nearby = data?.data ?? {
-    people: [],
-    businesses: [],
-    events: [],
-    offers: [],
-    agents: [],
-    profiles: [],
-    circles: [],
+  const raw = data?.data;
+  const nearby = {
+    people: Array.isArray(raw?.people) ? raw.people : [],
+    businesses: Array.isArray(raw?.businesses) ? raw.businesses : [],
+    events: Array.isArray(raw?.events) ? raw.events : [],
+    offers: Array.isArray(raw?.offers) ? raw.offers : [],
+    agents: Array.isArray(raw?.agents) ? raw.agents : [],
+    profiles: Array.isArray(raw?.profiles) ? raw.profiles : [],
+    circles: Array.isArray(raw?.circles) ? raw.circles : [],
   };
 
   // Sort helper
@@ -285,7 +286,8 @@ export default function NearbyPage() {
       }
 
       case 'Signals': {
-        const sigs = ((nearby as unknown as Record<string, unknown>).signals as Record<string, unknown>[]) || [];
+        const rawSignals = (data?.data as Record<string, unknown> | undefined)?.signals;
+        const sigs = (Array.isArray(rawSignals) ? rawSignals : []) as Record<string, unknown>[];
         return sigs.length === 0 ? (
           <EmptyState lat={lat ?? undefined} lng={lng ?? undefined} onSelectBusiness={setSelectedBusiness} onSelectCircle={setSelectedCircle} onSelectEvent={setSelectedEvent} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (

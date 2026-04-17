@@ -11,6 +11,7 @@ function getFileBaseUrl(): string {
 }
 
 function getR2(): R2Bucket {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { env } = (getCloudflareContext as any)() as { env: { R2_BUCKET: R2Bucket } };
   return env.R2_BUCKET;
 }

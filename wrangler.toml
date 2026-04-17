@@ -35,8 +35,30 @@ bucket_name = "gao-social-dev"
 
 [env.dev.vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"
 
 [vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID = "784048251848-r76tcdq5eevmt440tv0f8il0qsaatnin.apps.googleusercontent.com"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"
+
+# ─── Production ──────────────────────────────────────────────────────────────
+[env.production]
+name = "gao-social"
+routes = [{ pattern = "app.gao.social", custom_domain = true }]
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "gao-social-db"
+database_id = "35bee37a-4660-4db0-a04a-19ae7b481461"
+
+[[env.production.kv_namespaces]]
+binding = "SOCIAL_KV"
+id = "4224c2b4d5424b88b256fd6ead4c6530"
+
+[[env.production.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "gao-social-prod"
+
+[env.production.vars]
+NEXT_PUBLIC_APP_URL = "https://app.gao.social"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"

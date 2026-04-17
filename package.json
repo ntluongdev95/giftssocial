@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "NODE_OPTIONS='--max-old-space-size=6144' next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:init:local": "wrangler d1 execute gao-social-dev --local --file=schema-d1.sql",
+    "db:seed:local": "wrangler d1 execute gao-social-dev --local --file=src/db/seed-local.sql && wrangler d1 execute gao-social-dev --local --file=src/db/seed-users-vn.sql && wrangler d1 execute gao-social-dev --local --file=src/db/seed-biz-events-vn.sql",
+    "db:reset:local": "npm run db:init:local && npm run db:seed:local"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

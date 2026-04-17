@@ -54,15 +54,20 @@ async function getCity(lat: number, lng: number): Promise<string> {
   } catch { return 'Unknown'; }
 }
 
+// Precomputed at module level — avoids impure Math.random() calls during render
+const ARRIVAL_PARTICLE_OFFSETS = Array.from({ length: 20 }, () => ({
+  x: (Math.random() - 0.5) * 300,
+  y: (Math.random() - 0.5) * 300,
+  delay: Math.random() * 0.5,
+  scale: 0.5 + Math.random() * 1.5,
+}));
+
 // Generate particles for arrival
 function ArrivalParticles({ emoji }: { emoji: string }) {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
+  const particles = ARRIVAL_PARTICLE_OFFSETS.map((o, i) => ({
     id: i,
     emoji: i % 3 === 0 ? emoji : ['✨', '💫', '⭐', '🌟', '💖'][i % 5],
-    x: (Math.random() - 0.5) * 300,
-    y: (Math.random() - 0.5) * 300,
-    delay: Math.random() * 0.5,
-    scale: 0.5 + Math.random() * 1.5,
+    ...o,
   }));
 
   return (
@@ -807,7 +812,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
 
                 {/* Branding */}
                 <div className="flex items-center gap-1.5 mt-2">
-                  <img src="/images/gao-logo.png" alt="Gao" className="h-5 w-5 rounded-full" />
+                  <img src="/images/gao-logo-v2.png" alt="Gao" className="h-5 w-5 rounded-full" />
                   <span className="text-[10px] font-semibold text-[#4a5068]">Gao Social</span>
                 </div>
               </div>

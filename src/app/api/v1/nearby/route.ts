@@ -28,14 +28,14 @@ export async function GET(req: NextRequest) {
          FROM businesses
          WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
          ORDER BY trust_score DESC LIMIT ?`
-      ).bind(radiusKm, limit).all<BusinessRow & { distance_km: number }>().then(r => r.results).catch(() => []),
+      ).bind(radiusKm, limit).all<BusinessRow & { distance_km: number }>().then(r => parseRows(r.results as unknown as Record<string, unknown>[])).catch(() => []),
 
       db.prepare(
         `SELECT *, ${haversine(lat, lng)} AS distance_km
          FROM events
          WHERE status IN ('scheduled', 'live') AND start_time > datetime('now') AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
          ORDER BY start_time ASC LIMIT 10`
-      ).bind(radiusKm).all<EventRow & { distance_km: number }>().then(r => r.results).catch(() => []),
+      ).bind(radiusKm).all<EventRow & { distance_km: number }>().then(r => parseRows(r.results as unknown as Record<string, unknown>[])).catch(() => []),
 
       (() => {
         const dist = `(6371 * acos(MIN(1.0, cos(radians(${lat})) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(p.lat)))))`;
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
          FROM circles
          WHERE status = 'active' AND location_lat IS NOT NULL AND ${haversine(lat, lng)} < ?
          ORDER BY member_count DESC LIMIT ?`
-      ).bind(radiusKm, limit).all<CircleRow & { distance_km: number }>().then(r => r.results).catch(() => []),
+      ).bind(radiusKm, limit).all<CircleRow & { distance_km: number }>().then(r => parseRows(r.results as unknown as Record<string, unknown>[])).catch(() => []),
     ]);
 
     // Separate signals by type

@@ -111,9 +111,9 @@ export default function BusinessSheet({ business: biz, onClose, onViewDetail }: 
                 </button>
 
                 {/* Subcategories */}
-                {biz.subcategories && biz.subcategories.length > 0 && (
+                {Array.isArray(biz.subcategories) && biz.subcategories.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {biz.subcategories.map(sc => (
+                    {biz.subcategories.map((sc: string) => (
                       <span key={sc} className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.08)', color: '#34d399' }}>{sc}</span>
                     ))}
                   </div>

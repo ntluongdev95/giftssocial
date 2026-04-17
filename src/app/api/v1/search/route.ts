@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const results: Record<string, unknown[]> = { people: [], businesses: [], events: [], circles: [], places: [] };
+    let dbError: string | null = null;
 
     const queries: Promise<void>[] = [];
 
@@ -62,6 +63,7 @@ export async function GET(req: NextRequest) {
                   OR REPLACE(LOWER(users.username), ' ', '') LIKE ?)
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} users.trust_score DESC
            LIMIT ?`
+<<<<<<< HEAD
         ).bind(...peopleVisibility.params, pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.people = rows.map(r => {
             const visible = r.location_visible === 1;
@@ -76,6 +78,17 @@ export async function GET(req: NextRequest) {
             };
           });
         }).catch((err) => { console.error('[Search]', err); })
+=======
+        ).bind(pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+          results.people = rows.map(r => ({
+            id: r.id, type: 'people',
+            title: r.display_name || r.username || 'User',
+            subtitle: r.username ? `@${r.username}` : (r.bio as string)?.slice(0, 60) || '',
+            image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
+            distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
+          }));
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
+>>>>>>> 07c1ea23ccac04a9d93dc74741d392f5b65ae73e
       );
     }
 
@@ -99,7 +112,7 @@ export async function GET(req: NextRequest) {
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             rating: r.rating_avg, reviewCount: r.rating_count,
           }));
-        }).catch((err) => { console.error('[Search]', err); })
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
       );
     }
 
@@ -124,7 +137,7 @@ export async function GET(req: NextRequest) {
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             startTime: r.start_time, status: r.status,
           }));
-        }).catch((err) => { console.error('[Search]', err); })
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
       );
     }
 
@@ -149,7 +162,7 @@ export async function GET(req: NextRequest) {
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             memberCount: r.member_count,
           }));
-        }).catch((err) => { console.error('[Search]', err); })
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
       );
     }
 
@@ -169,18 +182,38 @@ export async function GET(req: NextRequest) {
               lat: parseFloat(r.lat as string), lng: parseFloat(r.lon as string),
             }));
           }
-        }).catch((err) => { console.error('[Search]', err); })
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
       );
     }
 
     // Use allSettled so one failing query doesn't block the rest
     await Promise.allSettled(queries);
 
+    // If a DB error occurred (e.g. missing table) and nothing came back, surface it as 503
+    if (dbError !== null && Object.values(results).every((a) => a.length === 0)) {
+      const isDbMissing = (dbError as string).includes('no such table') || (dbError as string).includes('SQLITE_ERROR');
+      console.error('[Search] DB not ready:', dbError);
+      return NextResponse.json(
+        { error: isDbMissing ? 'Database not ready — run schema migration and seed' : 'Search failed' },
+        { status: 503 }
+      );
+    }
+
+    const hasAny = Object.values(results).some((a) => a.length > 0);
     return NextResponse.json({ data: results }, {
-      headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30' },
+      // Don't let CDN cache empty responses — avoids amplifying empty-DB state across users
+      headers: hasAny
+        ? { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30' }
+        : { 'Cache-Control': 'no-store' },
     });
   } catch (err) {
-    console.error('[Search]', err);
-    return NextResponse.json({ error: 'Search failed' }, { status: 500 });
+    console.error('[Search] fatal:', err);
+    // Surface DB-unready errors explicitly rather than returning empty results
+    const msg = err instanceof Error ? err.message : String(err);
+    const isDbMissing = msg.includes('no such table') || msg.includes('SQLITE_ERROR');
+    return NextResponse.json(
+      { error: isDbMissing ? 'Database not ready — run schema migration and seed' : 'Search failed' },
+      { status: isDbMissing ? 503 : 500 }
+    );
   }
 }

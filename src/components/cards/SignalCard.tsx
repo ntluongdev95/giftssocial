@@ -25,6 +25,7 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
   const cfg = TYPE_CONFIG[s.type as string] || TYPE_CONFIG.presence;
   const createdDate = s.created_at ? parseUTC(s.created_at as string) : null;
   const timeAgo = createdDate ? formatDistanceToNow(createdDate, { addSuffix: true }) : '';
+  // eslint-disable-next-line react-hooks/purity
   const isLive = createdDate ? createdDate.getTime() > Date.now() - 30 * 60 * 1000 : false;
 
   return (

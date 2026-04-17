@@ -26,9 +26,11 @@ export default function OfferCard({
     ? `${signal.metadata.discount_percent}% off`
     : (signal.metadata?.discount as string) || '';
 
-  const expiresLabel = signal.expires_at
-    ? `Expires ${formatDistanceToNow(parseUTC(signal.expires_at)!, { addSuffix: true })}`
-    : '';
+  const expiresLabel = (() => {
+    if (!signal.expires_at) return '';
+    const d = parseUTC(signal.expires_at);
+    return d ? `Expires ${formatDistanceToNow(d, { addSuffix: true })}` : '';
+  })();
 
   return (
     <div className="rounded-xl border border-[#181c24]/30 bg-[#111318]/60 p-4">

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import {
+  SEED_USERS,
   SEED_BUSINESSES,
   SEED_CIRCLES,
   SEED_EVENTS,
@@ -18,6 +19,24 @@ export async function POST() {
   const results: Record<string, string> = {};
 
   try {
+    // ─── D1: Users ────────────────────────────────────────────────────
+    for (const user of SEED_USERS) {
+      await db.prepare(
+        `INSERT OR IGNORE INTO users
+           (id, username, display_name, email, avatar_url, bio, city,
+            location_lat, location_lng, trust_score, trust_level, badges,
+            role, status)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        user.id, user.username, user.display_name, user.email,
+        user.avatar_url, user.bio, user.city,
+        user.location_lat, user.location_lng,
+        user.trust_score, user.trust_level, user.badges,
+        user.role, user.status,
+      ).run();
+    }
+    results.users = `${SEED_USERS.length} seeded`;
+
     // Resolve a system owner user ID for businesses
     const systemUser = await db.prepare('SELECT id FROM users LIMIT 1').first<{ id: string }>();
     const ownerUserId = systemUser?.id || 'user_system';

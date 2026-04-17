@@ -544,6 +544,28 @@ const GIFT_EFFECTS: Record<string, { particles: string[]; bg: string; sound?: st
   '🌈': { particles: ['🌈', '✨', '⭐', '🦋', '☀️', '🌸'], bg: 'rgba(52,211,153,0.15)', animation: 'fireworks', subtitle: '🌈 Over the rainbow!' },
 };
 
+// Precomputed at module level — avoids impure Math.random() calls during render
+const SHOWER_PARTICLES = Array.from({ length: 20 }, (_, i) => ({
+  left: `${Math.random() * 100}%`,
+  x: (Math.random() - 0.5) * 100,
+  duration: 3 + Math.random() * 2,
+  repeatDelay: Math.random() * 2,
+  delay: i * 0.15,
+}));
+const FIREWORKS_BURSTS = Array.from({ length: 5 }, (_, i) => ({
+  left: `${20 + Math.random() * 60}%`,
+  top: `${20 + Math.random() * 40}%`,
+  delay: 0.5 + i * 0.4,
+}));
+const ORBIT_PARTICLES = Array.from({ length: 12 }, (_, i) => ({
+  x: (Math.random() - 0.5) * 250,
+  y: -100 - Math.random() * 150,
+  duration: 2.5 + Math.random() * 1.5,
+  repeatDelay: Math.random(),
+  delay: i * 0.2,
+}));
+const FIRE_DURATIONS = Array.from({ length: 5 }, () => 0.8 + Math.random() * 0.5);
+
 // ── Kiss Reveal Popup ──
 function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: Kiss; onClose: () => void; currentUserId?: string; onSendBack?: (toId: string) => void }) {
   const senderDisplay = currentUserId === kiss.sender_id ? 'You' : kiss.sender_name;
@@ -559,28 +581,28 @@ function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: K
       <div className="absolute inset-0 bg-black/70" />
 
       {/* Full-screen particle shower */}
-      {Array.from({ length: 20 }).map((_, i) => (
+      {SHOWER_PARTICLES.map((p, i) => (
         <motion.span
           key={`shower-${i}`}
           className="absolute text-3xl pointer-events-none"
-          style={{ left: `${Math.random() * 100}%`, top: '-5%' }}
+          style={{ left: p.left, top: '-5%' }}
           initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: [0, 1, 1, 0], y: ['0vh', '110vh'], x: (Math.random() - 0.5) * 100 }}
-          transition={{ duration: 3 + Math.random() * 2, delay: i * 0.15, repeat: Infinity, repeatDelay: Math.random() * 2 }}
+          animate={{ opacity: [0, 1, 1, 0], y: ['0vh', '110vh'], x: p.x }}
+          transition={{ duration: p.duration, delay: p.delay, repeat: Infinity, repeatDelay: p.repeatDelay }}
         >
           {fx.particles[i % fx.particles.length]}
         </motion.span>
       ))}
 
       {/* Fireworks bursts */}
-      {isFireworks && Array.from({ length: 5 }).map((_, i) => (
+      {isFireworks && FIREWORKS_BURSTS.map((burst, i) => (
         <motion.div
           key={`fw-${i}`}
           className="absolute pointer-events-none"
-          style={{ left: `${20 + Math.random() * 60}%`, top: `${20 + Math.random() * 40}%` }}
+          style={{ left: burst.left, top: burst.top }}
           initial={{ scale: 0, opacity: 1 }}
           animate={{ scale: [0, 2.5, 3], opacity: [1, 1, 0] }}
-          transition={{ duration: 1.5, delay: 0.5 + i * 0.4, repeat: Infinity, repeatDelay: 2 }}
+          transition={{ duration: 1.5, delay: burst.delay, repeat: Infinity, repeatDelay: 2 }}
         >
           {Array.from({ length: 8 }).map((_, j) => (
             <motion.span
@@ -588,7 +610,7 @@ function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: K
               className="absolute text-xl"
               style={{ transform: `rotate(${j * 45}deg)` }}
               animate={{ x: [0, Math.cos(j * 45 * Math.PI / 180) * 60], y: [0, Math.sin(j * 45 * Math.PI / 180) * 60], opacity: [1, 0] }}
-              transition={{ duration: 1, delay: 0.5 + i * 0.4 }}
+              transition={{ duration: 1, delay: burst.delay }}
             >
               {fx.particles[j % fx.particles.length]}
             </motion.span>
@@ -640,10 +662,10 @@ function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: K
           {/* Fire effect */}
           {isFire && (
             <>
-              {Array.from({ length: 5 }).map((_, i) => (
+              {FIRE_DURATIONS.map((duration, i) => (
                 <motion.span key={i} className="absolute text-2xl" style={{ bottom: 0, left: `${10 + i * 18}%` }}
                   animate={{ y: [0, -30, -50], opacity: [0.8, 0.5, 0], scale: [1, 1.3, 0.5] }}
-                  transition={{ duration: 0.8 + Math.random() * 0.5, delay: i * 0.15, repeat: Infinity }}
+                  transition={{ duration, delay: i * 0.15, repeat: Infinity }}
                 >🔥</motion.span>
               ))}
             </>
@@ -799,18 +821,18 @@ function KissRevealPopup({ kiss, onClose, currentUserId, onSendBack }: { kiss: K
         </motion.div>
 
         {/* Orbiting particles around card */}
-        {Array.from({ length: 12 }).map((_, i) => (
+        {ORBIT_PARTICLES.map((p, i) => (
           <motion.span
             key={`orbit-${i}`}
             className="absolute text-xl pointer-events-none z-0"
             initial={{ opacity: 0 }}
             animate={{
               opacity: [0, 0.8, 0],
-              x: [0, (Math.random() - 0.5) * 250],
-              y: [0, -100 - Math.random() * 150],
+              x: [0, p.x],
+              y: [0, p.y],
               scale: [0.5, 1.2, 0.3],
             }}
-            transition={{ duration: 2.5 + Math.random() * 1.5, delay: i * 0.2, repeat: Infinity, repeatDelay: Math.random() }}
+            transition={{ duration: p.duration, delay: p.delay, repeat: Infinity, repeatDelay: p.repeatDelay }}
           >
             {fx.particles[i % fx.particles.length]}
           </motion.span>
@@ -893,6 +915,7 @@ function FlightHUD({ from, to, progress, senderName, receiverName, emoji, turbul
 export default function KissGlobe() {
   const { map } = useMap();
   const currentUserId = useAuthStore(s => s.user?.id);
+  const isAuthed = useAuthStore(s => s.isAuthed);
   const [showSendModal, setShowSendModal] = useState(false);
   const [sendBackTo, setSendBackTo] = useState<string | null>(null);
   const [showAuthGate, setShowAuthGate] = useState(false);
@@ -913,6 +936,11 @@ export default function KissGlobe() {
       useMapStore.getState().toggleLayer('gift');
     }
   }, [kissParam]);
+
+  // Auto-dismiss auth gate if user becomes authenticated (e.g. hydration completes or login succeeds)
+  useEffect(() => {
+    if (isAuthed && showAuthGate) setShowAuthGate(false);
+  }, [isAuthed, showAuthGate]);
 
   const { data, mutate } = useSWR<{ data: Kiss[] }>(giftLayerOn ? '/api/v1/kisses?limit=30' : null, fetcher, { refreshInterval: 30000 });
   const kisses = data?.data ?? [];
@@ -1507,8 +1535,9 @@ export default function KissGlobe() {
       {/* Send Kiss Button — only visible when gift layer is on */}
       {giftLayerOn && <button
         onClick={() => {
-          const token = localStorage.getItem('access_token');
-          if (!token) { setShowAuthGate(true); return; }
+          // Check Zustand store (primary) or gao_logged_in cookie (auth still hydrating)
+          const hasCookie = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+          if (!isAuthed && !hasCookie) { setShowAuthGate(true); return; }
           setShowSendModal(true);
         }}
         className="absolute bottom-[calc(64px+env(safe-area-inset-bottom,0px)+100px)] lg:bottom-24 right-4 z-30 h-12 w-12 rounded-full flex items-center justify-center cursor-pointer shadow-lg"

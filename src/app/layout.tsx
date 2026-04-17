@@ -24,13 +24,20 @@ export const metadata: Metadata = {
     siteName: 'Gao Social',
     type: 'website',
     locale: 'en_US',
-    images: [{ url: '/icons/icon-512.png', width: 512, height: 512, alt: 'Gao Social' }],
+    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'Gao Social' }],
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: 'Gao Social',
     description: 'The world, not the feed.',
-    images: ['/icons/icon-512.png'],
+    images: ['/og-image.png'],
+  },
+  icons: {
+    icon: [
+      { url: '/favicon-16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: '/icons/pwa-192.png',
   },
   robots: {
     index: true,
@@ -65,7 +72,7 @@ export default function RootLayout({
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        <link rel="apple-touch-icon" href="/icons/pwa-192.png" />
       </head>
       <body className="h-full bg-[#0a0b0f] text-[#f0f4ff] overflow-x-hidden antialiased">
         <SplashWrapper />

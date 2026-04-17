@@ -66,7 +66,7 @@ export default function UpdateForm({ onSubmit }: UpdateFormProps) {
 
       {/* Title */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">What's the update?</label>
+        <label className="mb-1.5 block text-xs font-semibold text-[#4a5068]">What&apos;s the update?</label>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -145,7 +145,7 @@ export default function UpdateForm({ onSubmit }: UpdateFormProps) {
         {visibility === 'circle' && (
           <div className="mt-2">
             {myCircles.length === 0 ? (
-              <p className="text-xs text-[#4a5068]">You haven't joined any circles yet.</p>
+              <p className="text-xs text-[#4a5068]">You haven&apos;t joined any circles yet.</p>
             ) : (
               <select
                 value={targetCircleId}

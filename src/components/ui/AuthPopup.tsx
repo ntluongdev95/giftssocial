@@ -80,7 +80,7 @@
 //     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 //     if (!clientId) { toast.error('Google not configured'); return; }
 
-//     const redirectUri = window.location.origin + '/auth/google/callback';
+//     const redirectUri = window.location.origin + '/api/auth/google/callback';
 //     const scope = 'openid email profile';
 //     const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
 //     sessionStorage.setItem('gao_google_state', state);
@@ -210,7 +210,7 @@
 //                   </div>
 //                 ) : (
 //                   <div className="relative mx-auto h-14 w-14 rounded-[1.2rem] flex items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a0b0f, #111318)', border: '1px solid rgba(0,212,255,0.15)', boxShadow: '0 0 30px rgba(0,212,255,0.1)' }}>
-//                     <img src="/images/gao-logo.png" alt="Gao" width={36} height={36} />
+//                     <img src="/images/gao-logo-v2.png" alt="Gao" width={36} height={36} />
 //                   </div>
 //                 )}
 //               </div>
@@ -417,7 +417,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) { toast.error('Google not configured'); return; }
 
-    const redirectUri = window.location.origin + '/auth/google/callback';
+    const redirectUri = window.location.origin + '/api/auth/google/callback';
     const scope = 'openid email profile';
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
     sessionStorage.setItem('gao_google_state', state);
@@ -554,7 +554,7 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
                   </div>
                 ) : (
                   <div className="relative mx-auto h-14 w-14 rounded-[1.2rem] flex items-center justify-center overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a0b0f, #111318)', border: '1px solid rgba(0,212,255,0.15)', boxShadow: '0 0 30px rgba(0,212,255,0.1)' }}>
-                    <img src="/images/gao-logo.png" alt="Gao" width={36} height={36} />
+                    <img src="/images/gao-logo-v2.png" alt="Gao" width={36} height={36} />
                   </div>
                 )}
               </div>

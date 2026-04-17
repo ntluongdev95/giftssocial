@@ -10,10 +10,10 @@ import { checkRateLimit, rateLimitResponse, addRateLimitHeaders } from '@/lib/ra
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const ALLOWED_REDIRECT_URIS = [
-  process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/auth/google/callback` : null,
-  'http://localhost:3000/auth/google/callback',
-  'https://gao-social-dev.ceo-349.workers.dev/auth/google/callback',
-  'https://app.gao.social/auth/google/callback',
+  process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google/callback` : null,
+  'http://localhost:3000/api/auth/google/callback',
+  'https://gao-social-dev.ceo-349.workers.dev/api/auth/google/callback',
+  'https://app.gao.social/api/auth/google/callback',
 ].filter(Boolean) as string[];
 
 /**

@@ -84,7 +84,9 @@ export function useSearch() {
       const searchData = data.data as SearchResults;
 
       setResults(searchData);
-      setCache(cacheKey, searchData);
+      // Only cache if at least one result category has entries
+      const hasAny = Object.values(searchData).some((a) => Array.isArray(a) && a.length > 0);
+      if (hasAny) setCache(cacheKey, searchData);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') return; // expected
       toast.error('Search failed. Please try again.');

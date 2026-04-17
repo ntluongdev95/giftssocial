@@ -50,6 +50,7 @@ export default function CreateCirclePage() {
         { headers: { 'User-Agent': 'GaoSocial/1.0' } }
       );
       const data = await res.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setAddressResults(data.map((r: any) => ({
         id: r.place_id,
         display_name: r.display_name,

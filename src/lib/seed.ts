@@ -64,6 +64,21 @@ export const SEED_EVENTS = [
   { id: 'event_003', title: 'Saturday Morning Run Club', description: '5K run starting from Katy Trail.', host_type: 'circle', host_id: 'circle_004', location_name: 'Katy Trail', location_lat: 32.8050, location_lng: -96.8010, start_time: new Date(Date.now() + 48 * 3600 * 1000).toISOString(), end_time: new Date(Date.now() + 49 * 3600 * 1000).toISOString(), capacity: 100, joined_count: 45, checkin_count: 0, visibility: 'public', verified: false, status: 'scheduled' },
 ];
 
+// ─── Users (10) — Demo profiles across Dallas ─────────────────────────────
+
+export const SEED_USERS = [
+  { id: 'user_demo_1', username: 'alex_dallas', display_name: 'Alex Dallas', email: 'alex@example.com', avatar_url: '', bio: 'Founder & builder in Deep Ellum.', city: 'Dallas', location_lat: 32.7835, location_lng: -96.7838, trust_score: 78, trust_level: 'trusted', badges: '["verified"]', role: 'user', status: 'active' },
+  { id: 'user_demo_2', username: 'sam_dfw', display_name: 'Sam DFW', email: 'sam@example.com', avatar_url: '', bio: 'UX designer & coffee explorer.', city: 'Dallas', location_lat: 32.7801, location_lng: -96.8005, trust_score: 65, trust_level: 'verified', badges: '["verified"]', role: 'user', status: 'active' },
+  { id: 'user_demo_3', username: 'jordan_tx', display_name: 'Jordan TX', email: 'jordan@example.com', avatar_url: '', bio: 'Crypto & DeFi builder.', city: 'Dallas', location_lat: 32.7770, location_lng: -96.7960, trust_score: 82, trust_level: 'trusted', badges: '["verified","active_community"]', role: 'user', status: 'active' },
+  { id: 'user_demo_4', username: 'maya_uptown', display_name: 'Maya Uptown', email: 'maya@example.com', avatar_url: '', bio: 'Yoga instructor & wellness coach.', city: 'Dallas', location_lat: 32.7950, location_lng: -96.8020, trust_score: 72, trust_level: 'trusted', badges: '["verified"]', role: 'user', status: 'active' },
+  { id: 'user_demo_5', username: 'chris_oak', display_name: 'Chris Oak', email: 'chris@example.com', avatar_url: '', bio: 'Photographer — events & portraits.', city: 'Dallas', location_lat: 32.7490, location_lng: -96.8260, trust_score: 58, trust_level: 'verified', badges: '[]', role: 'user', status: 'active' },
+  { id: 'user_demo_6', username: 'priya_dev', display_name: 'Priya Dev', email: 'priya@example.com', avatar_url: '', bio: 'Full-stack engineer. Building in public.', city: 'Dallas', location_lat: 32.7867, location_lng: -96.7983, trust_score: 88, trust_level: 'highly_trusted', badges: '["verified","active_community"]', role: 'user', status: 'active' },
+  { id: 'user_demo_7', username: 'lena_fit', display_name: 'Lena Fit', email: 'lena@example.com', avatar_url: '', bio: 'Personal trainer & nutrition coach.', city: 'Dallas', location_lat: 32.7720, location_lng: -96.7920, trust_score: 70, trust_level: 'trusted', badges: '["verified"]', role: 'user', status: 'active' },
+  { id: 'user_demo_8', username: 'omar_biz', display_name: 'Omar Biz', email: 'omar@example.com', avatar_url: '', bio: 'Small business owner. Local first.', city: 'Dallas', location_lat: 32.7820, location_lng: -96.7900, trust_score: 60, trust_level: 'verified', badges: '[]', role: 'user', status: 'active' },
+  { id: 'user_demo_9', username: 'nina_arts', display_name: 'Nina Arts', email: 'nina@example.com', avatar_url: '', bio: 'Artist & muralist in Bishop Arts.', city: 'Dallas', location_lat: 32.7480, location_lng: -96.8270, trust_score: 55, trust_level: 'verified', badges: '["verified"]', role: 'user', status: 'active' },
+  { id: 'user_demo_10', username: 'kai_tech', display_name: 'Kai Tech', email: 'kai@example.com', avatar_url: '', bio: 'AI researcher and open-source contributor.', city: 'Dallas', location_lat: 32.7910, location_lng: -96.7970, trust_score: 91, trust_level: 'highly_trusted', badges: '["verified","active_community"]', role: 'user', status: 'active' },
+];
+
 // ─── Agents (3) ───────────────────────────────────────────────────────────
 
 export const SEED_AGENTS = [

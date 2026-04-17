@@ -45,8 +45,8 @@ const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string 
 
 export default function SignalSheet({ signal, onClose }: Props) {
   const cfg = TYPE_CONFIG[signal.type] || TYPE_CONFIG.presence;
-  const timeAgo = signal.created_at ? formatDistanceToNow(parseUTC(signal.created_at)!, { addSuffix: true }) : '';
-  const expiresIn = signal.expires_at ? formatDistanceToNow(parseUTC(signal.expires_at)!, { addSuffix: true }) : '';
+  const timeAgo = (() => { const d = signal.created_at ? parseUTC(signal.created_at) : null; return d ? formatDistanceToNow(d, { addSuffix: true }) : ''; })();
+  const expiresIn = (() => { const d = signal.expires_at ? parseUTC(signal.expires_at) : null; return d ? formatDistanceToNow(d, { addSuffix: true }) : ''; })();
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showChat, setShowChat] = useState(false);
