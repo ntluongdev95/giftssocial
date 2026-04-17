@@ -181,7 +181,7 @@ export default function MyBookingsPage() {
                         Closed
                       </span>
                     )}
-                    {b.status === 'confirmed' && (
+                    {b.status === 'confirmed' && !isFuture && (
                       <button onClick={() => updateStatus(b.id as string, 'completed')} disabled={acting === b.id} className="flex-1 rounded-xl py-2.5 text-xs font-semibold cursor-pointer" style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399' }}>
                         Complete
                       </button>
