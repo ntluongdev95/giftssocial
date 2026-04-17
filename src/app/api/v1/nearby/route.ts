@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
+import { resolveUserId } from '@/lib/resolveUser';
+import { buildLocationVisibilityClause } from '@/lib/visibility';
 import type { BusinessRow, EventRow, CircleRow } from '@/types/d1';
 
 const haversine = (lat: number, lng: number) =>
@@ -17,6 +19,8 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
     const db = getDB();
+    const viewerId = await resolveUserId(req).catch(() => null);
+    const visibility = buildLocationVisibilityClause('u', viewerId);
 
     const [businesses, events, profiles, signals, circles] = await Promise.all([
       db.prepare(
@@ -33,18 +37,18 @@ export async function GET(req: NextRequest) {
          ORDER BY start_time ASC LIMIT 10`
       ).bind(radiusKm).all<EventRow & { distance_km: number }>().then(r => r.results).catch(() => []),
 
-      db.prepare(
-        (() => {
-          const dist = `(6371 * acos(MIN(1.0, cos(radians(${lat})) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(p.lat)))))`;
-          return `SELECT p.*, ${dist} AS distance_km
-                  FROM profiles p
-                  LEFT JOIN users u ON u.id = p.user_id
-                  WHERE p.status = 'active' AND p.available = 1
-                    AND (u.location_sharing IS NULL OR u.location_sharing != 'off')
-                    AND ${dist} < ?
-                  ORDER BY p.trust_score_snapshot DESC LIMIT ?`;
-        })()
-      ).bind(radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
+      (() => {
+        const dist = `(6371 * acos(MIN(1.0, cos(radians(${lat})) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(p.lat)))))`;
+        return db.prepare(
+          `SELECT p.*, ${dist} AS distance_km
+           FROM profiles p
+           LEFT JOIN users u ON u.id = p.user_id
+           WHERE p.status = 'active' AND p.available = 1
+             AND ${visibility.sql}
+             AND ${dist} < ?
+           ORDER BY p.trust_score_snapshot DESC LIMIT ?`
+        ).bind(...visibility.params, radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []);
+      })(),
 
       db.prepare(
         `SELECT s.*, u.username AS author_username, u.display_name AS author_name, u.avatar_url AS author_avatar,

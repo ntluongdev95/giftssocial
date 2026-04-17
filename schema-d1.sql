@@ -149,7 +149,8 @@ CREATE TABLE IF NOT EXISTS users (
   profile_visibility TEXT DEFAULT 'public'
                     CHECK (profile_visibility IN ('public', 'circles', 'private')),
   location_sharing  TEXT DEFAULT 'approximate'
-                    CHECK (location_sharing IN ('exact', 'approximate', 'off')),
+                    CHECK (location_sharing IN ('exact', 'approximate', 'friends', 'circles', 'off')),
+  location_shared_until TEXT,  -- ISO datetime; NULL = indefinite
 
   -- Wallet
   gao_points        INTEGER DEFAULT 0,
@@ -358,6 +359,22 @@ CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_bookings_business ON bookings(business_id, status) WHERE business_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_bookings_event ON bookings(event_id, status) WHERE event_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_bookings_slot ON bookings(slot_time) WHERE status IN ('pending', 'confirmed');
+
+-- Event-scoped location visibility grants.
+-- User opts in to share their location with co-attendees of a specific event.
+-- Grant expires at event end_time; expired rows can be swept lazily.
+CREATE TABLE IF NOT EXISTS event_location_grants (
+  id                TEXT PRIMARY KEY,
+  user_id           TEXT NOT NULL,
+  event_id          TEXT NOT NULL,
+  expires_at        TEXT NOT NULL,
+  created_at        TEXT DEFAULT (datetime('now')),
+  UNIQUE (user_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_loc_user ON event_location_grants(user_id);
+CREATE INDEX IF NOT EXISTS idx_event_loc_event ON event_location_grants(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_loc_expires ON event_location_grants(expires_at);
 
 -- ============================================================================
 -- 9. REVIEWS

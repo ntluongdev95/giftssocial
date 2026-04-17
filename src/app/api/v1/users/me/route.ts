@@ -27,10 +27,20 @@ export async function PATCH(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
 
     const body = await req.json();
-    const allowedFields = ['display_name', 'bio', 'avatar_url', 'location_lat', 'location_lng', 'city', 'location_sharing'];
+    const allowedFields = [
+      'display_name', 'bio', 'avatar_url', 'location_lat', 'location_lng', 'city',
+      'location_sharing', 'location_shared_until',
+    ];
 
-    if (body.location_sharing !== undefined && !['exact', 'approximate', 'off'].includes(body.location_sharing)) {
+    if (body.location_sharing !== undefined && !['exact', 'approximate', 'friends', 'circles', 'off'].includes(body.location_sharing)) {
       return NextResponse.json({ error: { code: 'invalid_request', message: 'Invalid location_sharing value' } }, { status: 400 });
+    }
+
+    if (body.location_shared_until !== undefined && body.location_shared_until !== null) {
+      const ts = Date.parse(String(body.location_shared_until));
+      if (isNaN(ts)) {
+        return NextResponse.json({ error: { code: 'invalid_request', message: 'Invalid location_shared_until (expected ISO datetime or null)' } }, { status: 400 });
+      }
     }
     const updates: string[] = [];
     const values: unknown[] = [];

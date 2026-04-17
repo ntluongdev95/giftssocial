@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
+import { resolveUserId } from '@/lib/resolveUser';
+import { buildLocationVisibilityClause } from '@/lib/visibility';
 
 /**
  * GET /api/v1/search?q=keyword&lat=...&lng=...&tab=top|people|businesses|events|places&limit=20
@@ -36,6 +38,8 @@ export async function GET(req: NextRequest) {
     : '0';
 
   const db = getDB();
+  const viewerId = await resolveUserId(req).catch(() => null);
+  const peopleVisibility = buildLocationVisibilityClause('users', viewerId);
 
   try {
     const results: Record<string, unknown[]> = { people: [], businesses: [], events: [], circles: [], places: [] };
@@ -47,26 +51,28 @@ export async function GET(req: NextRequest) {
       const pLimit = tab === 'top' ? 5 : limit;
       queries.push(
         db.prepare(
-          `SELECT id, display_name, username, avatar_url, bio, location_lat, location_lng, location_sharing,
-                  ${distExpr} AS distance
+          `SELECT users.id, users.display_name, users.username, users.avatar_url, users.bio,
+                  users.location_lat, users.location_lng,
+                  CASE WHEN ${peopleVisibility.sql} THEN 1 ELSE 0 END AS location_visible,
+                  ${distExpr.replace(/location_lat|location_lng/g, m => `users.${m}`)} AS distance
            FROM users
-           WHERE status = 'active'
-             AND (display_name LIKE ? OR username LIKE ? OR bio LIKE ?
-                  OR REPLACE(LOWER(display_name), ' ', '') LIKE ?
-                  OR REPLACE(LOWER(username), ' ', '') LIKE ?)
-           ORDER BY ${hasGeo ? 'distance ASC,' : ''} trust_score DESC
+           WHERE users.status = 'active'
+             AND (users.display_name LIKE ? OR users.username LIKE ? OR users.bio LIKE ?
+                  OR REPLACE(LOWER(users.display_name), ' ', '') LIKE ?
+                  OR REPLACE(LOWER(users.username), ' ', '') LIKE ?)
+           ORDER BY ${hasGeo ? 'distance ASC,' : ''} users.trust_score DESC
            LIMIT ?`
-        ).bind(pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+        ).bind(...peopleVisibility.params, pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.people = rows.map(r => {
-            const hidden = r.location_sharing === 'off';
+            const visible = r.location_visible === 1;
             return {
               id: r.id, type: 'people',
               title: r.display_name || r.username || 'User',
               subtitle: r.username ? `@${r.username}` : (r.bio as string)?.slice(0, 60) || '',
               image: r.avatar_url,
-              lat: hidden ? null : r.location_lat,
-              lng: hidden ? null : r.location_lng,
-              distance: hidden || !r.distance ? null : Math.round((r.distance as number) * 10) / 10,
+              lat: visible ? r.location_lat : null,
+              lng: visible ? r.location_lng : null,
+              distance: visible && r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             };
           });
         }).catch((err) => { console.error('[Search]', err); })

@@ -73,7 +73,8 @@ export interface User {
   badges: Badge[];
   location_lat?: number;
   location_lng?: number;
-  location_sharing: 'exact' | 'approximate' | 'off';
+  location_sharing: 'exact' | 'approximate' | 'friends' | 'circles' | 'off';
+  location_shared_until?: string | null;
   profile_visibility: 'public' | 'circles' | 'private';
   status: 'active' | 'suspended' | 'deleted';
   created_at: string;
@@ -407,7 +408,8 @@ export interface Friend {
   gao_domain?: string;
   trust_level: TrustLevel;
   trust_score: number;
-  location_sharing: 'exact' | 'approximate' | 'off';
+  location_sharing: 'exact' | 'approximate' | 'friends' | 'circles' | 'off';
+  location_shared_until?: string | null;
   location?: GeoPoint | null;
   is_online: boolean;
   last_seen_at?: string;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDB, genId, parseRows } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import { buildLocationVisibilityClause } from '@/lib/visibility';
 
 // ─── GET /api/v1/profiles — Search profiles by location / industry / skills ──
 
@@ -19,10 +20,13 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
     const cursor = searchParams.get('cursor');
 
+    const viewerId = await resolveUserId(req).catch(() => null);
+    const visibility = buildLocationVisibilityClause('u', viewerId);
+
     const conditions: string[] = ["p.status = 'active'"];
-    // Exclude profiles whose owner has turned off location sharing
-    conditions.push("(u.location_sharing IS NULL OR u.location_sharing != 'off')");
-    const values: unknown[] = [];
+    // Apply full viewer-aware visibility on the owning user
+    conditions.push(visibility.sql);
+    const values: unknown[] = [...visibility.params];
 
     if (q) {
       conditions.push(`(p.headline LIKE ? OR p.bio LIKE ? OR p.city LIKE ? OR p.industry LIKE ?)`);

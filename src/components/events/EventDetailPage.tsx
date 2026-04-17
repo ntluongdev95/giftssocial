@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { mutate as globalMutate } from 'swr';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, MapPin, Clock, Calendar, Users, Shield, CheckCircle,
-  ChevronRight, X, Heart, MessageCircle, Bookmark,
+  ChevronRight, X, Heart, MessageCircle, Bookmark, Eye,
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { toast } from 'sonner';
@@ -70,6 +71,43 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
       else { const err = await res.json(); toast.error(err.error?.message || 'Failed to join'); }
     } catch { toast.error('Network error'); }
     finally { setJoining(false); }
+  };
+
+  // Event-scoped location grant — share with co-attendees
+  const [shareGrant, setShareGrant] = useState<{ granted: boolean; expires_at: string | null } | null>(null);
+  const [grantSaving, setGrantSaving] = useState(false);
+
+  useEffect(() => {
+    if (!joined || !isLoggedIn) { setShareGrant(null); return; }
+    fetch(`/api/v1/events/${e.id}/location-grant`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+    }).then(r => r.json()).then(j => {
+      if (j?.data) setShareGrant(j.data);
+    }).catch(() => {});
+  }, [joined, isLoggedIn, e.id]);
+
+  const toggleShareGrant = async () => {
+    if (grantSaving || !shareGrant) return;
+    setGrantSaving(true);
+    const turningOn = !shareGrant.granted;
+    try {
+      const res = await fetch(`/api/v1/events/${e.id}/location-grant`, {
+        method: turningOn ? 'POST' : 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
+        },
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(j?.error?.message || 'Failed to update');
+      } else {
+        setShareGrant(j.data);
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/v1/users/map'), undefined, { revalidate: true });
+        toast.success(turningOn ? 'Sharing location with attendees' : 'Stopped sharing');
+      }
+    } catch { toast.error('Network error'); }
+    finally { setGrantSaving(false); }
   };
 
   let dateLabel = '';
@@ -177,6 +215,33 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
         <ActionBtn icon={joined ? <CheckCircle size={15} /> : <Bookmark size={15} />} label={isPast ? 'Closed' : isFull ? 'Full' : joined ? 'Joined' : joining ? 'Joining...' : 'Join Event'} primary onClick={handleJoin} disabled={joining || joined || isFull || isPast} />
         <ActionBtn icon={<Heart size={15} fill={eventSaved ? '#f87171' : 'none'} />} label={eventSaved ? 'Saved' : 'Save'} onClick={handleSave} />
       </div>
+
+      {/* Event-scoped location share opt-in */}
+      {joined && shareGrant && !isPast && (
+        <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+          <Eye size={16} className="shrink-0" style={{ color: shareGrant.granted ? '#00d4ff' : '#4a5068' }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">Share location with attendees</p>
+            <p className="text-[10px] text-[#4a5068]">
+              {shareGrant.granted
+                ? `Visible to others booked for this event · auto-ends ${shareGrant.expires_at ? format(new Date(shareGrant.expires_at), 'MMM d, h:mm a') : ''}`
+                : 'Opt in to help co-attendees find you'}
+            </p>
+          </div>
+          <button
+            onClick={toggleShareGrant}
+            disabled={grantSaving}
+            aria-pressed={shareGrant.granted}
+            className="h-6 w-11 rounded-full transition-colors cursor-pointer shrink-0 flex items-center p-0.5 disabled:opacity-60"
+            style={{ background: shareGrant.granted ? '#00d4ff' : 'rgba(255,255,255,0.12)' }}
+          >
+            <span
+              className="h-5 w-5 rounded-full bg-white transition-transform"
+              style={{ transform: shareGrant.granted ? 'translateX(19px)' : 'translateX(0)', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
+            />
+          </button>
+        </div>
+      )}
 
       {/* Schedule */}
       <Sect title="Schedule">

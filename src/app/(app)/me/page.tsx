@@ -9,7 +9,7 @@ import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import {
   MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
-  HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw,
+  HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw, Clock,
 } from 'lucide-react';
 
 const fetcher = (url: string) => fetch(url, {
@@ -58,13 +58,36 @@ export default function MePage() {
   const { data: notifsData } = useSWR(isAuthed ? '/api/v1/notifications?unread=true' : null, fetcher, { ...swrOpts, refreshInterval: 10000 });
   const { data: meData, mutate: mutateMe } = useSWR(isAuthed ? '/api/v1/users/me' : null, fetcher, swrOpts);
   const userPhotos: string[] = meData?.data?.photos || [];
-  const locationSharing: string = meData?.data?.location_sharing || 'approximate';
+  const locationSharing: string = meData?.data?.location_sharing || 'off';
+  const locationSharedUntil: string | null = meData?.data?.location_shared_until || null;
   const locationVisible = locationSharing !== 'off';
+  const audience: 'off' | 'everyone' | 'friends' | 'circles' =
+    locationSharing === 'friends' ? 'friends'
+    : locationSharing === 'circles' ? 'circles'
+    : locationSharing === 'off' ? 'off'
+    : 'everyone';
   const [savingLocation, setSavingLocation] = useState(false);
   const [refreshingLocation, setRefreshingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
   const autoRefreshedRef = useRef(false);
+
+  const DURATION_PRESETS: { value: number; label: string }[] = [
+    { value: 900, label: '15 minutes' },
+    { value: 3600, label: '1 hour' },
+    { value: 14400, label: '4 hours' },
+    { value: 86400, label: '24 hours' },
+    { value: 0, label: 'Until I turn off' },
+  ];
+  const currentDurationValue: number = (() => {
+    if (!locationSharedUntil) return 0;
+    const remaining = Math.floor((new Date(locationSharedUntil).getTime() - Date.now()) / 1000);
+    if (remaining <= 0) return 0;
+    return DURATION_PRESETS.slice(0, -1).reduce(
+      (best, p) => Math.abs(p.value - remaining) < Math.abs(best - remaining) ? p.value : best,
+      DURATION_PRESETS[0].value,
+    );
+  })();
 
   const patchMe = async (payload: Record<string, unknown>) => {
     const res = await secureFetch('/api/v1/users/me', {
@@ -141,16 +164,19 @@ export default function MePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, meData?.data, locationSharing]);
 
-  const toggleLocationVisibility = async () => {
+  const AUDIENCE_TO_SHARING: Record<string, string> = {
+    everyone: 'approximate', friends: 'friends', circles: 'circles', off: 'off',
+  };
+
+  const changeAudience = async (next: 'off' | 'everyone' | 'friends' | 'circles') => {
     if (savingLocation) return;
     setSavingLocation(true);
     setLocationError(null);
     setLocationNotice(null);
     const prevData = meData;
 
-    if (locationVisible) {
-      // Turning OFF: clear lat/lng so user is fully removed from map
-      const payload = { location_sharing: 'off', location_lat: null, location_lng: null };
+    if (next === 'off') {
+      const payload = { location_sharing: 'off', location_lat: null, location_lng: null, location_shared_until: null };
       mutateMe({ ...meData, data: { ...(meData?.data || {}), ...payload } }, false);
       try {
         await patchMe(payload);
@@ -165,10 +191,18 @@ export default function MePage() {
       return;
     }
 
-    // Turning ON: request browser geolocation, then save sharing + coords
+    const nextSharing = AUDIENCE_TO_SHARING[next];
+    const wasOff = locationSharing === 'off';
+
     try {
-      const { lat, lng } = await getBrowserLocation();
-      const payload = { location_sharing: 'approximate', location_lat: lat, location_lng: lng };
+      let payload: Record<string, unknown>;
+      if (wasOff) {
+        const { lat, lng } = await getBrowserLocation();
+        const until = new Date(Date.now() + 86400 * 1000).toISOString();
+        payload = { location_sharing: nextSharing, location_lat: lat, location_lng: lng, location_shared_until: until };
+      } else {
+        payload = { location_sharing: nextSharing };
+      }
       mutateMe({ ...meData, data: { ...(meData?.data || {}), ...payload } }, false);
       try {
         await patchMe(payload);
@@ -176,10 +210,31 @@ export default function MePage() {
         invalidateMapCaches();
       } catch (err) {
         mutateMe(prevData, false);
-        setLocationError(err instanceof Error ? err.message : 'Failed to save location');
+        setLocationError(err instanceof Error ? err.message : 'Failed to update audience');
       }
     } catch (err) {
       setLocationError(err instanceof Error ? err.message : 'Unable to get your location');
+    } finally {
+      setSavingLocation(false);
+    }
+  };
+
+  const changeDuration = async (seconds: number) => {
+    if (savingLocation) return;
+    setSavingLocation(true);
+    setLocationError(null);
+    setLocationNotice(null);
+    const prevData = meData;
+    const until = seconds === 0 ? null : new Date(Date.now() + seconds * 1000).toISOString();
+    const payload = { location_shared_until: until };
+    mutateMe({ ...meData, data: { ...(meData?.data || {}), ...payload } }, false);
+    try {
+      await patchMe(payload);
+      mutateMe();
+      invalidateMapCaches();
+    } catch (err) {
+      mutateMe(prevData, false);
+      setLocationError(err instanceof Error ? err.message : 'Failed to update duration');
     } finally {
       setSavingLocation(false);
     }
@@ -290,11 +345,14 @@ export default function MePage() {
           <>
             <SectionTitle>Privacy</SectionTitle>
             <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
-              <LocationVisibilityRow
-                visible={locationVisible}
+              <LocationVisibilityPanel
+                audience={audience}
+                durationValue={currentDurationValue}
+                durationOptions={DURATION_PRESETS}
                 saving={savingLocation}
                 refreshing={refreshingLocation}
-                onToggle={toggleLocationVisibility}
+                onChangeAudience={changeAudience}
+                onChangeDuration={changeDuration}
                 onRefresh={() => refreshLocation({})}
               />
             </div>
@@ -416,11 +474,14 @@ export default function MePage() {
               <div>
                 <SectionTitle>Privacy</SectionTitle>
                 <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                  <LocationVisibilityRow
-                    visible={locationVisible}
+                  <LocationVisibilityPanel
+                    audience={audience}
+                    durationValue={currentDurationValue}
+                    durationOptions={DURATION_PRESETS}
                     saving={savingLocation}
                     refreshing={refreshingLocation}
-                    onToggle={toggleLocationVisibility}
+                    onChangeAudience={changeAudience}
+                    onChangeDuration={changeDuration}
                     onRefresh={() => refreshLocation({})}
                   />
                 </div>
@@ -493,48 +554,119 @@ function ManageCard({ icon, label, sub, onClick }: { icon: React.ReactNode; labe
   );
 }
 
-function LocationVisibilityRow({ visible, saving, refreshing, onToggle, onRefresh }: { visible: boolean; saving: boolean; refreshing: boolean; onToggle: () => void; onRefresh: () => void }) {
+type Audience = 'off' | 'everyone' | 'friends' | 'circles';
+
+function LocationVisibilityPanel({
+  audience, durationValue, durationOptions, saving, refreshing,
+  onChangeAudience, onChangeDuration, onRefresh,
+}: {
+  audience: Audience;
+  durationValue: number;
+  durationOptions: { value: number; label: string }[];
+  saving: boolean;
+  refreshing: boolean;
+  onChangeAudience: (a: Audience) => void;
+  onChangeDuration: (s: number) => void;
+  onRefresh: () => void;
+}) {
+  const visible = audience !== 'off';
+  const audienceLabel = audience === 'friends' ? 'Friends only' : audience === 'circles' ? 'My Circles' : 'Everyone';
+  const durationLabel = durationOptions.find(d => d.value === durationValue)?.label || 'Until I turn off';
   const subtitle = saving
-    ? (visible ? 'Removing your location…' : 'Getting your location…')
+    ? (visible ? 'Updating…' : 'Getting your location…')
     : refreshing ? 'Updating your location…'
-    : (visible ? 'Others can see your location marker on the world map' : 'Turn on to share your current location');
+    : (visible ? `Visible to ${audienceLabel.toLowerCase()} · ${durationLabel.toLowerCase()}` : 'Turn on to share your current location');
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <span style={{ color: visible ? '#00d4ff' : '#4a5068' }}>
-        {visible ? <Eye size={16} /> : <EyeOff size={16} />}
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-white">Show my location on map</p>
-        <p className="text-[11px] text-[#4a5068]">{subtitle}</p>
+    <div>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span style={{ color: visible ? '#00d4ff' : '#4a5068' }}>
+          {visible ? <Eye size={16} /> : <EyeOff size={16} />}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-white">Location on map</p>
+          <p className="text-[11px] text-[#4a5068] truncate">{subtitle}</p>
+        </div>
+        {visible && (
+          <button
+            onClick={onRefresh}
+            disabled={saving || refreshing}
+            aria-label="Update my location"
+            title="Update my location"
+            className="h-7 w-7 rounded-full flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-60"
+            style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
+          >
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+        )}
+        <button
+          onClick={() => onChangeAudience(visible ? 'off' : 'everyone')}
+          disabled={saving || refreshing}
+          aria-pressed={visible}
+          aria-label="Toggle location visibility"
+          className="h-7 w-12 rounded-full transition-colors cursor-pointer shrink-0 flex items-center p-0.5 disabled:opacity-60"
+          style={{ background: visible ? '#00d4ff' : 'rgba(255,255,255,0.12)' }}
+        >
+          <span
+            className="h-6 w-6 rounded-full bg-white transition-transform"
+            style={{
+              transform: visible ? 'translateX(20px)' : 'translateX(0)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }}
+          />
+        </button>
       </div>
       {visible && (
-        <button
-          onClick={onRefresh}
-          disabled={saving || refreshing}
-          aria-label="Update my location"
-          title="Update my location"
-          className="h-7 w-7 rounded-full flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-60"
-          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
-        >
-          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
-        </button>
+        <>
+          <PanelSelectRow
+            icon={<Users size={14} />}
+            label="Visible to"
+            value={audience}
+            disabled={saving || refreshing}
+            onChange={(v) => onChangeAudience(v as Audience)}
+            options={[
+              { value: 'everyone', label: 'Everyone' },
+              { value: 'friends', label: 'Friends only' },
+              { value: 'circles', label: 'My Circles' },
+            ]}
+          />
+          <PanelSelectRow
+            icon={<Clock size={14} />}
+            label="Expires in"
+            value={String(durationValue)}
+            disabled={saving || refreshing}
+            onChange={(v) => onChangeDuration(Number(v))}
+            options={durationOptions.map(o => ({ value: String(o.value), label: o.label }))}
+          />
+        </>
       )}
-      <button
-        onClick={onToggle}
-        disabled={saving || refreshing}
-        aria-pressed={visible}
-        aria-label="Toggle location visibility"
-        className="h-7 w-12 rounded-full transition-colors cursor-pointer shrink-0 flex items-center p-0.5 disabled:opacity-60"
-        style={{ background: visible ? '#00d4ff' : 'rgba(255,255,255,0.12)' }}
-      >
-        <span
-          className="h-6 w-6 rounded-full bg-white transition-transform"
-          style={{
-            transform: visible ? 'translateX(20px)' : 'translateX(0)',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-          }}
-        />
-      </button>
+    </div>
+  );
+}
+
+function PanelSelectRow({ icon, label, value, options, disabled, onChange }: {
+  icon: React.ReactNode; label: string; value: string;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+      <span className="text-[#4a5068]">{icon}</span>
+      <span className="text-[13px] text-white flex-1">{label}</span>
+      <div className="relative">
+        <select
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          className="appearance-none rounded-lg py-1.5 pl-3 pr-7 text-[12px] text-white cursor-pointer disabled:opacity-60"
+          style={{ background: 'rgba(10,11,15,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          {options.map(o => (
+            <option key={o.value} value={o.value} className="bg-[#0a0b0f]">{o.label}</option>
+          ))}
+        </select>
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#4a5068]">▾</span>
+      </div>
     </div>
   );
 }
