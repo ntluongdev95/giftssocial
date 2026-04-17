@@ -34,10 +34,16 @@ export async function GET(req: NextRequest) {
       ).bind(radiusKm).all<EventRow & { distance_km: number }>().then(r => r.results).catch(() => []),
 
       db.prepare(
-        `SELECT *, ${profileHaversine(lat, lng)} AS distance_km
-         FROM profiles
-         WHERE status = 'active' AND available = 1 AND ${profileHaversine(lat, lng)} < ?
-         ORDER BY trust_score_snapshot DESC LIMIT ?`
+        (() => {
+          const dist = `(6371 * acos(MIN(1.0, cos(radians(${lat})) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(p.lat)))))`;
+          return `SELECT p.*, ${dist} AS distance_km
+                  FROM profiles p
+                  LEFT JOIN users u ON u.id = p.user_id
+                  WHERE p.status = 'active' AND p.available = 1
+                    AND (u.location_sharing IS NULL OR u.location_sharing != 'off')
+                    AND ${dist} < ?
+                  ORDER BY p.trust_score_snapshot DESC LIMIT ?`;
+        })()
       ).bind(radiusKm, limit).all<Record<string, unknown>>().then(r => r.results).catch(() => []),
 
       db.prepare(

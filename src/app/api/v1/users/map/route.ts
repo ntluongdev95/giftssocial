@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
              FROM users
              WHERE status = 'active'
                AND location_lat IS NOT NULL AND location_lng IS NOT NULL
+               AND (location_sharing IS NULL OR location_sharing != 'off')
                AND ${distExpr} < ?
              ORDER BY distance ASC
              LIMIT ?`;
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
              FROM users
              WHERE status = 'active'
                AND location_lat IS NOT NULL AND location_lng IS NOT NULL
+               AND (location_sharing IS NULL OR location_sharing != 'off')
              ORDER BY last_seen_at DESC
              LIMIT ?`;
       values.push(limit);
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
     }));
 
     return NextResponse.json({ data }, {
-      headers: { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' },
+      headers: { 'Cache-Control': 'private, no-cache, must-revalidate' },
     });
   } catch (err) {
     console.error('[Users Map]', err);

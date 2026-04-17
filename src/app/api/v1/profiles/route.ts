@@ -19,26 +19,28 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
     const cursor = searchParams.get('cursor');
 
-    const conditions: string[] = ["status = 'active'"];
+    const conditions: string[] = ["p.status = 'active'"];
+    // Exclude profiles whose owner has turned off location sharing
+    conditions.push("(u.location_sharing IS NULL OR u.location_sharing != 'off')");
     const values: unknown[] = [];
 
     if (q) {
-      conditions.push(`(headline LIKE ? OR bio LIKE ? OR city LIKE ? OR industry LIKE ?)`);
+      conditions.push(`(p.headline LIKE ? OR p.bio LIKE ? OR p.city LIKE ? OR p.industry LIKE ?)`);
       values.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
 
     if (availableOnly && !q) {
-      conditions.push('available = 1');
+      conditions.push('p.available = 1');
     }
 
     if (industry) {
-      conditions.push(`industry = ?`);
+      conditions.push(`p.industry = ?`);
       values.push(industry);
     }
 
     if (skills && skills.length > 0) {
       // Simplified text search for each skill
-      const skillConditions = skills.map(() => `skills LIKE ?`);
+      const skillConditions = skills.map(() => `p.skills LIKE ?`);
       conditions.push(`(${skillConditions.join(' AND ')})`);
       for (const s of skills) {
         values.push(`%${s}%`);
@@ -46,27 +48,27 @@ export async function GET(req: NextRequest) {
     }
 
     if (workType) {
-      conditions.push(`work_type = ?`);
+      conditions.push(`p.work_type = ?`);
       values.push(workType);
     }
 
     if (cursor) {
-      conditions.push(`id > ?`);
+      conditions.push(`p.id > ?`);
       values.push(cursor);
     }
 
     // Order by distance if location provided, otherwise created_at DESC
-    let orderBy = 'created_at DESC';
+    let orderBy = 'p.created_at DESC';
     if (lat !== 0 || lng !== 0) {
       conditions.push(`
         (6371 * acos(
-          cos(radians(?)) * cos(radians(lat)) *
-          cos(radians(lng) - radians(?)) +
-          sin(radians(?)) * sin(radians(lat))
+          cos(radians(?)) * cos(radians(p.lat)) *
+          cos(radians(p.lng) - radians(?)) +
+          sin(radians(?)) * sin(radians(p.lat))
         )) < ?
       `);
       values.push(lat, lng, lat, radiusKm);
-      orderBy = `(6371 * acos(cos(radians(${lat})) * cos(radians(lat)) * cos(radians(lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(lat))))`;
+      orderBy = `(6371 * acos(cos(radians(${lat})) * cos(radians(p.lat)) * cos(radians(p.lng) - radians(${lng})) + sin(radians(${lat})) * sin(radians(p.lat))))`;
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -74,7 +76,7 @@ export async function GET(req: NextRequest) {
 
     const db = getDB();
     const result = await db.prepare(
-      `SELECT * FROM profiles ${where} ORDER BY ${orderBy} LIMIT ?`
+      `SELECT p.* FROM profiles p LEFT JOIN users u ON u.id = p.user_id ${where} ORDER BY ${orderBy} LIMIT ?`
     ).bind(...values).all<Record<string, unknown>>();
 
     const rows = result.results;

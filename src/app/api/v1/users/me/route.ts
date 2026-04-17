@@ -27,7 +27,11 @@ export async function PATCH(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: { code: 'unauthorized', message: 'Login required' } }, { status: 401 });
 
     const body = await req.json();
-    const allowedFields = ['display_name', 'bio', 'avatar_url', 'location_lat', 'location_lng', 'city'];
+    const allowedFields = ['display_name', 'bio', 'avatar_url', 'location_lat', 'location_lng', 'city', 'location_sharing'];
+
+    if (body.location_sharing !== undefined && !['exact', 'approximate', 'off'].includes(body.location_sharing)) {
+      return NextResponse.json({ error: { code: 'invalid_request', message: 'Invalid location_sharing value' } }, { status: 400 });
+    }
     const updates: string[] = [];
     const values: unknown[] = [];
 

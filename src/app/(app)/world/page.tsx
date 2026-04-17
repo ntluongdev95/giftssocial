@@ -42,6 +42,7 @@ const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
 
 const fetcher = (url: string) =>
   fetch(url, {
+    cache: 'no-store',
     headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
   }).then((r) => r.json());
 

@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       const pLimit = tab === 'top' ? 5 : limit;
       queries.push(
         db.prepare(
-          `SELECT id, display_name, username, avatar_url, bio, location_lat, location_lng,
+          `SELECT id, display_name, username, avatar_url, bio, location_lat, location_lng, location_sharing,
                   ${distExpr} AS distance
            FROM users
            WHERE status = 'active'
@@ -57,13 +57,18 @@ export async function GET(req: NextRequest) {
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} trust_score DESC
            LIMIT ?`
         ).bind(pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
-          results.people = rows.map(r => ({
-            id: r.id, type: 'people',
-            title: r.display_name || r.username || 'User',
-            subtitle: r.username ? `@${r.username}` : (r.bio as string)?.slice(0, 60) || '',
-            image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
-            distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
-          }));
+          results.people = rows.map(r => {
+            const hidden = r.location_sharing === 'off';
+            return {
+              id: r.id, type: 'people',
+              title: r.display_name || r.username || 'User',
+              subtitle: r.username ? `@${r.username}` : (r.bio as string)?.slice(0, 60) || '',
+              image: r.avatar_url,
+              lat: hidden ? null : r.location_lat,
+              lng: hidden ? null : r.location_lng,
+              distance: hidden || !r.distance ? null : Math.round((r.distance as number) * 10) / 10,
+            };
+          });
         }).catch((err) => { console.error('[Search]', err); })
       );
     }

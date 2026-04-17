@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import useSWR from 'swr';
+import useSWR, { mutate as globalMutate } from 'swr';
 import { useAuthStore } from '@/stores/auth-store';
+import { secureFetch } from '@/lib/fetch';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import {
   MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
-  HelpCircle, Globe, Bell, Wallet, Award, Signal,
+  HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw,
 } from 'lucide-react';
 
 const fetcher = (url: string) => fetch(url, {
@@ -55,8 +56,134 @@ export default function MePage() {
   const { data: followersData } = useSWR(isAuthed ? '/api/v1/follows?type=followers' : null, fetcher, swrOpts);
   const { data: circlesData } = useSWR(isAuthed ? '/api/v1/circles/me' : null, fetcher, swrOpts);
   const { data: notifsData } = useSWR(isAuthed ? '/api/v1/notifications?unread=true' : null, fetcher, { ...swrOpts, refreshInterval: 10000 });
-  const { data: meData } = useSWR(isAuthed ? '/api/v1/users/me' : null, fetcher, swrOpts);
+  const { data: meData, mutate: mutateMe } = useSWR(isAuthed ? '/api/v1/users/me' : null, fetcher, swrOpts);
   const userPhotos: string[] = meData?.data?.photos || [];
+  const locationSharing: string = meData?.data?.location_sharing || 'approximate';
+  const locationVisible = locationSharing !== 'off';
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [refreshingLocation, setRefreshingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationNotice, setLocationNotice] = useState<string | null>(null);
+  const autoRefreshedRef = useRef(false);
+
+  const patchMe = async (payload: Record<string, unknown>) => {
+    const res = await secureFetch('/api/v1/users/me', {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.error?.message || `Request failed (${res.status})`);
+    return json;
+  };
+
+  const getBrowserLocation = (): Promise<{ lat: number; lng: number }> =>
+    new Promise((resolve, reject) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        reject(new Error('Geolocation not supported by this browser'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => reject(new Error(err.message || 'Location permission denied')),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+      );
+    });
+
+  const invalidateMapCaches = () => {
+    globalMutate(
+      (key) => typeof key === 'string' && (
+        key.startsWith('/api/v1/users/map') ||
+        key.startsWith('/api/v1/nearby') ||
+        key.startsWith('/api/v1/profiles') ||
+        key.startsWith('/api/v1/search')
+      ),
+      undefined,
+      { revalidate: true },
+    );
+  };
+
+  const refreshLocation = async (opts: { silent?: boolean } = {}) => {
+    if (refreshingLocation) return;
+    if (!opts.silent) {
+      setRefreshingLocation(true);
+      setLocationError(null);
+      setLocationNotice(null);
+    }
+    try {
+      const { lat, lng } = await getBrowserLocation();
+      const payload = { location_lat: lat, location_lng: lng };
+      await patchMe(payload);
+      mutateMe();
+      invalidateMapCaches();
+      if (!opts.silent) setLocationNotice('Location updated');
+    } catch (err) {
+      if (!opts.silent) setLocationError(err instanceof Error ? err.message : 'Unable to refresh location');
+    } finally {
+      if (!opts.silent) setRefreshingLocation(false);
+    }
+  };
+
+  // Silent auto-refresh on mount if toggle is ON and permission already granted
+  useEffect(() => {
+    if (autoRefreshedRef.current) return;
+    if (!isAuthed || !meData?.data) return;
+    if (locationSharing === 'off') return;
+    if (typeof navigator === 'undefined' || !navigator.permissions) return;
+    autoRefreshedRef.current = true;
+    navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((result) => {
+      if (result.state === 'granted') refreshLocation({ silent: true });
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed, meData?.data, locationSharing]);
+
+  const toggleLocationVisibility = async () => {
+    if (savingLocation) return;
+    setSavingLocation(true);
+    setLocationError(null);
+    setLocationNotice(null);
+    const prevData = meData;
+
+    if (locationVisible) {
+      // Turning OFF: clear lat/lng so user is fully removed from map
+      const payload = { location_sharing: 'off', location_lat: null, location_lng: null };
+      mutateMe({ ...meData, data: { ...(meData?.data || {}), ...payload } }, false);
+      try {
+        await patchMe(payload);
+        mutateMe();
+        invalidateMapCaches();
+      } catch (err) {
+        mutateMe(prevData, false);
+        setLocationError(err instanceof Error ? err.message : 'Failed to hide location');
+      } finally {
+        setSavingLocation(false);
+      }
+      return;
+    }
+
+    // Turning ON: request browser geolocation, then save sharing + coords
+    try {
+      const { lat, lng } = await getBrowserLocation();
+      const payload = { location_sharing: 'approximate', location_lat: lat, location_lng: lng };
+      mutateMe({ ...meData, data: { ...(meData?.data || {}), ...payload } }, false);
+      try {
+        await patchMe(payload);
+        mutateMe();
+        invalidateMapCaches();
+      } catch (err) {
+        mutateMe(prevData, false);
+        setLocationError(err instanceof Error ? err.message : 'Failed to save location');
+      }
+    } catch (err) {
+      setLocationError(err instanceof Error ? err.message : 'Unable to get your location');
+    } finally {
+      setSavingLocation(false);
+    }
+  };
   const signalsCount = signalsData?.data?.length || 0;
   const savedCount = savedData?.data?.length || 0;
   const bookingsCount = bookingsData?.data?.length || 0;
@@ -157,6 +284,24 @@ export default function MePage() {
           <ActivityRow icon={<Calendar size={16} />} label="Create Event" href="/me/events" onClick={() => router.push('/me/events')} />
           <ActivityRow icon={<Bot size={16} />} label="My Agents" href="#" onClick={() => {}} last />
         </div>
+
+        {/* Privacy */}
+        {isAuthed && (
+          <>
+            <SectionTitle>Privacy</SectionTitle>
+            <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <LocationVisibilityRow
+                visible={locationVisible}
+                saving={savingLocation}
+                refreshing={refreshingLocation}
+                onToggle={toggleLocationVisibility}
+                onRefresh={() => refreshLocation({})}
+              />
+            </div>
+            {locationError && <p className="text-[11px] text-[#f87171] mb-4 px-1">{locationError}</p>}
+            {locationNotice && !locationError && <p className="text-[11px] text-[#34d399] mb-4 px-1">{locationNotice}</p>}
+          </>
+        )}
 
         {/* Shortcuts */}
         <SectionTitle>Shortcuts</SectionTitle>
@@ -266,6 +411,23 @@ export default function MePage() {
                 <ManageCard icon={<Calendar size={20} />} label="Create Event" sub="Host an event" href="/me/events" onClick={() => router.push('/me/events')} />
               </div>
             </div>
+
+            {isAuthed && (
+              <div>
+                <SectionTitle>Privacy</SectionTitle>
+                <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <LocationVisibilityRow
+                    visible={locationVisible}
+                    saving={savingLocation}
+                    refreshing={refreshingLocation}
+                    onToggle={toggleLocationVisibility}
+                    onRefresh={() => refreshLocation({})}
+                  />
+                </div>
+                {locationError && <p className="text-[11px] text-[#f87171] mt-2 px-1">{locationError}</p>}
+                {locationNotice && !locationError && <p className="text-[11px] text-[#34d399] mt-2 px-1">{locationNotice}</p>}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -328,6 +490,52 @@ function ManageCard({ icon, label, sub, onClick }: { icon: React.ReactNode; labe
       <p className="text-xs font-semibold text-white">{label}</p>
       <p className="text-[10px] text-[#4a5068]">{sub}</p>
     </button>
+  );
+}
+
+function LocationVisibilityRow({ visible, saving, refreshing, onToggle, onRefresh }: { visible: boolean; saving: boolean; refreshing: boolean; onToggle: () => void; onRefresh: () => void }) {
+  const subtitle = saving
+    ? (visible ? 'Removing your location…' : 'Getting your location…')
+    : refreshing ? 'Updating your location…'
+    : (visible ? 'Others can see your location marker on the world map' : 'Turn on to share your current location');
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span style={{ color: visible ? '#00d4ff' : '#4a5068' }}>
+        {visible ? <Eye size={16} /> : <EyeOff size={16} />}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-white">Show my location on map</p>
+        <p className="text-[11px] text-[#4a5068]">{subtitle}</p>
+      </div>
+      {visible && (
+        <button
+          onClick={onRefresh}
+          disabled={saving || refreshing}
+          aria-label="Update my location"
+          title="Update my location"
+          className="h-7 w-7 rounded-full flex items-center justify-center cursor-pointer shrink-0 disabled:opacity-60"
+          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
+        >
+          <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+        </button>
+      )}
+      <button
+        onClick={onToggle}
+        disabled={saving || refreshing}
+        aria-pressed={visible}
+        aria-label="Toggle location visibility"
+        className="h-7 w-12 rounded-full transition-colors cursor-pointer shrink-0 flex items-center p-0.5 disabled:opacity-60"
+        style={{ background: visible ? '#00d4ff' : 'rgba(255,255,255,0.12)' }}
+      >
+        <span
+          className="h-6 w-6 rounded-full bg-white transition-transform"
+          style={{
+            transform: visible ? 'translateX(20px)' : 'translateX(0)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          }}
+        />
+      </button>
+    </div>
   );
 }
 

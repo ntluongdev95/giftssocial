@@ -9,9 +9,11 @@ import {
   useState,
 } from 'react';
 import maplibregl from 'maplibre-gl';
+import useSWR from 'swr';
 import { escapeHtml } from '@/lib/sanitize';
 import { useLocationStore } from '@/stores/locationStore';
 import { useMapStore } from '@/stores/mapStore';
+import { useAuthStore } from '@/stores/auth-store';
 import StarfieldBackground from './StarfieldBackground';
 
 // ─── Map Context ──────────────────────────────────────────────────────────
@@ -88,6 +90,14 @@ export default function WorldMap({
 
   const { lat, lng } = useLocationStore();
   const viewMode = useMapStore((s) => s.viewMode);
+  const isAuthed = useAuthStore((s) => s.isAuthed);
+  const { data: meData } = useSWR<{ data: { location_sharing?: string } }>(
+    isAuthed ? '/api/v1/users/me' : null,
+    (url: string) => fetch(url, {
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+    }).then(r => r.json()),
+  );
+  const selfLocationHidden = meData?.data?.location_sharing === 'off';
 
   const center: [number, number] =
     lat !== null && lng !== null ? [lng, lat] : DALLAS;
@@ -281,7 +291,20 @@ export default function WorldMap({
   // User location dot (GeoJSON layer — no pointer event blocking)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || lat === null || lng === null) return;
+    if (!map) return;
+
+    const removeUserDot = () => {
+      try {
+        if (map.getLayer('gao-user-dot')) map.removeLayer('gao-user-dot');
+        if (map.getLayer('gao-user-pulse')) map.removeLayer('gao-user-pulse');
+        if (map.getSource('gao-user-loc')) map.removeSource('gao-user-loc');
+      } catch {}
+    };
+
+    if (lat === null || lng === null || selfLocationHidden) {
+      removeUserDot();
+      return;
+    }
 
     const geo: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -312,7 +335,7 @@ export default function WorldMap({
 
     if (map.isStyleLoaded()) addUserDot();
     else map.once('style.load', addUserDot);
-  }, [lat, lng]);
+  }, [lat, lng, selfLocationHidden]);
 
   // Search pin marker
   const searchPinRef = useRef<maplibregl.Marker | null>(null);
