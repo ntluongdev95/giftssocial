@@ -168,15 +168,21 @@ export default function WorldPage() {
     if (itemType === 'people' && !activeLayers.has('people')) toggleLayer('people');
     if (itemType === 'circle' && !activeLayers.has('circle')) toggleLayer('circle');
 
-    if (itemLat && itemLng) {
+    const hasCoords = !!itemLat && !!itemLng;
+    if (hasCoords) {
       const zoom = itemType === 'place' ? 14 : 15;
       window.dispatchEvent(new CustomEvent('gao-fly-to', {
         detail: { lng: itemLng, lat: itemLat, zoom, label: item.title, entityId: isEntity ? item.id : undefined, entityType: isEntity ? itemType : undefined }
       }));
     }
-    // For entities, fetch full data and show detail after marker lands
+    // For entities, show detail — skip the flyTo delay if there's no destination
     if (isEntity) {
-      setTimeout(() => showSearchEntityDetail(item.id as string, itemType, { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string }), 2500);
+      const preview = { title: item.title as string, subtitle: item.subtitle as string, image: item.image as string };
+      if (hasCoords) {
+        setTimeout(() => showSearchEntityDetail(item.id as string, itemType, preview), 2500);
+      } else {
+        showSearchEntityDetail(item.id as string, itemType, preview);
+      }
     }
   }, [activeLayers, toggleLayer, desktop]);
 
