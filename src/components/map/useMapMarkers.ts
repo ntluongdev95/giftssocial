@@ -1639,92 +1639,100 @@ export function useMapMarkers(
     const PULSE_SRC = 'gao-signal-pulse-src';
     const PULSE_LAYER = 'gao-signal-pulse-layer';
 
-    const cleanup = () => {
+    const removeAll = () => {
       try { if (map.getLayer(PULSE_LAYER)) map.removeLayer(PULSE_LAYER); } catch {}
       try { if (map.getSource(PULSE_SRC)) map.removeSource(PULSE_SRC); } catch {}
       try { if (map.hasImage(PULSE_IMG)) map.removeImage(PULSE_IMG); } catch {}
     };
 
-    if (viewMode !== '3d') { cleanup(); return; }
+    if (viewMode !== '3d') { removeAll(); return; }
 
     const size = 120;
-    // MapLibre StyleImageInterface — redraws per frame, triggers repaint
-    const pulsingDot: maplibregl.StyleImageInterface = {
+    // Animated pulsing dot — StyleImageInterface. Follows the official
+    // MapLibre "add-image-animated" pattern.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pulsingDot: any = {
       width: size,
       height: size,
       data: new Uint8Array(size * size * 4),
       context: null as CanvasRenderingContext2D | null,
-      // @ts-expect-error — StyleImageInterface allows extra fields
-      onAdd(this: { context: CanvasRenderingContext2D | null; width: number; height: number }) {
-        const cvs = document.createElement('canvas');
-        cvs.width = this.width; cvs.height = this.height;
-        this.context = cvs.getContext('2d');
+      onAdd() {
+        const canvas = document.createElement('canvas');
+        canvas.width = this.width;
+        canvas.height = this.height;
+        this.context = canvas.getContext('2d');
       },
-      // @ts-expect-error — StyleImageInterface allows extra fields
-      render(this: { context: CanvasRenderingContext2D | null; width: number; height: number; data: Uint8Array }) {
+      render() {
         const duration = 1800;
         const t = (performance.now() % duration) / duration;
-        const ctx = this.context;
-        if (!ctx) return false;
-        const radius = (this.width / 2) * 0.28;
-        const outerRadius = (this.width / 2) * 0.85 * t + radius;
-        const cx = this.width / 2;
-        const cy = this.height / 2;
-        ctx.clearRect(0, 0, this.width, this.height);
+        const context: CanvasRenderingContext2D | null = this.context;
+        if (!context) return false;
+        const w = this.width as number;
+        const h = this.height as number;
+        const cx = w / 2;
+        const cy = h / 2;
+        const coreRadius = (w / 2) * 0.28;
+        const outerRadius = (w / 2) * 0.85 * t + coreRadius;
+        const midRadius = (w / 2) * 0.55 * t + coreRadius;
 
-        // Expanding outer ring — bright fade
-        ctx.beginPath();
-        ctx.arc(cx, cy, outerRadius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0, 212, 255, ${0.55 * (1 - t)})`;
-        ctx.fill();
+        context.clearRect(0, 0, w, h);
 
-        // Second ring slightly delayed
-        const outerRadius2 = (this.width / 2) * 0.55 * t + radius;
-        ctx.beginPath();
-        ctx.arc(cx, cy, outerRadius2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0, 194, 224, ${0.35 * (1 - t)})`;
-        ctx.fill();
+        // Outer expanding ring
+        context.beginPath();
+        context.arc(cx, cy, outerRadius, 0, Math.PI * 2);
+        context.fillStyle = `rgba(0, 212, 255, ${0.55 * (1 - t)})`;
+        context.fill();
 
-        // Inner solid dot with cyan glow
-        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.6);
+        // Mid ring
+        context.beginPath();
+        context.arc(cx, cy, midRadius, 0, Math.PI * 2);
+        context.fillStyle = `rgba(0, 194, 224, ${0.35 * (1 - t)})`;
+        context.fill();
+
+        // Cyan glow halo
+        const glow = context.createRadialGradient(cx, cy, 0, cx, cy, coreRadius * 1.8);
         glow.addColorStop(0, 'rgba(0, 212, 255, 1)');
-        glow.addColorStop(0.6, 'rgba(0, 212, 255, 0.6)');
+        glow.addColorStop(0.6, 'rgba(0, 212, 255, 0.55)');
         glow.addColorStop(1, 'rgba(0, 212, 255, 0)');
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius * 1.6, 0, Math.PI * 2);
-        ctx.fillStyle = glow;
-        ctx.fill();
+        context.beginPath();
+        context.arc(cx, cy, coreRadius * 1.8, 0, Math.PI * 2);
+        context.fillStyle = glow;
+        context.fill();
 
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = 'rgba(0,212,255,1)';
-        ctx.lineWidth = 3;
-        ctx.fill();
-        ctx.stroke();
+        // White core with cyan outline
+        context.beginPath();
+        context.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+        context.fillStyle = '#ffffff';
+        context.strokeStyle = 'rgba(0, 212, 255, 1)';
+        context.lineWidth = 3;
+        context.fill();
+        context.stroke();
 
-        this.data = new Uint8Array(ctx.getImageData(0, 0, this.width, this.height).data.buffer);
+        // Copy pixels back to image data — must be Uint8Array/Uint8ClampedArray
+        this.data = context.getImageData(0, 0, w, h).data;
         map.triggerRepaint();
         return true;
       },
     };
 
-    if (!map.hasImage(PULSE_IMG)) {
-      try { map.addImage(PULSE_IMG, pulsingDot as maplibregl.StyleImageInterface, { pixelRatio: 2 }); } catch {}
-    }
+    const ensureLayer = () => {
+      try {
+        if (!map.hasImage(PULSE_IMG)) map.addImage(PULSE_IMG, pulsingDot, { pixelRatio: 2 });
+      } catch (err) {
+        console.warn('[PulseLayer] addImage failed', err);
+        return;
+      }
 
-    // Build source from signals with valid coords
-    const features: GeoJSON.Feature[] = signals
-      .filter((s) => s.location?.coordinates && s.location.coordinates.length === 2)
-      .slice(0, 80)
-      .map((s) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: s.location.coordinates as [number, number] },
-        properties: { id: s.id, type: s.type },
-      }));
-    const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+      const features: GeoJSON.Feature[] = signals
+        .filter((s) => s.location?.coordinates && s.location.coordinates.length === 2)
+        .slice(0, 80)
+        .map((s) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: s.location.coordinates as [number, number] },
+          properties: { id: s.id, type: s.type },
+        }));
+      const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
 
-    const addLayer = () => {
       try {
         const existing = map.getSource(PULSE_SRC) as maplibregl.GeoJSONSource | undefined;
         if (existing) {
@@ -1743,16 +1751,36 @@ export function useMapMarkers(
               'icon-pitch-alignment': 'viewport',
               'icon-rotation-alignment': 'viewport',
             },
-            paint: { 'icon-opacity': 0.9 },
           });
         }
-      } catch {}
+        // Always raise to top so later-added entity layers do not cover it.
+        if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER);
+      } catch (err) {
+        console.warn('[PulseLayer] add source/layer failed', err);
+      }
     };
 
-    if (map.isStyleLoaded()) addLayer();
-    else map.once('style.load', addLayer);
+    const raiseToTop = () => { try { if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER); } catch {} };
+    if (map.isStyleLoaded()) {
+      ensureLayer();
+    } else {
+      const onLoad = () => ensureLayer();
+      map.once('style.load', onLoad);
+      map.off('style.load', onLoad);
+      map.once('style.load', onLoad);
+    }
 
-    return cleanup;
+    // Re-raise after buildGlobe / other layers likely finish.
+    const t1 = setTimeout(() => { ensureLayer(); raiseToTop(); }, 500);
+    const t2 = setTimeout(raiseToTop, 1500);
+    const t3 = setTimeout(raiseToTop, 3000);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      removeAll();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, signals, styleVersion, viewMode]);
 
