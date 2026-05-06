@@ -345,7 +345,7 @@ import { createPasskeyCredential, getPasskeyCredential, isPasskeyCancelError, is
 import { getFCMToken, requestFCMToken } from '@/lib/passkey/fcm';
 import { useAccountStore } from '@/stores/account-store';
 import { useAuthStore } from '@/stores/auth-store';
-import { X, ArrowRight, ShieldCheck, Fingerprint } from 'lucide-react';
+import { X, ShieldCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -599,43 +599,8 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
               </button>
             </div>
 
-            {/* Passkey divider */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
-              <span className="text-[8px] font-bold tracking-[0.2em] text-[#4a5068] uppercase">or passkey</span>
-              <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
-            </div>
           </>
         )}
-
-        {/* PASSKEY: carousel disabled — only showing passkey buttons */}
-        <div className="space-y-4">
-          {/* PASSKEY: buttons disabled, using toast placeholder */}
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              onClick={() => toast.info('Passkey coming soon')}
-              className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-            >
-              <Fingerprint size={16} className="text-[#00d4ff] shrink-0" />
-              <div className="text-left">
-                <span className="text-[10px] font-semibold text-white block">New Passkey</span>
-                <span className="text-[8px] text-[#4a5068]">Create</span>
-              </div>
-            </button>
-            <button
-              onClick={() => toast.info('Passkey restore coming soon')}
-              className="flex items-center gap-2 rounded-xl px-4 py-3 cursor-pointer transition-all active:scale-[0.97]"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-            >
-              <ArrowRight size={16} className="text-[#4a5068] shrink-0" />
-              <div className="text-left">
-                <span className="text-[10px] font-semibold text-white block">Restore</span>
-                <span className="text-[8px] text-[#4a5068]">Recovery</span>
-              </div>
-            </button>
-          </div>
-        </div>
 
         {/* Security badge */}
         <div className="flex flex-col items-center mt-6">

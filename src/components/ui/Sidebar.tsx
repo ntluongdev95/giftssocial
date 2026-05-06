@@ -10,8 +10,6 @@ import { DomainBadge } from '@/components/gao/DomainBadge';
 import { useAuthStore } from '@/stores/auth-store';
 import { useNotifications } from '@/hooks/useNotifications';
 import AuthPopup from '@/components/ui/AuthPopup';
-import { logoutApi } from '@/app/api/calls/apiAuth';
-import { clearLoginSessionStorage, deleteAccessTokenFromLocal, deleteRefreshTokenFromLocal } from '@/lib/clients/storage.helper';
 
 const TABS = [
   { href: '/world', label: 'World', Icon: Globe },
@@ -43,10 +41,7 @@ export default function Sidebar() {
     // 1. Server-side: revoke sessions + clear httpOnly cookies
     try {
       await Promise.race([
-        Promise.all([
-          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }),
-          logoutApi(),
-        ]),
+        fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'same-origin' }),
         new Promise(r => setTimeout(r, 3000)), // 3s timeout — don't hang forever
       ]);
     } catch { /* proceed with local cleanup regardless */ }
@@ -54,9 +49,8 @@ export default function Sidebar() {
     // 2. Local cleanup — always runs even if server fails
     document.cookie = 'gao_logged_in=; Max-Age=0; path=/';
     document.cookie = 'gao_csrf=; Max-Age=0; path=/';
-    deleteAccessTokenFromLocal();
-    deleteRefreshTokenFromLocal();
-    clearLoginSessionStorage();
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     logoutStorage();
     setLoggingOut(false);
   };
