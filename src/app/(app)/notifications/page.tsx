@@ -31,6 +31,8 @@ const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   review_received: { icon: <Star size={16} />, color: '#fbbf24' },
   follow_new: { icon: <Users size={16} />, color: '#00d4ff' },
   new_message: { icon: <MessageCircle size={16} />, color: '#3B82F6' },
+  capsule_received: { icon: <span className="text-base leading-none">💌</span>, color: '#a855f7' },
+  capsule_opened: { icon: <span className="text-base leading-none">💝</span>, color: '#ec4899' },
   system: { icon: <Bell size={16} />, color: '#4a5068' },
 };
 
@@ -61,6 +63,12 @@ export default function NotificationsPage() {
     // Circle join request
     if (n.type === 'circle_join_request') {
       router.push('/me/circles');
+      return;
+    }
+
+    // Capsule notifications — go to capsules list (server returns full capsule on PATCH open)
+    if (n.type === 'capsule_received' || n.type === 'capsule_opened') {
+      router.push('/me/capsules');
       return;
     }
 

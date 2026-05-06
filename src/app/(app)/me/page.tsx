@@ -327,6 +327,7 @@ export default function MePage() {
           <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value={`${upcomingEvents}`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value={`${pendingBookings} pending`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
+          <ActivityRow icon={<span className="text-base">🪦</span>} label="Time Capsules" value="Bury memories" href="/me/capsules" onClick={() => router.push('/me/capsules')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
           <ActivityRow icon={<Wallet size={16} />} label="Wallet & Rewards" value="0 Gao Points" href="#" onClick={() => {}} last />
         </div>
@@ -455,6 +456,7 @@ export default function MePage() {
                 <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value={`${upcomingEvents} upcoming`} color="#f87171" onClick={() => router.push('/me/bookings')} />
                 <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value={`${pendingBookings} pending`} color="#00d4ff" onClick={() => router.push('/me/bookings')} />
                 <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" onClick={() => router.push('/me/signals')} />
+                <ActivityCard icon={<span className="text-lg leading-none">🪦</span>} label="Time Capsules" value="Bury memories" color="#94a3b8" onClick={() => router.push('/me/capsules')} />
                 <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" onClick={() => {}} />
                 <ActivityCard icon={<Wallet size={18} />} label="Wallet & Rewards" value="0 Gao Points" color="#a78bfa" onClick={() => {}} />
                 <ActivityCard icon={<Award size={18} />} label="Trust & Badges" value="Build reputation" color="#34d399" onClick={() => {}} />

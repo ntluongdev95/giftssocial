@@ -527,6 +527,7 @@ CREATE TABLE IF NOT EXISTS notifications (
                       'circle_invite', 'circle_activity', 'circle_join_request',
                       'proof_earned', 'trust_upgraded',
                       'review_received', 'follow_new', 'new_message',
+                      'capsule_received', 'capsule_opened',
                       'system'
                     )),
   title             TEXT NOT NULL,
