@@ -63,22 +63,6 @@ export async function GET(req: NextRequest) {
                   OR REPLACE(LOWER(users.username), ' ', '') LIKE ?)
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} users.trust_score DESC
            LIMIT ?`
-<<<<<<< HEAD
-        ).bind(...peopleVisibility.params, pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
-          results.people = rows.map(r => {
-            const visible = r.location_visible === 1;
-            return {
-              id: r.id, type: 'people',
-              title: r.display_name || r.username || 'User',
-              subtitle: r.username ? `@${r.username}` : (r.bio as string)?.slice(0, 60) || '',
-              image: r.avatar_url,
-              lat: visible ? r.location_lat : null,
-              lng: visible ? r.location_lng : null,
-              distance: visible && r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
-            };
-          });
-        }).catch((err) => { console.error('[Search]', err); })
-=======
         ).bind(pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.people = rows.map(r => ({
             id: r.id, type: 'people',
@@ -87,8 +71,7 @@ export async function GET(req: NextRequest) {
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
           }));
-        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
->>>>>>> 07c1ea23ccac04a9d93dc74741d392f5b65ae73e
+        }).catch((err) => { console.error('[Search]', err); })
       );
     }
 
