@@ -91,18 +91,22 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
     })();
   }, [open, followingLoaded]);
 
-  // Debounced user search
+  // Debounced user search — all setState happens inside the setTimeout
+  // callback (async, after render) so React 19's set-state-in-effect rule
+  // doesn't flag the early "clear results" path.
   useEffect(() => {
-    if (!recipientQuery.trim() || recipientQuery.trim().length < 2) {
-      setRecipientResults([]);
-      return;
-    }
+    const trimmed = recipientQuery.trim();
+    const isShort = trimmed.length < 2;
     const handle = setTimeout(async () => {
+      if (isShort) {
+        setRecipientResults([]);
+        return;
+      }
       setSearchingUsers(true);
       try {
         const token = localStorage.getItem('access_token') || '';
         const res = await fetch(
-          `/api/v1/search?q=${encodeURIComponent(recipientQuery.trim())}&tab=people&limit=8`,
+          `/api/v1/search?q=${encodeURIComponent(trimmed)}&tab=people&limit=8`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const data = await res.json();
@@ -110,7 +114,7 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
         setRecipientResults(people);
       } catch { setRecipientResults([]); }
       setSearchingUsers(false);
-    }, 280);
+    }, isShort ? 0 : 280);
     return () => clearTimeout(handle);
   }, [recipientQuery]);
 
