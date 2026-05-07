@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import SplashWrapper from '@/components/ui/SplashWrapper';
+import Web3Provider from '@/providers/Web3Provider';
 import './globals.css';
 
 const inter = Inter({
@@ -76,7 +77,7 @@ export default function RootLayout({
       </head>
       <body className="h-full bg-[#0a0b0f] text-[#f0f4ff] overflow-x-hidden antialiased">
         <SplashWrapper />
-        {children}
+        <Web3Provider>{children}</Web3Provider>
       </body>
     </html>
   );

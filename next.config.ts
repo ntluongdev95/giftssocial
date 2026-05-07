@@ -93,7 +93,15 @@ const withPWA = withPWAInit({
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   bundlePagesRouterDependencies: true,
-  turbopack: {},
+  turbopack: {
+    // wagmi v3 `tempo` connectors call `import('accounts')` for non-EVM
+    // adapters that we don't ship. Aliasing the bare specifier to a
+    // stub satisfies Turbopack's static resolution; the runtime path
+    // is never invoked because Gao ID is EVM-only via SIWE.
+    resolveAlias: {
+      accounts: './src/lib/gao-id/_accounts-stub.ts',
+    },
+  },
   typescript: { tsconfigPath: './tsconfig.build.json' },
   async headers() {
     const noCache = [{ key: 'Cache-Control', value: 'no-cache' }];
