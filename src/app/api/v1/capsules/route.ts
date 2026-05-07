@@ -32,8 +32,29 @@ export async function GET(req: NextRequest) {
       .all<Record<string, unknown>>();
 
     const now = Date.now();
-    const data = (result.results || []).map(c => {
-      const parsed = parseRow(c) as Record<string, unknown>;
+    const parsedRows = (result.results || []).map(c => parseRow(c) as Record<string, unknown>);
+
+    // Collect every recipient id across all capsules and resolve display names
+    // in one query. Used by the reveal animation to greet the recipient by name.
+    const allRecipientIds = new Set<string>();
+    parsedRows.forEach(p => {
+      const ids = p.recipient_ids;
+      if (Array.isArray(ids)) ids.forEach((id: unknown) => { if (typeof id === 'string') allRecipientIds.add(id); });
+    });
+    const nameById = new Map<string, string>();
+    if (allRecipientIds.size > 0) {
+      const ids = Array.from(allRecipientIds);
+      const placeholders = ids.map(() => '?').join(',');
+      const usersRes = await db
+        .prepare(`SELECT id, display_name, username FROM users WHERE id IN (${placeholders})`)
+        .bind(...ids)
+        .all<{ id: string; display_name?: string | null; username?: string | null }>();
+      (usersRes.results || []).forEach(u => {
+        nameById.set(u.id, u.display_name || u.username || '');
+      });
+    }
+
+    const data = parsedRows.map(parsed => {
       const unlockTime = new Date(parsed.unlock_at as string).getTime();
       const isCreator = parsed.creator_id === userId;
       const role: 'sender' | 'recipient' = isCreator ? 'sender' : 'recipient';
@@ -47,12 +68,16 @@ export async function GET(req: NextRequest) {
         parsed.photos = [];
       }
 
+      const recipientIds = Array.isArray(parsed.recipient_ids) ? (parsed.recipient_ids as string[]) : [];
+      const recipient_names = recipientIds.map(id => nameById.get(id) || '').filter(Boolean);
+
       return {
         ...parsed,
         role,
         my_opened_at: myOpenedAt,
         can_open_now: !myOpenedAt && unlockTime <= now,
         time_until_unlock_ms: Math.max(0, unlockTime - now),
+        recipient_names,
       };
     });
 

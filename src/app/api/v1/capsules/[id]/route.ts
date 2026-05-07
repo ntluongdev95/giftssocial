@@ -59,6 +59,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: { code: 'not_found', message: 'Capsule not found' } }, { status: 404 });
     }
 
+    // Parse recipient_ids early so we can fetch names + use for permission check.
+    let recipientIds: string[] = [];
+    try {
+      recipientIds = typeof capsule.recipient_ids === 'string'
+        ? JSON.parse(capsule.recipient_ids as string)
+        : (capsule.recipient_ids as string[] | null) || [];
+    } catch { recipientIds = []; }
+
+    // Resolve recipient display names so the reveal animation can address them
+    // ("HAPPY BIRTHDAY <name>"). Empty for capsules with no recipients.
+    let recipientNames: string[] = [];
+    if (recipientIds.length > 0) {
+      const placeholders = recipientIds.map(() => '?').join(',');
+      const usersRes = await db
+        .prepare(`SELECT id, display_name, username FROM users WHERE id IN (${placeholders})`)
+        .bind(...recipientIds)
+        .all<{ id: string; display_name?: string | null; username?: string | null }>();
+      const byId = new Map((usersRes.results || []).map(u => [u.id, u]));
+      recipientNames = recipientIds
+        .map(rid => {
+          const u = byId.get(rid);
+          return u?.display_name || u?.username || '';
+        })
+        .filter(Boolean);
+    }
+
     // Already opened by THIS user — return content (per-user open state)
     const existingOpen = await db
       .prepare('SELECT opened_at FROM capsule_opens WHERE capsule_id = ? AND user_id = ?')
@@ -66,18 +92,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .first<{ opened_at: string }>();
     if (existingOpen) {
       return NextResponse.json({
-        data: { ...parseRow(capsule), my_opened_at: existingOpen.opened_at },
+        data: { ...parseRow(capsule), my_opened_at: existingOpen.opened_at, recipient_names: recipientNames },
         already_opened: true,
       });
     }
 
     // Permission check
-    let recipientIds: string[] = [];
-    try {
-      recipientIds = typeof capsule.recipient_ids === 'string'
-        ? JSON.parse(capsule.recipient_ids as string)
-        : (capsule.recipient_ids as string[] | null) || [];
-    } catch { recipientIds = []; }
 
     const isCreator = capsule.creator_id === userId;
     const isRecipient = recipientIds.includes(userId);
@@ -148,7 +168,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     return NextResponse.json({
-      data: { ...parseRow(opened), my_opened_at: openedAt },
+      data: { ...parseRow(opened), my_opened_at: openedAt, recipient_names: recipientNames },
       just_opened: true,
     });
   } catch (err) {

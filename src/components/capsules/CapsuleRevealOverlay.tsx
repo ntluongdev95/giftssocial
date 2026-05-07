@@ -24,6 +24,7 @@ interface Capsule {
   sender_name?: string;
   sender_username?: string;
   sender_avatar?: string;
+  recipient_names?: string[];
 }
 
 interface Props {
@@ -99,6 +100,7 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
       if (res.ok) {
         // PATCH returns the unmasked capsule (message + photos) — adopt it so
         // the message phase has content to render for first-time openers.
+        console.log('[CapsuleRevealOverlay] PATCH response data:', data.data);
         if (data.data) setCapsule(data.data);
         setOpened(true);
         setPhase('reveal');
@@ -299,6 +301,14 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
                 style={{ left: '50%', top: '50%' }}
               >✨</motion.span>
             ))}
+
+            {/* Drone light show — only for birthday theme. Drones swarm up from below
+                right after the bird drops the letter (~3.5s) and lock into a
+                "HAPPY BIRTHDAY" formation in the sky above. The first recipient
+                name is rendered as a second drone line below the greeting. */}
+            {theme.id === 'birthday' && (
+              <BirthdayDroneShow delay={3.5} name={capsule.recipient_names?.[0] || ''} />
+            )}
 
             {/* Centre stage — themed celebration around the scroll emoji (~4.7s onwards) */}
             <CelebrationScene theme={theme} delay={4.7} />
@@ -740,22 +750,552 @@ function CelebrationScene({ theme, delay }: { theme: { id: string; scrollEmoji: 
         );
       })}
 
-      {/* Centre piece — scroll emoji bursts in then breathes gently */}
-      <motion.div
-        initial={{ scale: 0, opacity: 0, rotate: 25 }}
-        animate={{ scale: [0, 1.3, 1], opacity: 1, rotate: [25, -8, 0] }}
-        transition={{ duration: 1, delay, times: [0, 0.55, 1], ease: [0.16, 1, 0.3, 1] }}
-        className="relative z-10"
-      >
+      {/* Centre piece — scroll emoji bursts in then breathes gently. For the
+          birthday theme the cake is rendered as a drone formation instead, so
+          we skip the emoji centrepiece (the empty box still reserves layout). */}
+      {!isBirthday && (
         <motion.div
-          animate={{ y: [0, -5, 0], rotate: [-2, 2, -2] }}
-          transition={{ duration: 3.4, delay: delay + 1.2, repeat: Infinity, ease: 'easeInOut' }}
-          className="text-8xl"
-          style={{ filter: `drop-shadow(0 8px 20px ${theme.accentColor}60)` }}
+          initial={{ scale: 0, opacity: 0, rotate: 25 }}
+          animate={{ scale: [0, 1.3, 1], opacity: 1, rotate: [25, -8, 0] }}
+          transition={{ duration: 1, delay, times: [0, 0.55, 1], ease: [0.16, 1, 0.3, 1] }}
+          className="relative z-10"
         >
-          {theme.scrollEmoji}
+          <motion.div
+            animate={{ y: [0, -5, 0], rotate: [-2, 2, -2] }}
+            transition={{ duration: 3.4, delay: delay + 1.2, repeat: Infinity, ease: 'easeInOut' }}
+            className="text-8xl"
+            style={{ filter: `drop-shadow(0 8px 20px ${theme.accentColor}60)` }}
+          >
+            {theme.scrollEmoji}
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ─── Birthday drone show ────────────────────────────────────────────────────
+// 5x7 bitmap font for the letters in "HAPPY BIRTHDAY". Each lit cell becomes
+// one drone (a small glowing point of light) in the formation.
+const LETTER_BITMAPS: Record<string, number[][]> = {
+  H: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+  ],
+  A: [
+    [0,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+  ],
+  P: [
+    [1,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+  ],
+  Y: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,0,1,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+  ],
+  B: [
+    [1,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,0],
+  ],
+  I: [
+    [1,1,1,1,1],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [1,1,1,1,1],
+  ],
+  R: [
+    [1,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,0],
+    [1,1,0,0,0],
+    [1,0,1,0,0],
+    [1,0,0,1,1],
+  ],
+  T: [
+    [1,1,1,1,1],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+    [0,0,1,0,0],
+  ],
+  D: [
+    [1,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,1,1,1,0],
+  ],
+  C: [
+    [0,1,1,1,1],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [0,1,1,1,1],
+  ],
+  E: [
+    [1,1,1,1,1],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,1,1,1,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,1,1,1,1],
+  ],
+  F: [
+    [1,1,1,1,1],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,1,1,1,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+  ],
+  G: [
+    [0,1,1,1,1],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,1,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,1,1,1],
+  ],
+  J: [
+    [0,0,1,1,1],
+    [0,0,0,1,0],
+    [0,0,0,1,0],
+    [0,0,0,1,0],
+    [0,0,0,1,0],
+    [1,0,0,1,0],
+    [0,1,1,0,0],
+  ],
+  K: [
+    [1,0,0,0,1],
+    [1,0,0,1,0],
+    [1,0,1,0,0],
+    [1,1,0,0,0],
+    [1,0,1,0,0],
+    [1,0,0,1,0],
+    [1,0,0,0,1],
+  ],
+  L: [
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,1,1,1,1],
+  ],
+  M: [
+    [1,0,0,0,1],
+    [1,1,0,1,1],
+    [1,0,1,0,1],
+    [1,0,1,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+  ],
+  N: [
+    [1,0,0,0,1],
+    [1,1,0,0,1],
+    [1,0,1,0,1],
+    [1,0,1,0,1],
+    [1,0,0,1,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+  ],
+  O: [
+    [0,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,1,1,0],
+  ],
+  Q: [
+    [0,1,1,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,1,0,1],
+    [1,0,0,1,0],
+    [0,1,1,0,1],
+  ],
+  S: [
+    [0,1,1,1,1],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [0,1,1,1,0],
+    [0,0,0,0,1],
+    [0,0,0,0,1],
+    [1,1,1,1,0],
+  ],
+  U: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,1,1,0],
+  ],
+  V: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,0,1,0],
+    [0,0,1,0,0],
+  ],
+  W: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [1,0,1,0,1],
+    [1,0,1,0,1],
+    [1,1,0,1,1],
+    [1,0,0,0,1],
+  ],
+  X: [
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+    [0,1,0,1,0],
+    [0,0,1,0,0],
+    [0,1,0,1,0],
+    [1,0,0,0,1],
+    [1,0,0,0,1],
+  ],
+  Z: [
+    [1,1,1,1,1],
+    [0,0,0,0,1],
+    [0,0,0,1,0],
+    [0,0,1,0,0],
+    [0,1,0,0,0],
+    [1,0,0,0,0],
+    [1,1,1,1,1],
+  ],
+};
+
+// Outline silhouette of a layered birthday cake with 3 candles. 15 cells wide,
+// 12 tall. 1 = standard drone, 2 = flame drone (warm color + flicker), 0 = empty.
+const CAKE_BITMAP: number[][] = [
+  [0,0,0,0,0,2,0,2,0,2,0,0,0,0,0],   // flame tips (3 candles at cols 5, 7, 9)
+  [0,0,0,0,0,2,0,2,0,2,0,0,0,0,0],   // flame mids
+  [0,0,0,0,0,2,0,2,0,2,0,0,0,0,0],   // flame bases (touching wick)
+  [0,0,0,0,0,1,0,1,0,1,0,0,0,0,0],   // wick tops
+  [0,0,0,0,0,1,0,1,0,1,0,0,0,0,0],   // candle bodies
+  [0,0,0,1,1,1,1,1,1,1,1,1,0,0,0],   // frosting top edge
+  [0,0,1,0,0,1,0,0,0,1,0,0,1,0,0],   // frosting drips
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],   // cake top edge (full width)
+  [0,1,0,0,0,0,0,0,0,0,0,0,0,1,0],   // cake side
+  [0,1,0,0,0,0,0,0,0,0,0,0,0,1,0],   // cake side
+  [0,1,0,0,0,0,0,0,0,0,0,0,0,1,0],   // cake side
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],   // cake bottom
+];
+
+type DroneKind = 'std' | 'flame';
+
+interface DronePoint {
+  // Final locked position in formation
+  x: number;
+  y: number;
+  // Launch pad position (cluster on the ground)
+  launchX: number;
+  launchY: number;
+  // Mid-arc position (high up, sweeping toward target)
+  midX: number;
+  midY: number;
+  // Approach hover position (just before locking, slight overshoot)
+  approachX: number;
+  approachY: number;
+  // Subtle in-formation wobble — drones GPS-correct around their lock spot
+  wobbleX: number;
+  wobbleY: number;
+  pulseDur: number;
+  pulseDelay: number;
+  // Tiny per-drone variation so launches don't fire in lockstep
+  launchJitter: number;
+  idx: number;
+  // 'flame' drones use a warm gradient + faster, bigger flicker
+  kind: DroneKind;
+}
+
+// Build a drone with a clustered-launch + arc trajectory toward (tx, ty).
+// Three launch pads (left/center/right) chosen by the target's horizontal side
+// give the show a natural fan-out look.
+function buildDronePoint(tx: number, ty: number, idx: number, kind: DroneKind = 'std'): DronePoint {
+  let padX: number;
+  if (tx < -40) padX = -190 + (Math.random() - 0.5) * 70;
+  else if (tx > 40) padX = 190 + (Math.random() - 0.5) * 70;
+  else padX = (Math.random() - 0.5) * 90;
+  const launchY = 380 + Math.random() * 50;
+
+  // Arc midpoint — pulled toward target with horizontal sway and pulled UP so
+  // the path rises high before descending into formation (drones don't fly
+  // straight; they climb, drift, then settle).
+  const midX = (padX + tx) / 2 + (Math.random() - 0.5) * 110;
+  const midY = launchY * 0.22 + ty * 0.6 - 40 + (Math.random() - 0.5) * 50;
+
+  // Approach point — close to target with mild overshoot (real drones
+  // momentarily overshoot then GPS-correct in).
+  const approachX = tx + (Math.random() - 0.5) * 32;
+  const approachY = ty + (Math.random() - 0.5) * 24;
+
+  const isFlame = kind === 'flame';
+  return {
+    x: tx,
+    y: ty,
+    launchX: padX,
+    launchY,
+    midX,
+    midY,
+    approachX,
+    approachY,
+    // Flames flicker harder than the formation pulse — bigger wobble + faster cycle.
+    wobbleX: isFlame ? 1.4 + Math.random() * 1.8 : 0.7 + Math.random() * 1.4,
+    wobbleY: isFlame ? 1.2 + Math.random() * 1.6 : 0.5 + Math.random() * 1.1,
+    pulseDur: isFlame ? 0.4 + Math.random() * 0.45 : 2.0 + Math.random() * 2.0,
+    pulseDelay: Math.random() * (isFlame ? 0.4 : 1.8),
+    launchJitter: (Math.random() - 0.5) * 0.18,
+    idx,
+    kind,
+  };
+}
+
+// Strip diacritics + non-letter chars from a name and uppercase it so the
+// bitmap font (ASCII A–Z only) can render Vietnamese names like "Nguyễn" → "NGUYEN".
+function normalizeNameForDrones(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 14); // hard cap so very long names don't blow past the formation width
+}
+
+// Compute the rendered width (in px) of one bitmap-font line.
+function measureLineWidth(line: string, cellSize: number, letterCols: number, letterGap: number, wordGap: number): number {
+  return line.split('').reduce((sum, c, i, arr) => {
+    const w = c === ' ' ? wordGap : letterCols * cellSize;
+    const gap = i === arr.length - 1 ? 0 : (arr[i + 1] === ' ' || c === ' ' ? 0 : letterGap);
+    return sum + w + gap;
+  }, 0);
+}
+
+// Lay drones along a bitmap-font line at vertical offset `lineY`, pushing them
+// into `points`.
+function layoutLine(
+  line: string,
+  lineY: number,
+  cellSize: number,
+  letterCols: number,
+  letterGap: number,
+  wordGap: number,
+  points: DronePoint[],
+) {
+  const lineW = measureLineWidth(line, cellSize, letterCols, letterGap, wordGap);
+  let cursor = -lineW / 2;
+  line.split('').forEach((char, i, arr) => {
+    if (char === ' ') {
+      cursor += wordGap;
+      return;
+    }
+    const bm = LETTER_BITMAPS[char];
+    if (!bm) return; // unknown char (e.g. punctuation) — skip silently
+    bm.forEach((row, ry) => {
+      row.forEach((cell, cx) => {
+        if (cell === 1) {
+          points.push(buildDronePoint(cursor + cx * cellSize, lineY + ry * cellSize, points.length));
+        }
+      });
+    });
+    cursor += letterCols * cellSize;
+    if (i < arr.length - 1 && arr[i + 1] !== ' ') cursor += letterGap;
+  });
+}
+
+function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
+  const drones = useMemo<DronePoint[]>(() => {
+    // Greeting + optional recipient name on a second line below.
+    const greeting = 'HAPPY BIRTHDAY';
+    const recipientLine = normalizeNameForDrones(name);
+    if (typeof window !== 'undefined') {
+      console.log('[BirthdayDroneShow] name input:', JSON.stringify(name), '→ normalized:', JSON.stringify(recipientLine));
+    }
+
+    const letterCols = 5;
+    const greetingCellsWide = 79; // see measureLineWidth math: 13 letters @5 + 11 gaps + 1 word-gap (3)
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1100;
+    const targetWidth = Math.min(vw - 32, 760);
+    const cellSize = Math.max(2, Math.min(Math.floor(targetWidth / greetingCellsWide), 7));
+    const letterGap = cellSize;
+    const wordGap = cellSize * 3;
+    const lineHeight = 7 * cellSize;
+    // Recipient line uses a slightly smaller cell so the name reads as a subtitle.
+    const nameCellSize = Math.max(2, Math.round(cellSize * 0.78));
+    const nameLineHeight = 7 * nameCellSize;
+    const lineSpacing = cellSize * 2.4;
+
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const formationOffsetY = -Math.max(220, Math.min(vh * 0.36, 360));
+    // Stack greeting on top, name below; centre the whole stack on formationOffsetY.
+    const totalStackHeight = lineHeight + (recipientLine ? lineSpacing + nameLineHeight : 0);
+    const stackTop = formationOffsetY - totalStackHeight / 2;
+    const greetingY = stackTop;
+    const nameY = stackTop + lineHeight + lineSpacing;
+
+    const points: DronePoint[] = [];
+    layoutLine(greeting, greetingY, cellSize, letterCols, letterGap, wordGap, points);
+    if (recipientLine) {
+      layoutLine(recipientLine, nameY, nameCellSize, letterCols, nameCellSize, nameCellSize * 3, points);
+    }
+
+    // Cake formation — drones replace the cake emoji. Anchored slightly above
+    // the screen centre so the title text "From X years ago" + button below
+    // remain readable. Cake cell size is independent of the text cell size so
+    // the cake can stay a consistent visual weight across viewports.
+    const cakeCols = CAKE_BITMAP[0].length;
+    const cakeRows = CAKE_BITMAP.length;
+    const cakeCell = Math.max(5, Math.min(Math.floor((vw - 32) / 28), 8));
+    const cakeWidth = cakeCols * cakeCell;
+    const cakeHeight = cakeRows * cakeCell;
+    const cakeOffsetY = -60; // matches where the cake emoji sat
+    const cakeStartX = -cakeWidth / 2;
+    const cakeStartY = cakeOffsetY - cakeHeight / 2;
+
+    CAKE_BITMAP.forEach((row, ry) => {
+      row.forEach((cell, cx) => {
+        if (cell === 1 || cell === 2) {
+          const kind: DroneKind = cell === 2 ? 'flame' : 'std';
+          points.push(buildDronePoint(cakeStartX + cx * cakeCell, cakeStartY + ry * cakeCell, points.length, kind));
+        }
+      });
+    });
+    return points;
+  }, [name]);
+
+  return (
+    // Use a viewport-anchored fixed wrapper so the formation isn't clipped by
+    // the small reveal-phase text container (it was an absolute box ~300x150).
+    // Drones paint behind the cake/scroll because they appear first in DOM order.
+    <div className="fixed inset-0 pointer-events-none">
+      {drones.map(d => {
+        // Stagger flight starts in a slow ripple, plus a small per-drone jitter
+        // so the launch line isn't perfectly mechanical.
+        const dotDelay = delay + d.idx * 0.012 + d.launchJitter;
+        const isFlame = d.kind === 'flame';
+        // Flame drones flicker harder + larger range. Standard drones do a slow GPS hover.
+        const flickerScale = isFlame
+          ? [1, 1.45, 0.7, 1.3, 0.85, 1]
+          : [1, 0.85, 1];
+        const flickerOpacity = isFlame
+          ? [1, 0.65, 1, 0.75, 1]
+          : [1, 0.55, 1];
+        return (
+          <motion.div
+            key={d.idx}
+            initial={{ x: d.launchX, y: d.launchY, scale: 0.2, opacity: 0 }}
+            animate={{
+              // 4-keyframe arc: launch pad → mid-arc (high & swept) → approach
+              // (overshoot near target) → locked. Per-segment ease gives the
+              // takeoff weight, smooth travel, and a soft GPS-style settle.
+              x: [d.launchX, d.midX, d.approachX, d.x],
+              y: [d.launchY, d.midY, d.approachY, d.y],
+              scale: [0.2, 0.7, 1.15, 1],
+              opacity: [0, 0.45, 0.9, 1],
+            }}
+            transition={{
+              duration: 3.6,
+              delay: dotDelay,
+              times: [0, 0.42, 0.85, 1],
+              ease: ['easeIn', 'easeInOut', [0.16, 1, 0.3, 1]],
+            }}
+            className="absolute"
+            style={{ left: '50%', top: '50%' }}
+          >
+            <motion.div
+              // Once locked, drones gently GPS-correct around their point and
+              // pulse their light. Flames flicker faster + jitter more, like fire.
+              initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+              animate={{
+                x: [0, d.wobbleX, -d.wobbleX * 0.7, d.wobbleX * 0.4, 0],
+                y: [0, -d.wobbleY, d.wobbleY * 0.5, -d.wobbleY * 0.3, 0],
+                opacity: flickerOpacity,
+                scale: flickerScale,
+              }}
+              transition={{
+                delay: dotDelay + 3.6 + d.pulseDelay,
+                duration: d.pulseDur,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              style={
+                isFlame
+                  ? {
+                      width: 5,
+                      height: 5,
+                      marginLeft: -2.5,
+                      marginTop: -2.5,
+                      borderRadius: '50%',
+                      background: 'radial-gradient(circle, #fff4c2 0%, #ffb347 35%, #ff5722 75%, transparent 100%)',
+                      boxShadow:
+                        '0 0 4px rgba(255,244,194,1), 0 0 10px rgba(255,152,0,0.95), 0 0 18px rgba(255,87,34,0.85), 0 0 28px rgba(220,38,38,0.55)',
+                    }
+                  : {
+                      width: 4,
+                      height: 4,
+                      marginLeft: -2,
+                      marginTop: -2,
+                      borderRadius: '50%',
+                      background: '#fff7d6',
+                      boxShadow:
+                        '0 0 4px rgba(255,247,214,0.95), 0 0 10px rgba(251,191,36,0.85), 0 0 18px rgba(236,72,153,0.45)',
+                    }
+              }
+            />
+          </motion.div>
+        );
+      })}
     </div>
   );
 }
