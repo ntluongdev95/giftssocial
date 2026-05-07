@@ -115,8 +115,14 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
   };
 
   const burial = new Date(capsule.buried_at);
-  const unlock = new Date(capsule.unlock_at);
-  const yearsBurried = ((Date.now() - burial.getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1);
+  // Captured once on mount — `Date.now()` is impure and would re-evaluate on
+  // every render, drifting the displayed years and tripping the React purity
+  // lint rule.
+  const yearsBurried = useMemo(
+    () => ((Date.now() - burial.getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const handleShare = async () => {
     const text = `I dug up a time capsule I buried ${yearsBurried} years ago at ${capsule.location_name || 'a special place'} 🪦✨`;

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, MapPin, Calendar, Lock, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
+import useSWR from 'swr';
 import CapsuleCreateModal from '@/components/capsules/CapsuleCreateModal';
 import CapsuleRevealOverlay from '@/components/capsules/CapsuleRevealOverlay';
 
@@ -32,25 +33,24 @@ interface Capsule {
   recipient_ids?: string | string[];
 }
 
+const fetcher = async (url: string): Promise<Capsule[]> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || 'Failed to load');
+  return (data?.data as Capsule[]) || [];
+};
+
 export default function CapsulesPage() {
   const router = useRouter();
-  const [capsules, setCapsules] = useState<Capsule[]>([]);
-  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [reveal, setReveal] = useState<Capsule | null>(null);
 
-  const fetchCapsules = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('access_token') || '';
-      const res = await fetch('/api/v1/capsules', { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      if (data.data) setCapsules(data.data);
-    } catch { toast.error('Failed to load'); }
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchCapsules(); }, []);
+  const { data: capsules = [], isLoading: loading, mutate } = useSWR<Capsule[]>(
+    '/api/v1/capsules',
+    fetcher,
+    { onError: (err) => toast.error(err.message || 'Failed to load') },
+  );
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this capsule? This cannot be undone.')) return;
@@ -59,7 +59,7 @@ export default function CapsulesPage() {
       const res = await fetch(`/api/v1/capsules/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         toast.success('Capsule removed');
-        setCapsules(c => c.filter(x => x.id !== id));
+        mutate(prev => (prev || []).filter(x => x.id !== id), { revalidate: false });
       } else {
         const err = await res.json();
         toast.error(err.error?.message || 'Failed');
@@ -196,8 +196,8 @@ export default function CapsulesPage() {
         )}
       </div>
 
-      <CapsuleCreateModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => fetchCapsules()} />
-      {reveal && <CapsuleRevealOverlay capsule={reveal} onClose={() => { setReveal(null); fetchCapsules(); }} />}
+      <CapsuleCreateModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => mutate()} />
+      {reveal && <CapsuleRevealOverlay capsule={reveal} onClose={() => { setReveal(null); mutate(); }} />}
     </div>
   );
 }
@@ -234,7 +234,6 @@ function StatCard({ emoji, label, value, color, highlight }: { emoji: string; la
 
 function CapsuleCard({ capsule, onClick, action, onDelete }: { capsule: Capsule; onClick: () => void; action: 'dig' | 'locked' | 'opened'; onDelete?: () => void }) {
   const unlock = new Date(capsule.unlock_at);
-  const buried = new Date(capsule.buried_at);
 
   return (
     <div className="rounded-2xl p-4 cursor-pointer transition-all hover:scale-[1.01] relative group" style={{ background: 'rgba(17,19,24,0.5)', border: action === 'dig' ? '1px solid rgba(251,191,36,0.3)' : '1px solid rgba(255,255,255,0.04)' }} onClick={onClick}>
