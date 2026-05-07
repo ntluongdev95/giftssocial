@@ -74,8 +74,11 @@ Bootstrap users keep using all non-Gao-canonical features normally.
   (private), default branch `main`. Files of interest:
   - `src/routes/auth-v2.ts` — `/v2/auth/{nonce, verify, refresh, logout, me}`
   - `src/routes/jwks.ts` — `/.well-known/jwks.json`
-  - `src/routes/me.ts`, `me-v2.ts`, `profile.ts` — bearer-protected
-    canonical profile endpoints under `/v1/me/*`
+  - `src/routes/me-v2.ts` — bearer-protected **canonical** identity +
+    profile + avatar endpoints under `/v2/me/*` (the single profile API
+    every Gao client must use)
+  - `src/routes/me.ts`, `profile.ts` — `/v1/me/*` legacy endpoints,
+    kept for backward compatibility only; do not target from new code
   - `wrangler.toml` — TEST tier vars (allowlists, chain IDs, audience)
   - `docs/auth/AUTH_*.md`, `docs/gao-id/*.md` — protocol docs
 - **Frontend (social-web)**: GitHub `Gao-systems/Social-web`, branch
@@ -101,31 +104,47 @@ From `dev-gao-core/gao-id-worker@main`:
 | POST | `/v2/auth/verify` | `{ message, signature }` → `{ accessToken, expiresIn, csrfToken, user }`. Sets HttpOnly `gao_refresh` cookie scoped to `/v2/auth/refresh` (and a duplicate at `/v2/auth/logout`). Rate-limit 10/min. |
 | POST | `/v2/auth/refresh` | `credentials: 'include'`. Rotates refresh family, mints new access + csrf. CSRF double-submit is **no-op server-side as of `auth-v2.ts` head comment**; the security model is HttpOnly refresh cookie + strict Origin allowlist (`originGuard`). The `csrfToken` field is still returned for backward-compat. |
 | POST | `/v2/auth/logout` | Revokes refresh family, clears cookies. |
-| GET | `/v2/auth/me` | Bearer-only: `{ rootId, walletAddress, chainId }`. Lightweight probe. |
+| GET | `/v2/auth/me` | Bearer-only: `{ rootId, walletAddress, chainId }`. Lightweight session-validity probe. |
 | GET | `/.well-known/jwks.json` | ES256 JWKS, `cache-control: max-age=300`. |
-| GET | `/v1/me/profile` | Bearer. Canonical profile shape — `{ rootId, displayName, bio, avatarUrl, website, location, socialX, socialTg, metadata, version, ... }`. |
-| PUT | `/v1/me/profile` | Bearer. Partial update. |
-| GET | `/v1/me/domains`, `/v1/me/domain-summary` | Bearer. Domain ownership. |
+| GET | `/v2/me/` | Bearer. **Canonical composite "current user" view** — identity + profile + wallets + domains summary + billing/affiliate summaries in a single round-trip. Use this for hydration after `/v2/auth/verify`. |
+| GET | `/v2/me/profile` | Bearer. **Canonical profile read.** Wire shape: `{ rootId: "gaoid_…", displayName, bio, avatarUrl, website, location, socialX, socialTg, metadata, version, createdAt, updatedAt }` (camelCase). Source: `src/routes/me-v2.ts:93`. |
+| PUT | `/v2/me/profile` | Bearer. **Canonical profile upsert.** Body is a partial patch of the same shape; server re-reads the row and returns the updated `CanonicalProfile`. Source: `src/routes/me-v2.ts:232`. |
+| POST | `/v2/me/avatar` | Bearer. **JSON-only avatar upload.** Body `{ mimeType: "image/jpeg" \| "image/png" \| "image/webp", base64: "…" }` → `{ avatarUrl }`. Limits: ≤512 KB decoded / ≤700 KB base64; rate-limit 10/min. Returned `avatarUrl` can be PUT directly into `/v2/me/profile.avatarUrl`. Source: `src/routes/me-v2.ts:218`. |
+| GET | `/v2/me/domains`, `/v2/me/domain-summary` | Bearer. Domain ownership / aggregated read model. |
+| GET, PUT | `/v1/me/profile` | **Legacy.** Kept for backward compatibility; do not target from new social-web code. The `/v2/me/profile` route above is the SINGLE canonical profile API per `me-v2.ts:59-65`. |
 
 JWT shape:
 - `alg: ES256`, `kid` per env (TEST: `gao-id-test-2026-04`)
 - `iss`: issuer origin (e.g. `https://id-test.gao.domains`)
 - `aud`: gateway audience (e.g. `https://api-test.gao.domains`)
-- `sub`: `rootId`
+- `sub`: canonical identity id, format `gaoid_<ULID>` (per
+  `docs/gao-id/PROFILE_MODEL.md` and `me-v2.ts:69`). Older docs that
+  show `root_…` as an example string are stale; the wire format on
+  every current handler is `gaoid_*`.
 
 ---
 
 ## 4. Tier topology
 
-| Env | Issuer origin | API audience | Config source |
-|---|---|---|---|
-| DEV | `https://id-dev.gao.domains` | `https://api-dev.gao.domains` | private ops repo (status not yet confirmed) |
-| TEST | `https://id-test.gao.domains` | `https://api-test.gao.domains` | `wrangler.toml@main` of `dev-gao-core/gao-id-worker` |
-| PROD | `https://id.gao.domains` | `https://api.gao.domains` | private ops repo |
+| Env | Issuer origin | API audience | Config source | Status (as of 2026-05-07) |
+|---|---|---|---|---|
+| DEV | `https://id-dev.gao.domains` | `https://api-dev.gao.domains` | private ops repo | Not deployed (DNS does not resolve) |
+| TEST | `https://id-test.gao.domains` | `https://api-test.gao.domains` | `wrangler.toml@main` of `dev-gao-core/gao-id-worker` | **LIVE — current official Gao ID API for `app-dev.gao.social`** (`/healthz` 200; JWKS `kid=gao-id-test-2026-04`) |
+| PROD | `https://id.gao.domains` | `https://api.gao.domains` | private ops repo | Not deployed (DNS does not resolve) |
 
-**Open question for ops** (Section 12): Is `id-dev.gao.domains`
-currently live? If not, social-web `app-dev.gao.social` will need to
-target TEST tier as a transitional step.
+`id-test.gao.domains` is the source-of-truth issuer for social-web
+`app-dev.gao.social` for Phases 1 and 2. If `id-dev.gao.domains` is
+brought online by ops in a later phase, migration to it is a
+one-line change in `NEXT_PUBLIC_GAO_ID_API` (and corresponding
+audience var). Until then, all references to the "dev tier issuer"
+mean `id-test.gao.domains`.
+
+Data-isolation note: the TEST tier worker shares its D1 (`gao-id-dev`,
+id `8e446097-…`) with other test clients (`test.gao.domains`,
+`test-explorer.gao.global`, `test-store.gao.global`). Each user is
+isolated by `rootId`, but development test data will mix across
+clients. This is acceptable for the dev tier and is not a security
+issue.
 
 ---
 
@@ -195,8 +214,8 @@ To avoid confusion across phases:
 | **Bootstrap user** | The social-web local account, identified by `users.id` (e.g. `user_abc...`). Created on first Google/Apple login. Has email, display name (local cache), social-web preferences. **Stays forever.** |
 | **Bootstrap session** | The social-web HS256 JWT + cookies set on social-web origin. Authorizes access to social-web app features. **Stays forever.** |
 | **Gao root / `rootId`** | The canonical Gao identity. Wallet-agnostic, one per human. Issued by gao-id-worker on first successful SIWE for a wallet. Carries the Canonical Profile, domain ownership, payment identity, trust score. |
-| **Gao ID Bearer** | The ES256 JWT minted by gao-id-worker. Memory-only on the client. Authorizes Gao-canonical reads/writes (`/v1/me/*`, gateway endpoints). |
-| **Canonical Profile** | The profile fields stored at the issuer (`/v1/me/profile`). Owned by Gao ID, never owned by bootstrap. |
+| **Gao ID Bearer** | The ES256 JWT minted by gao-id-worker. Memory-only on the client. Authorizes Gao-canonical reads/writes (`/v2/me/*`, gateway endpoints). |
+| **Canonical Profile** | The profile fields stored at the issuer (`/v2/me/profile`). Owned by Gao ID, never owned by bootstrap. |
 | **`provider_links`** | Bridge table linking a bootstrap user to a Gao root after SIWE. Written from social-web. |
 | **Gao-gated feature** | A feature that requires Gao ID Bearer (Gao Profile, .gao domain, payments, trust badge, official identity). Hidden behind `<GaoIdGate>` for bootstrap-only users. |
 
@@ -264,10 +283,11 @@ WALLET_CONNECTED_NOT_VERIFIED    wagmi connected, no SIWE yet
    │ user signs SIWE → /v2/auth/verify → 200
    ▼
 GAO_ID_AUTHENTICATED             ES256 Bearer in memory; provider_links row created
-   │ GET /v1/me/profile
+   │ GET /v2/me/   (composite hydration: identity + profile + wallets + domains)
    ▼
 GAO_PROFILE_MISSING              profile.displayName === null → CreateProfileModal
-   │ PUT /v1/me/profile
+   │ POST /v2/me/avatar  (optional; returns avatarUrl)
+   │ PUT  /v2/me/profile (canonical upsert)
    ▼
 GAO_PROFILE_ACTIVE               Gao-gated feature unlock (domains, payments, signals)
 
@@ -332,8 +352,8 @@ commits, diff-first.
 | Phase | Scope | Gate to next phase |
 |---|---|---|
 | **0** (this commit) | Plan committed; no runtime change. | Plan approved. |
-| **1** | gao-id-worker ops change: add `app-dev.gao.social` to `SIWE_DOMAIN` + `ALLOWED_ORIGINS` (DEV or TEST tier). Reown dashboard origin add. social-web GitHub Environment Variables added: `NEXT_PUBLIC_GAO_ID_API`, `NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN`, `NEXT_PUBLIC_GAO_ID_AUDIENCE`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`. No social-web code change yet. | Issuer reachable from `app-dev.gao.social` origin (verified via curl with manual Origin header). |
-| **2** | Add Gao ID layer to social-web **behind feature flag** `NEXT_PUBLIC_GAO_ID_ENABLED=false`: install web3 deps (`wagmi`, `viem`, `@reown/appkit`, `@reown/appkit-adapter-wagmi`, `siwe` or hand-rolled), add `src/lib/gao-id/*`, `src/stores/gao-id-store.ts`, `src/providers/Web3Provider.tsx`. Rename `useAuthStore` → `useBootstrapAuthStore` (semantic-only). Remove `localStorage.access_token` write + add cleanup in `AuthHydrator`. **Bootstrap login behavior unchanged.** | Internal smoke-test: feature flag on for admins → Connect Wallet → SIWE → Bearer minted → `/v1/me/profile` reachable. |
+| **1** | gao-id-worker ops change: add `app-dev.gao.social` to `SIWE_DOMAIN` + `ALLOWED_ORIGINS` on the TEST tier (`id-test.gao.domains`, the official current Gao ID API for app-dev — see Section 4). Reown dashboard origin add. social-web GitHub Environment Variables added: `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_GAO_ID_API`, `NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN`, `NEXT_PUBLIC_GAO_ID_AUDIENCE`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`. No social-web code change yet. | Issuer reachable from `app-dev.gao.social` origin (verified via curl with manual Origin header). |
+| **2** | Add Gao ID layer to social-web **behind feature flag** `NEXT_PUBLIC_GAO_ID_ENABLED=false`: install web3 deps (`wagmi`, `viem`, `@reown/appkit`, `@reown/appkit-adapter-wagmi`, `siwe` or hand-rolled), add `src/lib/gao-id/*`, `src/stores/gao-id-store.ts`, `src/providers/Web3Provider.tsx`. Rename `useAuthStore` → `useBootstrapAuthStore` (semantic-only). Remove `localStorage.access_token` write + add cleanup in `AuthHydrator`. **Bootstrap login behavior unchanged.** | Internal smoke-test: feature flag on for admins → Connect Wallet → SIWE → Bearer minted → `GET /v2/me/` returns the composite view. |
 | **3** | Wire UI: `ConnectWalletSheet`, `SiweSignSheet`, `GaoIdGate`, `CreateProfileModal`. Add "Gao ID: Not connected / Connected" indicator next to bootstrap user chip. Add migration 006 (`provider_links` table). Implement linking + conflict rules (Section 8). Still flag-gated. | Internal admin pool confirms full flow + conflict UI. |
 | **4** | Public flag-on rollout. Mark canonical fields in `users` (`display_name`, `avatar_url`, `gao_domain`, `trust_score`, `trust_level`, `badges`, `wallet_address`) as **read-only legacy cache**: app code stops writing them; reads prefer `useGaoIdStore.profile` and fall back to `users.*` only if no Gao ID linked. Gate Gao-canonical features behind `<GaoIdGate>`. **Bootstrap login still works for non-canonical features.** | Read-path verified for all features; bootstrap-only users still functional. |
 | **5** | Schema cleanup (optional, requires data audit): drop or rename deprecated columns to `legacy_*`. Remove `firebase` orphan dep. Add `/api/v1/build` endpoint (deploy verification — tracked in deployment audit follow-up). **Bootstrap login still preserved.** | — |
@@ -343,22 +363,34 @@ commits, diff-first.
 
 ---
 
-## 12. Open questions (need answers before Phase 1)
+## 12. Decisions and remaining open questions
 
-1. Is `id-dev.gao.domains` currently deployed and reachable? If yes,
-   from which repo? If no, is TEST tier (`id-test.gao.domains`) the
-   correct target for `app-dev.gao.social` in the interim?
-2. Who has merge rights on the private ops repo holding DEV/PROD
-   `wrangler.toml` for gao-id-worker?
-3. Has Reown project ID `1f9bda5b575c0b739f22efe059a5d10c` been updated
-   to allow `https://app-dev.gao.social` as a valid origin?
-4. Apple Sign-In bootstrap entry — implement in Phase 2/3 or stay
+**Decisions** (resolved during Phase 1 prep, 2026-05-07):
+
+- **Tier choice**: `id-test.gao.domains` is the official current Gao
+  ID API for `app-dev.gao.social`. `id-dev.gao.domains` is not
+  deployed and is not waited on.
+- **Avatar API**: `POST /v2/me/avatar` exists. JSON-only contract
+  `{ mimeType, base64 }` → `{ avatarUrl }` (≤ 512 KB decoded). No
+  presigned-URL flow needed. Source: `me-v2.ts:218`.
+- **Profile API**: `GET /v2/me/profile` and `PUT /v2/me/profile` are
+  the canonical endpoints. `/v1/me/profile` is legacy and not a
+  social-web target. Source: `me-v2.ts:93,232`.
+- **Composite hydration**: `GET /v2/me/` returns identity + profile +
+  wallets + domains + billing in a single round-trip; preferred for
+  state hydration after SIWE success.
+
+**Remaining open questions**:
+
+1. Who has merge rights on the private ops repo holding DEV/PROD
+   `wrangler.toml` for gao-id-worker (relevant only when DEV or PROD
+   tiers come online — not blocking Phase 1)?
+2. Has Reown project ID `1f9bda5b575c0b739f22efe059a5d10c` been
+   updated to allow `https://app-dev.gao.social` as a valid origin?
+3. Apple Sign-In bootstrap entry — implement in Phase 2/3 or stay
    Google-only? (Bootstrap layer can grow without affecting Gao ID
    model.)
-5. Avatar upload — does Gao ID expose an upload endpoint backed by
-   `R2_AVATAR`, or does the FE PUT to a presigned URL? Need API spec
-   before `CreateProfileModal` is built.
-6. What is the Gao ID rule when a wallet is bound to a rootId but the
+4. What is the Gao ID rule when a wallet is bound to a rootId but the
    user later signs SIWE from a different bootstrap account? Confirmed
    block — but should the UI offer an explicit "transfer bootstrap
    link" path or just deny?
@@ -418,7 +450,7 @@ does not clear the other. Logout flows must explicitly handle both.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Allowlist PR not merged in time | All SIWE blocked | Phase 2 ships with feature flag off; only flip on after allowlist confirmed |
-| DEV tier of gao-id-worker not live | Shared TEST data with other clients | Document tier choice in `NEXT_PUBLIC_GAO_ID_API`; isolate test users |
+| TEST tier shares dataset with other test clients | social-web dev users mix with `test.gao.domains`, `test-explorer.gao.global`, `test-store.gao.global` test data | Each user is still isolated by `rootId`; not a security issue. If/when DEV tier comes online, switch via one-line `NEXT_PUBLIC_GAO_ID_API` flip. |
 | Third-party cookie restrictions (Safari ITP, future Chrome) | Refresh cookie not sent cross-origin | Test on Safari incognito + Chrome with 3PC blocking; consider token-bound or first-party pattern in Phase 5 |
 | Multi-tab refresh race → `replay` revoke | Gao ID logged out across tabs (bootstrap untouched) | Single-flight refresh promise + `BroadcastChannel('gao-id-auth')` for cross-tab coordination |
 | `localStorage.access_token` leftovers from old build | XSS exposure on bootstrap token | `AuthHydrator` Phase 2 calls `localStorage.removeItem('access_token')` once; tracked separately |
@@ -447,11 +479,13 @@ does not clear the other. Logout flows must explicitly handle both.
 ## 17. Approvals required to advance to Phase 1
 
 - [ ] gao-id-worker ops PR adds `app-dev.gao.social` to `SIWE_DOMAIN`
-      and `ALLOWED_ORIGINS` in DEV (or TEST) tier wrangler config.
+      and `ALLOWED_ORIGINS` on the TEST tier (`id-test.gao.domains`,
+      the official current Gao ID API for app-dev — see Section 4).
 - [ ] Reown dashboard updated with `https://app-dev.gao.social` as
       allowed origin for project `1f9bda5b575c0b739f22efe059a5d10c`.
-- [ ] Tier choice confirmed (DEV vs TEST) and corresponding
-      `NEXT_PUBLIC_GAO_ID_*` env vars set as GitHub Environment
-      Variables for `dev-cicd` workflow.
+- [ ] `NEXT_PUBLIC_GAO_ID_*` and `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
+      set as GitHub Environment Variables on
+      `Gao-systems/Social-web` environment `development`. (Variables,
+      not secrets — `NEXT_PUBLIC_*` is inlined into the bundle.)
 - [ ] Phase 2 PR ships behind feature flag; flag stays OFF until ops
       items above are signed off.
