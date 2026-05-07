@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
+import { getDB, parseRows } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { buildLocationVisibilityClause } from '@/lib/visibility';
 import type { BusinessRow, EventRow, CircleRow } from '@/types/d1';

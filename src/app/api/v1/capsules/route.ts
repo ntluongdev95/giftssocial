@@ -20,9 +20,11 @@ export async function GET(req: NextRequest) {
         `SELECT c.*,
                 u.display_name AS sender_name,
                 u.username     AS sender_username,
-                u.avatar_url   AS sender_avatar
+                u.avatar_url   AS sender_avatar,
+                o.opened_at    AS my_opened_at
          FROM time_capsules c
          LEFT JOIN users u ON u.id = c.creator_id
+         LEFT JOIN capsule_opens o ON o.capsule_id = c.id AND o.user_id = ?1
          WHERE c.creator_id = ?1 OR c.recipient_ids LIKE ?2
          ORDER BY c.unlock_at ASC LIMIT 100`
       )
@@ -35,9 +37,12 @@ export async function GET(req: NextRequest) {
       const unlockTime = new Date(parsed.unlock_at as string).getTime();
       const isCreator = parsed.creator_id === userId;
       const role: 'sender' | 'recipient' = isCreator ? 'sender' : 'recipient';
+      const myOpenedAt = (parsed.my_opened_at as string | null) || null;
 
-      // Hide message/photos from recipients while still buried — prevent client peek.
-      if (!isCreator && parsed.status === 'buried') {
+      // Creators always see their own content. Recipients only see message/photos
+      // after they personally open — even if another recipient or the creator
+      // already opened the capsule.
+      if (!isCreator && !myOpenedAt) {
         parsed.message = '';
         parsed.photos = [];
       }
@@ -45,7 +50,8 @@ export async function GET(req: NextRequest) {
       return {
         ...parsed,
         role,
-        can_open_now: parsed.status === 'buried' && unlockTime <= now,
+        my_opened_at: myOpenedAt,
+        can_open_now: !myOpenedAt && unlockTime <= now,
         time_until_unlock_ms: Math.max(0, unlockTime - now),
       };
     });

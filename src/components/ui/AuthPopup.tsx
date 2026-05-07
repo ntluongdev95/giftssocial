@@ -337,12 +337,6 @@
 // }
 'use client';
 
-import { checkAccountApi } from '@/app/api/calls/apiAccounts';
-import { getPasskeyNonceApi, passKeyLoginApi, passKeyRegisterApi } from '@/app/api/calls/apiAuth';
-import { getMe } from '@/app/api/calls/apiUser';
-import { findPasskeyUserByCredentialId, getSavedPasskeyUsers, SavedPasskeyUser, savePasskeyUser } from '@/lib/clients/storage.helper';
-import { createPasskeyCredential, getPasskeyCredential, isPasskeyCancelError, isWebAuthnSupported } from '@/lib/passkey';
-import { getFCMToken, requestFCMToken } from '@/lib/passkey/fcm';
 import { useAccountStore } from '@/stores/account-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { X, ShieldCheck } from 'lucide-react';
@@ -351,7 +345,6 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { PasskeyOverlay } from './PasskeyOverlay';
 
 interface AuthPopupProps {
   open: boolean;

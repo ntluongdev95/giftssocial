@@ -18,6 +18,7 @@ interface Capsule {
   unlock_at: string;
   unlock_radius: number;
   opened_at?: string;
+  my_opened_at?: string | null;
   theme?: string;
   role?: 'sender' | 'recipient';
   sender_name?: string;
@@ -33,27 +34,48 @@ interface Props {
 
 type Phase = 'approaching' | 'digging' | 'reveal' | 'message' | 'photos' | 'reply';
 
-export default function CapsuleRevealOverlay({ capsule, onClose, onOpened }: Props) {
+export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose, onOpened }: Props) {
+  // Mirror the prop in local state so we can swap in the full payload (message,
+  // photos) returned by the PATCH /open endpoint — the API hides those fields
+  // from recipients until they personally open the capsule.
+  const [capsule, setCapsule] = useState<Capsule>(initialCapsule);
   const [phase, setPhase] = useState<Phase>('approaching');
   const [opening, setOpening] = useState(false);
-  const [opened, setOpened] = useState(!!capsule.opened_at);
+  // Gate the reveal animation on the *current viewer's* open state, not the
+  // capsule's global opened_at — a sender opening their own capsule must not
+  // skip the animation for a recipient who has not yet dug it up.
+  const [opened, setOpened] = useState(!!initialCapsule.my_opened_at);
   const [photoIdx, setPhotoIdx] = useState(0);
   const photos = Array.isArray(capsule.photos) ? capsule.photos : [];
   const theme = getTheme(capsule.theme);
 
-  // Tokenise message for word-by-word reveal (preserves multi-line)
-  const messageTokens = useMemo(() => {
-    const tokens: ({ word: string; idx: number } | { br: true })[] = [];
+  // Group message into paragraphs of word tokens for layout + word-by-word reveal.
+  // A paragraph break is a BLANK LINE (\n\n). Single \n inside a paragraph is treated
+  // as a soft wrap (collapsed to space) so prose flows naturally with `text-align: justify`.
+  const paragraphs = useMemo(() => {
+    const paras: { words: { text: string; idx: number }[] }[] = [];
     let wordIdx = 0;
-    capsule.message.split('\n').forEach((line, lineIdx, arr) => {
-      line.split(/(\s+)/).filter(s => s.length > 0).forEach(w => {
-        tokens.push({ word: w, idx: wordIdx++ });
-      });
-      if (lineIdx < arr.length - 1) tokens.push({ br: true });
+    capsule.message.split(/\n\s*\n+/).forEach(p => {
+      // Replace all internal whitespace (including single \n) with single spaces
+      const flat = p.replace(/\s+/g, ' ').trim();
+      if (!flat) return;
+      const words = flat.split(/(\s+)/).filter(s => s.length > 0).map(w => ({ text: w, idx: wordIdx++ }));
+      if (words.length > 0) paras.push({ words });
     });
-    return { tokens, wordCount: wordIdx };
+    return { paragraphs: paras, wordCount: wordIdx };
   }, [capsule.message]);
-  const messageEndDelay = 0.7 + Math.min(Math.max(0, messageTokens.wordCount - 1) * 0.03, 3);
+  // Inner reveal starts soon after the letter fades in
+  const LETTER_LAND_DELAY = 0.5;
+  const messageEndDelay = LETTER_LAND_DELAY + Math.min(Math.max(0, paragraphs.wordCount - 1) * 0.03, 3);
+
+  // Compute when each word "appears" (delay seconds) for syncing photo reveal
+  const wordDelay = (idx: number) => LETTER_LAND_DELAY + Math.min(idx * 0.03, 3);
+
+  // Photos interleaved between paragraphs — at most 1 per paragraph; remainder bunched at the end
+  const inlinePhotoPerParagraph = paragraphs.paragraphs.map((_, pIdx) => photos[pIdx] || null);
+  const trailingPhotos = photos.slice(paragraphs.paragraphs.length);
+  // Pre-shuffled rotations so each polaroid feels hand-placed but stable across re-renders
+  const rotations = useMemo(() => photos.map((_, i) => ((i * 47) % 7) - 3), [photos]);
 
   // Already opened — skip to reveal
   useEffect(() => {
@@ -75,6 +97,9 @@ export default function CapsuleRevealOverlay({ capsule, onClose, onOpened }: Pro
       });
       const data = await res.json();
       if (res.ok) {
+        // PATCH returns the unmasked capsule (message + photos) — adopt it so
+        // the message phase has content to render for first-time openers.
+        if (data.data) setCapsule(data.data);
         setOpened(true);
         setPhase('reveal');
         onOpened?.(data.data);
@@ -187,30 +212,97 @@ export default function CapsuleRevealOverlay({ capsule, onClose, onOpened }: Pro
           </motion.div>
         )}
 
-        {/* PHASE: Reveal — capsule opens with light burst */}
+        {/* PHASE: Reveal — carrier dove delivers the letter */}
         {phase === 'reveal' && (
-          <motion.div className="text-center px-6">
+          <motion.div className="text-center px-6 relative">
+            {/* Carrier dove glides slowly across the sky — pauses near centre to release the letter */}
             <motion.div
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: [0.5, 1.3, 1], opacity: 1 }}
-              transition={{ duration: 1, times: [0, 0.5, 1] }}
-              className="relative mb-6"
+              initial={{ x: '-60vw', y: -130, rotate: -8, opacity: 0 }}
+              animate={{
+                x: ['-60vw', '-25vw', '0vw', '0vw', '25vw', '60vw'],
+                y: [-130, -50, -10, -10, -30, -170],
+                rotate: [-8, -2, 1, 1, 9, 22],
+                opacity: [0, 1, 1, 1, 1, 0],
+              }}
+              transition={{ duration: 7, times: [0, 0.28, 0.45, 0.55, 0.75, 1], ease: [0.42, 0, 0.58, 1] }}
+              className="absolute pointer-events-none flex flex-col items-center"
+              style={{ left: '50%', top: '50%', marginLeft: -40, marginTop: -90, perspective: '600px' }}
             >
-              {/* Light burst */}
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: [0, 3, 5], opacity: [0, 1, 0] }}
-                transition={{ duration: 2 }}
-                className="absolute inset-0 rounded-full pointer-events-none"
-                style={{ background: 'radial-gradient(circle, rgba(255,215,0,0.6), rgba(168,85,247,0.3), transparent 70%)' }}
-              />
-              <div className="text-8xl relative z-10">{theme.scrollEmoji}</div>
+              {/* Realistic wing flap — downstroke fast, upstroke slow, then a brief glide pause.
+                  Flip horizontally (negative scaleX) so the dove's head points the direction it's flying — emoji default faces left. */}
+              <motion.span
+                animate={{
+                  scaleY: [1, 0.62, 0.95, 1, 1],
+                  scaleX: [-1, -1.08, -1.02, -1, -1],
+                  y: [0, -6, -1, 0, 0],
+                  rotateZ: [0, 2, -1, 0, 0],
+                }}
+                transition={{
+                  duration: 0.85,
+                  times: [0, 0.18, 0.5, 0.75, 1],
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+                className="text-7xl block"
+                style={{ transformOrigin: 'center bottom', filter: 'drop-shadow(0 6px 10px rgba(168,85,247,0.45))' }}
+              >🕊️</motion.span>
+              {/* Letter dangling on a string — fades out when bird releases it (~3.5s) */}
+              <motion.span
+                animate={{
+                  rotate: [-14, 14, -14, 14, -14, 14],
+                  y: [0, -2, 0, -2, 0, -2],
+                  opacity: [1, 1, 1, 0, 0, 0],
+                }}
+                transition={{ duration: 7, times: [0, 0.2, 0.45, 0.55, 0.75, 1], ease: 'easeInOut' }}
+                className="text-3xl block -mt-3"
+                style={{ transformOrigin: 'top center' }}
+              >💌</motion.span>
             </motion.div>
+
+            {/* The released letter — detaches from the bird at midpoint and tumbles down to centre */}
+            <motion.span
+              initial={{ opacity: 0, scale: 1, x: -40, y: -55, rotate: 8 }}
+              animate={{
+                opacity: [0, 1, 1, 1, 0],
+                x: [-40, -32, -10, 5, 0],
+                y: [-55, -30, 0, 14, 4],
+                rotate: [8, -22, 28, -12, 0],
+                scale: [1, 1.05, 1.1, 1.05, 0.6],
+              }}
+              transition={{
+                duration: 1.6,
+                delay: 3.2,
+                times: [0, 0.15, 0.55, 0.85, 1],
+                ease: [0.4, 0.05, 0.55, 1],
+              }}
+              className="absolute text-3xl pointer-events-none"
+              style={{ left: '50%', top: '50%', marginLeft: -16, marginTop: -16 }}
+            >💌</motion.span>
+
+            {/* Tiny feather trail particles dropped by the bird as it passes */}
+            {Array.from({ length: 8 }).map((_, i) => (
+              <motion.span
+                key={i}
+                initial={{ opacity: 0, x: '-30vw', y: -80, scale: 0.6 }}
+                animate={{
+                  opacity: [0, 0.7, 0],
+                  x: [`${-30 + i * 5}vw`, `${-22 + i * 5}vw`],
+                  y: [-80 + i * 12, 60 + i * 12],
+                  rotate: [0, 200 + i * 30],
+                }}
+                transition={{ duration: 3.4, delay: 0.7 + i * 0.36, ease: 'easeOut' }}
+                className="absolute text-base pointer-events-none"
+                style={{ left: '50%', top: '50%' }}
+              >✨</motion.span>
+            ))}
+
+            {/* Centre stage — themed celebration around the scroll emoji (~4.7s onwards) */}
+            <CelebrationScene theme={theme} delay={4.7} />
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1 }}
+              transition={{ delay: 6 }}
             >
               <p className="text-[10px] uppercase tracking-[0.3em] mb-2" style={{ color: theme.accentColor }}>From {yearsBurried} years ago</p>
               <h2 className="text-2xl font-bold text-white mb-3">{capsule.title}</h2>
@@ -231,13 +323,13 @@ export default function CapsuleRevealOverlay({ capsule, onClose, onOpened }: Pro
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="w-full max-w-xl px-5 lg:px-6"
+            className="w-full max-w-2xl lg:max-w-4xl px-4 lg:px-8 max-h-[92vh] overflow-y-auto"
           >
             <motion.div
-              initial={{ scale: 0.94, opacity: 0, y: 24 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-              className="relative rounded-2xl px-6 py-9 lg:px-12 lg:py-14 overflow-hidden"
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="relative rounded-2xl px-6 py-9 lg:px-20 lg:py-20 overflow-hidden"
               style={{
                 background: theme.bgGradient,
                 boxShadow: `0 25px 70px -15px ${theme.accentColor}55, 0 0 80px ${theme.accentColor}20, inset 0 0 50px ${theme.accentColor}28`,
@@ -257,7 +349,7 @@ export default function CapsuleRevealOverlay({ capsule, onClose, onOpened }: Pro
               <motion.div
                 initial={{ scale: 0, rotate: 0, opacity: 0 }}
                 animate={{ scale: 1, rotate: -12, opacity: 0.85 }}
-                transition={{ delay: 0.5, type: 'spring', damping: 12, stiffness: 200 }}
+                transition={{ delay: LETTER_LAND_DELAY - 0.1, type: 'spring', damping: 12, stiffness: 200 }}
                 className="absolute top-4 right-4 lg:top-5 lg:right-5 px-2 py-0.5 text-[9px] font-bold pointer-events-none"
                 style={{
                   color: theme.stampColor,
@@ -302,23 +394,94 @@ export default function CapsuleRevealOverlay({ capsule, onClose, onOpened }: Pro
                 </div>
               </div>
 
-              {/* Message body — word by word ink reveal */}
-              <p className="text-[15px] lg:text-base leading-loose font-serif relative" style={{ color: theme.inkColor }}>
-                {messageTokens.tokens.map((tok, i) => {
-                  if ('br' in tok) return <br key={`br-${i}`} />;
+              {/* Message body — paragraphs with drop cap + interleaved polaroid photos */}
+              <div className="text-[15px] lg:text-[17px] font-serif relative" style={{ color: theme.inkColor }}>
+                {paragraphs.paragraphs.map((para, pIdx) => {
+                  const isFirst = pIdx === 0;
+                  const firstWord = para.words[0];
+                  const photoForThisPara = inlinePhotoPerParagraph[pIdx];
+                  const lastWordIdx = para.words[para.words.length - 1]?.idx ?? 0;
+
                   return (
-                    <motion.span
-                      key={i}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.7 + Math.min(tok.idx * 0.03, 3), duration: 0.5 }}
-                      style={{ display: 'inline-block', whiteSpace: 'pre' }}
-                    >
-                      {tok.word}
-                    </motion.span>
+                    <div key={pIdx}>
+                      <p
+                        className="leading-loose"
+                        style={{
+                          textAlign: 'justify',
+                          hyphens: 'auto',
+                          marginBottom: pIdx === paragraphs.paragraphs.length - 1 ? 0 : '1.1em',
+                        }}
+                      >
+                        {isFirst && firstWord && (
+                          <>
+                            {/* Drop cap — first letter of first word */}
+                            <motion.span
+                              initial={{ opacity: 0, scale: 0.6, rotate: -8 }}
+                              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                              transition={{ delay: LETTER_LAND_DELAY - 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                              className="float-left mr-2 leading-none"
+                              style={{
+                                fontSize: '3.4em',
+                                fontWeight: 700,
+                                color: theme.accentColor,
+                                paddingTop: '0.05em',
+                                fontFamily: 'serif',
+                                lineHeight: 0.85,
+                              }}
+                            >
+                              {firstWord.text.charAt(0)}
+                            </motion.span>
+                            {/* Rest of first word */}
+                            <motion.span
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: wordDelay(firstWord.idx), duration: 0.5 }}
+                              style={{ display: 'inline-block', whiteSpace: 'pre' }}
+                            >
+                              {firstWord.text.slice(1)}
+                            </motion.span>
+                          </>
+                        )}
+                        {(isFirst ? para.words.slice(1) : para.words).map((tok, wi) => (
+                          <motion.span
+                            key={wi}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: wordDelay(tok.idx), duration: 0.5 }}
+                            style={{ display: 'inline-block', whiteSpace: 'pre' }}
+                          >
+                            {tok.text}
+                          </motion.span>
+                        ))}
+                      </p>
+
+                      {photoForThisPara && (
+                        <PolaroidPhoto
+                          src={photoForThisPara}
+                          rotation={rotations[pIdx] ?? 0}
+                          delay={wordDelay(lastWordIdx) + 0.3}
+                          caption={burial.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                        />
+                      )}
+                    </div>
                   );
                 })}
-              </p>
+
+                {trailingPhotos.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3 mt-6">
+                    {trailingPhotos.map((src, i) => (
+                      <PolaroidPhoto
+                        key={i}
+                        src={src}
+                        rotation={rotations[paragraphs.paragraphs.length + i] ?? 0}
+                        delay={messageEndDelay + 0.2 + i * 0.15}
+                        caption={burial.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                        compact
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Signature */}
               <motion.p
@@ -430,5 +593,165 @@ export default function CapsuleRevealOverlay({ capsule, onClose, onOpened }: Pro
         )}
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+function PolaroidPhoto({ src, rotation, delay, caption, compact }: { src: string; rotation: number; delay: number; caption?: string; compact?: boolean }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.85, rotate: 0, y: 12 }}
+      animate={{ opacity: 1, scale: 1, rotate: rotation, y: 0 }}
+      transition={{ delay, duration: 0.7, type: 'spring', damping: 14, stiffness: 130 }}
+      className={`relative ${compact ? '' : 'my-5 mx-auto'} block`}
+      style={{
+        background: '#fbfaf6',
+        padding: compact ? '6px 6px 22px' : '8px 8px 28px',
+        boxShadow: '0 12px 32px -8px rgba(0,0,0,0.45), 0 4px 10px rgba(0,0,0,0.2)',
+        maxWidth: compact ? '100%' : '70%',
+        width: compact ? 'auto' : 'fit-content',
+        clear: 'both',
+      }}
+    >
+      <img src={src} alt="" className="block w-full" style={{ minWidth: compact ? 100 : 180, maxHeight: compact ? 200 : 280, objectFit: 'cover' }} />
+      {caption && (
+        <p
+          className={`absolute left-0 right-0 text-center ${compact ? 'text-[9px]' : 'text-[11px]'}`}
+          style={{
+            bottom: compact ? 4 : 6,
+            color: '#7a6248',
+            fontFamily: '"Caveat", "Comic Sans MS", cursive',
+            letterSpacing: '0.05em',
+          }}
+        >
+          {caption}
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
+// Per-theme celebration emoji for the confetti burst around the scroll emoji
+const CELEBRATION_EMOJIS: Record<string, string[]> = {
+  birthday:    ['🎉', '🎊', '✨', '🎈', '⭐', '🌟', '💫', '🎁'],
+  love:        ['❤️', '💕', '💖', '✨', '🌹', '💘', '🌸'],
+  child:       ['🌟', '✨', '💫', '🎀', '🌸', '🍼', '⭐'],
+  travel:      ['✈️', '⭐', '✨', '☁️', '🌤️', '🗺️', '🧭'],
+  milestone:   ['⭐', '🌟', '✨', '🏆', '👑', '💫', '🎊'],
+  classic:     ['✨', '⭐', '🌟', '💫', '☄️'],
+};
+
+function CelebrationScene({ theme, delay }: { theme: { id: string; scrollEmoji: string; accentColor: string }; delay: number }) {
+  const emojis = CELEBRATION_EMOJIS[theme.id] || CELEBRATION_EMOJIS.classic;
+  const isBirthday = theme.id === 'birthday';
+  const confettiCount = isBirthday ? 18 : 12;
+
+  // Pre-compute starburst positions so the layout is stable across renders
+  const confetti = useMemo(() => Array.from({ length: confettiCount }).map((_, i) => {
+    const angle = (i / confettiCount) * Math.PI * 2 + (i % 2 === 0 ? 0 : 0.18);
+    const distance = 110 + ((i * 37) % 70);
+    return {
+      tx: Math.cos(angle) * distance,
+      ty: Math.sin(angle) * distance - 24,
+      rot: (i * 113) % 720 + 360,
+      emoji: emojis[i % emojis.length],
+      size: 18 + ((i * 7) % 14),
+      stagger: (i * 0.04) % 0.5,
+    };
+  }), [confettiCount, emojis]);
+
+  // Balloons float up only on birthday + milestone
+  const showBalloons = isBirthday || theme.id === 'milestone';
+  const balloons = useMemo(() => showBalloons ? [
+    { x: -120, color: '🎈', delay: 0.0, drift: -10, hue: 0 },
+    { x: -50, color: '🎈', delay: 0.25, drift: 14, hue: 60 },
+    { x: 60, color: '🎈', delay: 0.45, drift: -8, hue: 200 },
+    { x: 130, color: '🎈', delay: 0.65, drift: 18, hue: 280 },
+  ] : [], [showBalloons]);
+
+  return (
+    <div className="relative mb-6 flex items-center justify-center" style={{ minHeight: 180, minWidth: 180 }}>
+      {/* Light burst when letter lands */}
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: [0, 3, 5], opacity: [0, 1, 0] }}
+        transition={{ duration: 1.8, delay }}
+        className="absolute inset-0 rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(255,215,0,0.6), rgba(168,85,247,0.3), transparent 70%)' }}
+      />
+
+      {/* Confetti starburst — particles fly outward then fade */}
+      {confetti.map((c, i) => (
+        <motion.span
+          key={i}
+          initial={{ opacity: 0, x: 0, y: 0, scale: 0, rotate: 0 }}
+          animate={{
+            opacity: [0, 1, 1, 0],
+            x: [0, c.tx],
+            y: [0, c.ty],
+            scale: [0, 1.15, 1, 0.6],
+            rotate: [0, c.rot],
+          }}
+          transition={{ duration: 1.6, delay: delay + 0.2 + c.stagger, ease: [0.18, 0.7, 0.4, 1], times: [0, 0.2, 0.65, 1] }}
+          className="absolute pointer-events-none"
+          style={{ fontSize: c.size, left: '50%', top: '50%', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}
+        >{c.emoji}</motion.span>
+      ))}
+
+      {/* Balloons rising up from below */}
+      {balloons.map((b, i) => (
+        <motion.span
+          key={`b-${i}`}
+          initial={{ opacity: 0, x: b.x, y: 220, rotate: -8, scale: 0.85 }}
+          animate={{
+            opacity: [0, 1, 1, 0],
+            y: [220, 30, -260],
+            x: [b.x, b.x + b.drift, b.x + b.drift * 2],
+            rotate: [-8, 6, -4],
+            scale: [0.85, 1, 1],
+          }}
+          transition={{ duration: 4.2, delay: delay + 0.4 + b.delay, ease: 'easeOut', times: [0, 0.5, 1] }}
+          className="absolute text-4xl pointer-events-none"
+          style={{ left: '50%', top: '50%', filter: `hue-rotate(${b.hue}deg) drop-shadow(0 6px 10px rgba(0,0,0,0.35))` }}
+        >{b.color}</motion.span>
+      ))}
+
+      {/* Sparkle ring orbiting the centre piece */}
+      {Array.from({ length: 6 }).map((_, i) => {
+        const orbitAngle = (i / 6) * 360;
+        return (
+          <motion.span
+            key={`s-${i}`}
+            initial={{ opacity: 0, rotate: orbitAngle }}
+            animate={{
+              opacity: [0, 0.9, 0.9, 0],
+              rotate: [orbitAngle, orbitAngle + 360],
+            }}
+            transition={{
+              opacity: { duration: 4, delay: delay + 0.5, times: [0, 0.15, 0.85, 1] },
+              rotate: { duration: 6, delay: delay + 0.5, ease: 'linear', repeat: Infinity },
+            }}
+            className="absolute pointer-events-none text-sm"
+            style={{ left: '50%', top: '50%', transformOrigin: '0 -78px', marginLeft: -4, marginTop: -4 }}
+          >✨</motion.span>
+        );
+      })}
+
+      {/* Centre piece — scroll emoji bursts in then breathes gently */}
+      <motion.div
+        initial={{ scale: 0, opacity: 0, rotate: 25 }}
+        animate={{ scale: [0, 1.3, 1], opacity: 1, rotate: [25, -8, 0] }}
+        transition={{ duration: 1, delay, times: [0, 0.55, 1], ease: [0.16, 1, 0.3, 1] }}
+        className="relative z-10"
+      >
+        <motion.div
+          animate={{ y: [0, -5, 0], rotate: [-2, 2, -2] }}
+          transition={{ duration: 3.4, delay: delay + 1.2, repeat: Infinity, ease: 'easeInOut' }}
+          className="text-8xl"
+          style={{ filter: `drop-shadow(0 8px 20px ${theme.accentColor}60)` }}
+        >
+          {theme.scrollEmoji}
+        </motion.div>
+      </motion.div>
+    </div>
   );
 }

@@ -1,5 +1,3 @@
-import { components } from '@/app/api/schema-auth';
-
 export interface UserInfo {
   id: string;
   username: string;
@@ -52,9 +50,3 @@ export interface CompleteRegisterResponse {
   tmp_token?: string | null;
 }
 
-export type RegisterNewPasskeyRequest = components['schemas']['models.RegisterNewPasskeyRequest'];
-
-export type LoginPasskeyRequest = components['schemas']['models.LoginPasskeyRequest'];
-export type PasskeyNonceResponse = components['schemas']['models.PasskeyNonceResponse'];
-
-export type UpdateFCMTokenParams = components['schemas']['models.UpdateFCMTokenRequest'];

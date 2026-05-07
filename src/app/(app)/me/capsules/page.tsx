@@ -21,6 +21,7 @@ interface Capsule {
   unlock_radius: number;
   status: string;
   opened_at?: string;
+  my_opened_at?: string | null;
   can_open_now: boolean;
   time_until_unlock_ms: number;
   role?: 'sender' | 'recipient';
@@ -66,14 +67,18 @@ export default function CapsulesPage() {
     } catch { toast.error('Network error'); }
   };
 
+  // Per-user open state — `my_opened_at` is set only when the current viewer
+  // has personally dug up the capsule. The capsule's global `status` no longer
+  // governs reveal: the sender opening their own capsule must not flip the
+  // recipient's view to "Opened by you".
   const mine = capsules.filter(c => c.role !== 'recipient');
   const received = capsules.filter(c => c.role === 'recipient');
-  const sealed = mine.filter(c => c.status === 'buried' && !c.can_open_now);
-  const ready = mine.filter(c => c.status === 'buried' && c.can_open_now);
-  const unlocked = mine.filter(c => c.status === 'unlocked');
-  const receivedSealed = received.filter(c => c.status === 'buried' && !c.can_open_now);
-  const receivedReady = received.filter(c => c.status === 'buried' && c.can_open_now);
-  const receivedOpened = received.filter(c => c.status === 'unlocked');
+  const sealed = mine.filter(c => !c.my_opened_at && !c.can_open_now);
+  const ready = mine.filter(c => !c.my_opened_at && c.can_open_now);
+  const unlocked = mine.filter(c => !!c.my_opened_at);
+  const receivedSealed = received.filter(c => !c.my_opened_at && !c.can_open_now);
+  const receivedReady = received.filter(c => !c.my_opened_at && c.can_open_now);
+  const receivedOpened = received.filter(c => !!c.my_opened_at);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -260,8 +265,8 @@ function CapsuleCard({ capsule, onClick, action, onDelete }: { capsule: Capsule;
           {action === 'dig' && (
             <p className="text-[10px] text-[#fbbf24] mt-1.5 flex items-center gap-1"><Sparkles size={10} /> Tap to dig up</p>
           )}
-          {action === 'opened' && capsule.opened_at && (
-            <p className="text-[10px] text-[#ec4899] mt-1.5">Opened {formatDistanceToNow(new Date(capsule.opened_at))} ago</p>
+          {action === 'opened' && capsule.my_opened_at && (
+            <p className="text-[10px] text-[#ec4899] mt-1.5">Opened {formatDistanceToNow(new Date(capsule.my_opened_at))} ago</p>
           )}
         </div>
 
