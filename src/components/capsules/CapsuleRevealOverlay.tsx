@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence, type Transition } from 'framer-motion';
 import { X, MapPin, Calendar, Loader2, Share2, Heart } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTheme } from './themes';
@@ -100,7 +100,6 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
       if (res.ok) {
         // PATCH returns the unmasked capsule (message + photos) — adopt it so
         // the message phase has content to render for first-time openers.
-        console.log('[CapsuleRevealOverlay] PATCH response data:', data.data);
         if (data.data) setCapsule(data.data);
         setOpened(true);
         setPhase('reveal');
@@ -316,7 +315,11 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 6 }}
+              // Delayed so the typed-live text finishes (~6s) and the heart
+              // morph (~10–13s) has time to play before the button competes
+              // for the reader's attention. For non-birthday themes this just
+              // means a slightly later button appearance — not noticeable.
+              transition={{ delay: theme.id === 'birthday' ? 10 : 6 }}
             >
               <p className="text-[10px] uppercase tracking-[0.3em] mb-2" style={{ color: theme.accentColor }}>From {yearsBurried} years ago</p>
               <h2 className="text-2xl font-bold text-white mb-3">{capsule.title}</h2>
@@ -1014,6 +1017,26 @@ const LETTER_BITMAPS: Record<string, number[][]> = {
   ],
 };
 
+// Filled heart silhouette used for the temporary morph. 17 wide × 14 tall.
+// Drones rearrange into this shape mid-show, hold for ~1.5s, then fly back to
+// their letter / cake positions. Symmetric around col 8.
+const HEART_BITMAP: number[][] = [
+  [0,0,1,1,1,0,0,0,0,0,0,0,1,1,1,0,0],
+  [0,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,0],
+  [1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],
+];
+
 // Outline silhouette of a layered birthday cake with 3 candles. 15 cells wide,
 // 12 tall. 1 = standard drone, 2 = flame drone (warm color + flicker), 0 = empty.
 const CAKE_BITMAP: number[][] = [
@@ -1056,12 +1079,20 @@ interface DronePoint {
   idx: number;
   // 'flame' drones use a warm gradient + faster, bigger flicker
   kind: DroneKind;
+  // Logical "letter slot" — drones in the same letter share this. Used to
+  // sequence letters so the formation appears typed (H… HA… HAP… …).
+  letterIdx: number;
+  // Target position when the formation morphs into a heart shape (mid-show
+  // surprise). Each drone is assigned a heart cell by index modulo so heart
+  // cells with multiple drones simply burn brighter.
+  heartX: number;
+  heartY: number;
 }
 
 // Build a drone with a clustered-launch + arc trajectory toward (tx, ty).
 // Three launch pads (left/center/right) chosen by the target's horizontal side
 // give the show a natural fan-out look.
-function buildDronePoint(tx: number, ty: number, idx: number, kind: DroneKind = 'std'): DronePoint {
+function buildDronePoint(tx: number, ty: number, idx: number, kind: DroneKind = 'std', letterIdx: number = 0): DronePoint {
   let padX: number;
   if (tx < -40) padX = -190 + (Math.random() - 0.5) * 70;
   else if (tx > 40) padX = 190 + (Math.random() - 0.5) * 70;
@@ -1097,6 +1128,9 @@ function buildDronePoint(tx: number, ty: number, idx: number, kind: DroneKind = 
     launchJitter: (Math.random() - 0.5) * 0.18,
     idx,
     kind,
+    letterIdx,
+    heartX: 0, // filled in by the post-pass below once all points are known
+    heartY: 0,
   };
 }
 
@@ -1123,7 +1157,9 @@ function measureLineWidth(line: string, cellSize: number, letterCols: number, le
 }
 
 // Lay drones along a bitmap-font line at vertical offset `lineY`, pushing them
-// into `points`.
+// into `points`. Returns the next available letterIdx so callers can chain
+// lines (greeting → recipient name → cake) into one monotonic sequence used
+// by the typed-live reveal pacing.
 function layoutLine(
   line: string,
   lineY: number,
@@ -1132,26 +1168,60 @@ function layoutLine(
   letterGap: number,
   wordGap: number,
   points: DronePoint[],
-) {
+  startLetterIdx: number,
+): number {
   const lineW = measureLineWidth(line, cellSize, letterCols, letterGap, wordGap);
   let cursor = -lineW / 2;
+  let li = startLetterIdx;
   line.split('').forEach((char, i, arr) => {
     if (char === ' ') {
       cursor += wordGap;
+      li += 1; // count space as a slot so the pause reads as deliberate
       return;
     }
     const bm = LETTER_BITMAPS[char];
-    if (!bm) return; // unknown char (e.g. punctuation) — skip silently
+    if (!bm) {
+      li += 1;
+      return; // unknown char — still consumes a slot
+    }
     bm.forEach((row, ry) => {
       row.forEach((cell, cx) => {
         if (cell === 1) {
-          points.push(buildDronePoint(cursor + cx * cellSize, lineY + ry * cellSize, points.length));
+          points.push(buildDronePoint(cursor + cx * cellSize, lineY + ry * cellSize, points.length, 'std', li));
         }
       });
     });
     cursor += letterCols * cellSize;
     if (i < arr.length - 1 && arr[i + 1] !== ' ') cursor += letterGap;
+    li += 1;
   });
+  return li;
+}
+
+// Easing functions matching framer-motion's per-segment eases used in the
+// drone arc. Trails approximate the same path so the comet tails line up with
+// the live drone positions.
+const easeInQuad = (x: number) => x * x;
+const easeInOut = (x: number) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+const cubicOut = (x: number) => 1 - Math.pow(1 - x, 3);
+
+const ARC_STOPS = [0, 0.42, 0.85, 1] as const;
+const ARC_EASES: Array<(t: number) => number> = [easeInQuad, easeInOut, cubicOut];
+const ARC_DURATION = 3.6;
+
+function getDronePosition(d: DronePoint, progress: number): [number, number] {
+  if (progress <= 0) return [d.launchX, d.launchY];
+  if (progress >= 1) return [d.x, d.y];
+  const xs = [d.launchX, d.midX, d.approachX, d.x];
+  const ys = [d.launchY, d.midY, d.approachY, d.y];
+  for (let i = 0; i < 3; i++) {
+    if (progress <= ARC_STOPS[i + 1]) {
+      const span = ARC_STOPS[i + 1] - ARC_STOPS[i];
+      const local = ARC_EASES[i]((progress - ARC_STOPS[i]) / span);
+      return [xs[i] + (xs[i + 1] - xs[i]) * local, ys[i] + (ys[i + 1] - ys[i]) * local];
+    }
+  }
+  return [d.x, d.y];
 }
 
 function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
@@ -1185,10 +1255,16 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
     const nameY = stackTop + lineHeight + lineSpacing;
 
     const points: DronePoint[] = [];
-    layoutLine(greeting, greetingY, cellSize, letterCols, letterGap, wordGap, points);
+    let nextLetterIdx = 0;
+    nextLetterIdx = layoutLine(greeting, greetingY, cellSize, letterCols, letterGap, wordGap, points, nextLetterIdx);
+    // Small "breath" between the greeting and the recipient name.
+    nextLetterIdx += 2;
     if (recipientLine) {
-      layoutLine(recipientLine, nameY, nameCellSize, letterCols, nameCellSize, nameCellSize * 3, points);
+      nextLetterIdx = layoutLine(recipientLine, nameY, nameCellSize, letterCols, nameCellSize, nameCellSize * 3, points, nextLetterIdx);
     }
+    // Cake assembles after the text, all of its drones sharing one letter slot
+    // so the cake "pops in" rather than building dot-by-dot.
+    const cakeLetterIdx = nextLetterIdx + 1;
 
     // Cake formation — drones replace the cake emoji. Anchored slightly above
     // the screen centre so the title text "From X years ago" + button below
@@ -1207,22 +1283,155 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
       row.forEach((cell, cx) => {
         if (cell === 1 || cell === 2) {
           const kind: DroneKind = cell === 2 ? 'flame' : 'std';
-          points.push(buildDronePoint(cakeStartX + cx * cakeCell, cakeStartY + ry * cakeCell, points.length, kind));
+          points.push(buildDronePoint(cakeStartX + cx * cakeCell, cakeStartY + ry * cakeCell, points.length, kind, cakeLetterIdx));
         }
       });
     });
+
+    // Heart morph target positions — every drone gets one heart cell assigned
+    // by index modulo. Cells with multiple drones simply look brighter.
+    const heartCols = HEART_BITMAP[0].length;
+    const heartRows = HEART_BITMAP.length;
+    const heartCellSize = Math.max(4, Math.min(Math.floor(vw / 36), 12));
+    const heartW = heartCols * heartCellSize;
+    const heartH = heartRows * heartCellSize;
+    const heartLeft = -heartW / 2;
+    const heartTop = -heartH / 2; // centred at screen middle (y=0)
+    const heartCells: Array<[number, number]> = [];
+    HEART_BITMAP.forEach((row, ry) => {
+      row.forEach((cell, cx) => {
+        if (cell === 1) heartCells.push([heartLeft + cx * heartCellSize, heartTop + ry * heartCellSize]);
+      });
+    });
+    if (heartCells.length > 0) {
+      // Shuffle drone-to-heart-cell mapping so the morph isn't a perfect
+      // top-letter-to-top-heart sweep — looks more like a swarm reorganising.
+      points.forEach((p, i) => {
+        const cellIdx = (i * 37 + 11) % heartCells.length;
+        const [hx, hy] = heartCells[cellIdx];
+        p.heartX = hx;
+        p.heartY = hy;
+      });
+    }
+
     return points;
   }, [name]);
+
+  // ─── Heart morph state machine ─────────────────────────────────────────
+  // 'launch'  → drones flying their arc + locking into formation (initial)
+  // 'heart'   → drones rearranged into a heart, holding
+  // 'lock'    → drones returned to letter/cake formation (final resting state)
+  const [morphPhase, setMorphPhase] = useState<'launch' | 'heart' | 'lock'>('launch');
+  useEffect(() => {
+    if (drones.length === 0) return;
+    // Latest drone launch fires at: delay + maxLetterIdx*0.22 + (drones-1)*0.004
+    // + max launchJitter (~0.09). Add ARC_DURATION + 0.3s settle for the heart
+    // morph to start cleanly *after* the last drone has GPS-locked.
+    const maxLetterIdx = drones.reduce((m, d) => Math.max(m, d.letterIdx), 0);
+    const lastDotDelay = delay + maxLetterIdx * 0.22 + drones.length * 0.004 + 0.1;
+    const allLockedSec = lastDotDelay + ARC_DURATION + 0.3;
+    const heartInMs = (allLockedSec + 0.7) * 1000;   // 0.7s pause to admire formation
+    const heartOutMs = heartInMs + 1800;              // hold heart ~1.8s before returning
+    const t1 = setTimeout(() => setMorphPhase('heart'), heartInMs);
+    const t2 = setTimeout(() => setMorphPhase('lock'), heartOutMs);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [drones, delay]);
+
+  // ─── Canvas trail "comet tails" ─────────────────────────────────────────
+  // For each drone we re-derive its position every frame (using the same
+  // keyframes/eases as framer-motion) and stamp a soft glow on a canvas. The
+  // canvas keeps prior frames but fades them every tick → result is a fading
+  // trail behind each drone.
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const setSize = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+    };
+    setSize();
+    window.addEventListener('resize', setSize);
+
+    const startTime = performance.now();
+    let rafId = 0;
+    let stopAt = 0; // when to stop drawing — set once everything has locked
+
+    const tick = (now: number) => {
+      const elapsedSec = (now - startTime) / 1000;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      // Fade existing pixels — lower alpha = longer tails. destination-out
+      // subtracts opacity from what's already on the canvas.
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0,0,0,0.07)';
+      ctx.fillRect(0, 0, w, h);
+
+      // New stamps additively to bloom the glow on overlap.
+      ctx.globalCompositeOperation = 'lighter';
+      let anyMoving = false;
+      for (const d of drones) {
+        const dotDelay = delay + d.letterIdx * 0.22 + d.idx * 0.004 + d.launchJitter;
+        const localT = elapsedSec - dotDelay;
+        const progress = localT / ARC_DURATION;
+        // Skip drones that haven't launched, with a small grace window past 1
+        // so the very last frame still stamps.
+        if (progress < 0 || progress > 1.02) continue;
+        anyMoving = true;
+        const [x, y] = getDronePosition(d, progress);
+        const isFlame = d.kind === 'flame';
+        ctx.beginPath();
+        ctx.arc(cx + x, cy + y, isFlame ? 2.6 : 1.9, 0, Math.PI * 2);
+        ctx.fillStyle = isFlame ? 'rgba(255,150,60,0.55)' : 'rgba(255,247,214,0.42)';
+        ctx.fill();
+      }
+
+      // Once all drones have locked, keep fading for ~1.2s to clear residual
+      // tails, then stop the loop to free the GPU.
+      if (!anyMoving) {
+        if (stopAt === 0) stopAt = elapsedSec + 1.2;
+        if (elapsedSec >= stopAt) {
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.fillStyle = 'rgba(0,0,0,1)';
+          ctx.fillRect(0, 0, w, h);
+          return;
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', setSize);
+    };
+  }, [drones, delay]);
 
   return (
     // Use a viewport-anchored fixed wrapper so the formation isn't clipped by
     // the small reveal-phase text container (it was an absolute box ~300x150).
     // Drones paint behind the cake/scroll because they appear first in DOM order.
     <div className="fixed inset-0 pointer-events-none">
+      {/* Trail canvas paints first → drones render on top of their own tails. */}
+      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
       {drones.map(d => {
-        // Stagger flight starts in a slow ripple, plus a small per-drone jitter
-        // so the launch line isn't perfectly mechanical.
-        const dotDelay = delay + d.idx * 0.012 + d.launchJitter;
+        // Typed-live pacing: drones in letter N start ~0.22s after letter N-1,
+        // plus a tiny within-letter spread so each character builds in a quick
+        // ripple instead of popping in instantly.
+        const dotDelay = delay + d.letterIdx * 0.22 + d.idx * 0.004 + d.launchJitter;
         const isFlame = d.kind === 'flame';
         // Flame drones flicker harder + larger range. Standard drones do a slow GPS hover.
         const flickerScale = isFlame
@@ -1231,25 +1440,34 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
         const flickerOpacity = isFlame
           ? [1, 0.65, 1, 0.75, 1]
           : [1, 0.55, 1];
-        return (
-          <motion.div
-            key={d.idx}
-            initial={{ x: d.launchX, y: d.launchY, scale: 0.2, opacity: 0 }}
-            animate={{
-              // 4-keyframe arc: launch pad → mid-arc (high & swept) → approach
-              // (overshoot near target) → locked. Per-segment ease gives the
-              // takeoff weight, smooth travel, and a soft GPS-style settle.
+        // Outer-motion target depends on morph phase. 'launch' uses the 4-keyframe
+        // takeoff arc; 'heart' tweens to the assigned heart cell; 'lock' tweens
+        // back to the letter/cake formation. Framer interpolates from current
+        // visual position when `animate` changes value, so transitions are smooth.
+        const animateProp = morphPhase === 'launch'
+          ? {
               x: [d.launchX, d.midX, d.approachX, d.x],
               y: [d.launchY, d.midY, d.approachY, d.y],
               scale: [0.2, 0.7, 1.15, 1],
               opacity: [0, 0.45, 0.9, 1],
-            }}
-            transition={{
-              duration: 3.6,
+            }
+          : morphPhase === 'heart'
+          ? { x: d.heartX, y: d.heartY, scale: 1.05, opacity: 1 }
+          : { x: d.x, y: d.y, scale: 1, opacity: 1 };
+        const transitionProp: Transition = morphPhase === 'launch'
+          ? {
+              duration: ARC_DURATION,
               delay: dotDelay,
               times: [0, 0.42, 0.85, 1],
               ease: ['easeIn', 'easeInOut', [0.16, 1, 0.3, 1]],
-            }}
+            }
+          : { duration: 0.85, ease: [0.4, 0, 0.2, 1] };
+        return (
+          <motion.div
+            key={d.idx}
+            initial={{ x: d.launchX, y: d.launchY, scale: 0.2, opacity: 0 }}
+            animate={animateProp}
+            transition={transitionProp}
             className="absolute"
             style={{ left: '50%', top: '50%' }}
           >
@@ -1264,7 +1482,7 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
                 scale: flickerScale,
               }}
               transition={{
-                delay: dotDelay + 3.6 + d.pulseDelay,
+                delay: dotDelay + ARC_DURATION + d.pulseDelay,
                 duration: d.pulseDur,
                 repeat: Infinity,
                 ease: 'easeInOut',
