@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence, type Transition } from 'framer-motion';
+import { motion, AnimatePresence, type Transition, type TargetAndTransition } from 'framer-motion';
 import { X, MapPin, Calendar, Loader2, Share2, Heart } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTheme } from './themes';
@@ -315,11 +315,10 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              // Delayed so the typed-live text finishes (~6s) and the heart
-              // morph (~10–13s) has time to play before the button competes
-              // for the reader's attention. For non-birthday themes this just
-              // means a slightly later button appearance — not noticeable.
-              transition={{ delay: theme.id === 'birthday' ? 10 : 6 }}
+              // Delayed for birthday so the user sees the full show before the
+              // button competes for attention: text typed-live → cake → heart
+              // morph → couple morph → back to lock. Total ≈ 18s.
+              transition={{ delay: theme.id === 'birthday' ? 18 : 6 }}
             >
               <p className="text-[10px] uppercase tracking-[0.3em] mb-2" style={{ color: theme.accentColor }}>From {yearsBurried} years ago</p>
               <h2 className="text-2xl font-bold text-white mb-3">{capsule.title}</h2>
@@ -1017,6 +1016,29 @@ const LETTER_BITMAPS: Record<string, number[][]> = {
   ],
 };
 
+// Romantic couple silhouette — two people standing close, heads slightly apart
+// with a small heart hovering between them. 20 wide × 17 tall. Used as the
+// second morph after the heart, so the show reads as: text → heart → couple.
+const COUPLE_BITMAP: number[][] = [
+  [0,0,1,1,1,0,0,0,1,0,1,0,0,0,0,1,1,1,0,0], // heads top + heart top points
+  [0,1,1,1,1,1,0,1,1,1,1,0,0,0,1,1,1,1,1,0], // heads wider + heart widest band
+  [0,1,1,1,1,1,0,0,1,1,0,0,0,0,1,1,1,1,1,0], // heads + heart middle
+  [0,0,1,1,1,0,0,0,0,1,0,0,0,0,0,1,1,1,0,0], // necks + heart bottom point
+  [1,1,1,1,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,0], // shoulders
+  [1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,0], // shoulders + arm reach
+  [0,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,0], // torso
+  [0,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,0],
+  [0,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,0],
+  [0,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,0], // waist
+  [0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0], // hips
+  [0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0],
+  [0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0], // legs split
+  [0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0],
+  [0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0],
+  [0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0],
+  [0,1,1,0,1,1,0,0,0,0,0,0,0,0,1,1,0,1,1,0], // feet
+];
+
 // Filled heart silhouette used for the temporary morph. 17 wide × 14 tall.
 // Drones rearrange into this shape mid-show, hold for ~1.5s, then fly back to
 // their letter / cake positions. Symmetric around col 8.
@@ -1087,12 +1109,28 @@ interface DronePoint {
   // cells with multiple drones simply burn brighter.
   heartX: number;
   heartY: number;
+  // Target position for the couple-silhouette morph that follows the heart.
+  coupleX: number;
+  coupleY: number;
+  // Wish-blow metadata — tells the render layer when to extinguish flames in
+  // candle order and which drones belong to the cake (so the cake can fade
+  // into a 💝 emoji once the wish is granted).
+  isCake: boolean;
+  candleOrder?: number;
 }
 
 // Build a drone with a clustered-launch + arc trajectory toward (tx, ty).
 // Three launch pads (left/center/right) chosen by the target's horizontal side
 // give the show a natural fan-out look.
-function buildDronePoint(tx: number, ty: number, idx: number, kind: DroneKind = 'std', letterIdx: number = 0): DronePoint {
+function buildDronePoint(
+  tx: number,
+  ty: number,
+  idx: number,
+  kind: DroneKind = 'std',
+  letterIdx: number = 0,
+  isCake: boolean = false,
+  candleOrder?: number,
+): DronePoint {
   let padX: number;
   if (tx < -40) padX = -190 + (Math.random() - 0.5) * 70;
   else if (tx > 40) padX = 190 + (Math.random() - 0.5) * 70;
@@ -1129,8 +1167,12 @@ function buildDronePoint(tx: number, ty: number, idx: number, kind: DroneKind = 
     idx,
     kind,
     letterIdx,
-    heartX: 0, // filled in by the post-pass below once all points are known
+    heartX: 0, // heartX/Y and coupleX/Y are filled in by post-passes below
     heartY: 0,
+    coupleX: 0,
+    coupleY: 0,
+    isCake,
+    candleOrder,
   };
 }
 
@@ -1283,7 +1325,22 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
       row.forEach((cell, cx) => {
         if (cell === 1 || cell === 2) {
           const kind: DroneKind = cell === 2 ? 'flame' : 'std';
-          points.push(buildDronePoint(cakeStartX + cx * cakeCell, cakeStartY + ry * cakeCell, points.length, kind, cakeLetterIdx));
+          // Flame drones live above cake cols 5, 7, 9 → candles 0, 1, 2.
+          let candleOrder: number | undefined;
+          if (kind === 'flame') {
+            if (cx === 5) candleOrder = 0;
+            else if (cx === 7) candleOrder = 1;
+            else if (cx === 9) candleOrder = 2;
+          }
+          points.push(buildDronePoint(
+            cakeStartX + cx * cakeCell,
+            cakeStartY + ry * cakeCell,
+            points.length,
+            kind,
+            cakeLetterIdx,
+            true,            // isCake — every cake/flame drone is part of the cake group
+            candleOrder,
+          ));
         }
       });
     });
@@ -1314,27 +1371,70 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
       });
     }
 
+    // Couple morph target positions — same modulo trick, different prime so
+    // drones take a different path through the swarm than during the heart.
+    const coupleCols = COUPLE_BITMAP[0].length;
+    const coupleRows = COUPLE_BITMAP.length;
+    const coupleCellSize = Math.max(4, Math.min(Math.floor(vw / 36), 12));
+    const coupleW = coupleCols * coupleCellSize;
+    const coupleH = coupleRows * coupleCellSize;
+    const coupleLeft = -coupleW / 2;
+    const coupleTop = -coupleH / 2;
+    const coupleCells: Array<[number, number]> = [];
+    COUPLE_BITMAP.forEach((row, ry) => {
+      row.forEach((cell, cx) => {
+        if (cell === 1) coupleCells.push([coupleLeft + cx * coupleCellSize, coupleTop + ry * coupleCellSize]);
+      });
+    });
+    if (coupleCells.length > 0) {
+      points.forEach((p, i) => {
+        const cellIdx = (i * 53 + 7) % coupleCells.length;
+        const [cxp, cyp] = coupleCells[cellIdx];
+        p.coupleX = cxp;
+        p.coupleY = cyp;
+      });
+    }
+
     return points;
   }, [name]);
 
-  // ─── Heart morph state machine ─────────────────────────────────────────
-  // 'launch'  → drones flying their arc + locking into formation (initial)
-  // 'heart'   → drones rearranged into a heart, holding
-  // 'lock'    → drones returned to letter/cake formation (final resting state)
-  const [morphPhase, setMorphPhase] = useState<'launch' | 'heart' | 'lock'>('launch');
+  // ─── Wish-blow interactive ─────────────────────────────────────────────
+  // After the heart morph returns to lock, the user can tap the cake to
+  // "blow out" the candles. Flames extinguish in candle order, then a sparkle
+  // burst fires and the cake drones fade — replaced by a 💝 emoji.
+  const [blown, setBlown] = useState(false);
+  const [wishConfirmed, setWishConfirmed] = useState(false);
+  useEffect(() => {
+    if (!blown) return;
+    // Confirm the wish after all 3 candles have had time to extinguish
+    // (3 candles × 0.35s + 0.5s settle).
+    const t = setTimeout(() => setWishConfirmed(true), 1450);
+    return () => clearTimeout(t);
+  }, [blown]);
+
+  // ─── Morph state machine ─────────────────────────────────────────────
+  // 'launch' → arc into letter/cake formation
+  // 'heart'  → drones rearrange into a giant heart and hold
+  // 'couple' → heart melts into two figures standing together (with a tiny
+  //            heart hovering between them) and holds
+  // 'lock'   → drones fly back to the letter/cake formation (final state,
+  //            tap-to-blow becomes available here)
+  const [morphPhase, setMorphPhase] = useState<'launch' | 'heart' | 'couple' | 'lock'>('launch');
   useEffect(() => {
     if (drones.length === 0) return;
-    // Latest drone launch fires at: delay + maxLetterIdx*0.22 + (drones-1)*0.004
-    // + max launchJitter (~0.09). Add ARC_DURATION + 0.3s settle for the heart
-    // morph to start cleanly *after* the last drone has GPS-locked.
     const maxLetterIdx = drones.reduce((m, d) => Math.max(m, d.letterIdx), 0);
     const lastDotDelay = delay + maxLetterIdx * 0.22 + drones.length * 0.004 + 0.1;
     const allLockedSec = lastDotDelay + ARC_DURATION + 0.3;
-    const heartInMs = (allLockedSec + 0.7) * 1000;   // 0.7s pause to admire formation
-    const heartOutMs = heartInMs + 1800;              // hold heart ~1.8s before returning
+    // Sequence: 0.7s pause → heart in (0.85s tween) → heart hold → couple in →
+    // couple hold → back to lock. Hold values are *between* phase changes, so
+    // each includes the 0.85s tween plus the time the formation is actually held.
+    const heartInMs = (allLockedSec + 0.7) * 1000;
+    const coupleInMs = heartInMs + 1500;  // heart visible for ~0.65s after settle
+    const lockInMs = coupleInMs + 2500;    // couple visible for ~1.65s after settle
     const t1 = setTimeout(() => setMorphPhase('heart'), heartInMs);
-    const t2 = setTimeout(() => setMorphPhase('lock'), heartOutMs);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const t2 = setTimeout(() => setMorphPhase('couple'), coupleInMs);
+    const t3 = setTimeout(() => setMorphPhase('lock'), lockInMs);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [drones, delay]);
 
   // ─── Canvas trail "comet tails" ─────────────────────────────────────────
@@ -1440,28 +1540,46 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
         const flickerOpacity = isFlame
           ? [1, 0.65, 1, 0.75, 1]
           : [1, 0.55, 1];
-        // Outer-motion target depends on morph phase. 'launch' uses the 4-keyframe
-        // takeoff arc; 'heart' tweens to the assigned heart cell; 'lock' tweens
-        // back to the letter/cake formation. Framer interpolates from current
-        // visual position when `animate` changes value, so transitions are smooth.
-        const animateProp = morphPhase === 'launch'
-          ? {
-              x: [d.launchX, d.midX, d.approachX, d.x],
-              y: [d.launchY, d.midY, d.approachY, d.y],
-              scale: [0.2, 0.7, 1.15, 1],
-              opacity: [0, 0.45, 0.9, 1],
-            }
-          : morphPhase === 'heart'
-          ? { x: d.heartX, y: d.heartY, scale: 1.05, opacity: 1 }
-          : { x: d.x, y: d.y, scale: 1, opacity: 1 };
-        const transitionProp: Transition = morphPhase === 'launch'
-          ? {
-              duration: ARC_DURATION,
-              delay: dotDelay,
-              times: [0, 0.42, 0.85, 1],
-              ease: ['easeIn', 'easeInOut', [0.16, 1, 0.3, 1]],
-            }
-          : { duration: 0.85, ease: [0.4, 0, 0.2, 1] };
+        // Wish-blow overrides take priority over morph phase. Flames are
+        // extinguished in candle order; cake-body drones fade once the wish
+        // is confirmed (after the last candle is out).
+        const wishExtinguish = blown && d.kind === 'flame';
+        const wishCakeFade = wishConfirmed && d.isCake && d.kind !== 'flame';
+
+        let animateProp: TargetAndTransition;
+        let transitionProp: Transition;
+
+        if (wishExtinguish) {
+          animateProp = { opacity: 0, scale: 0.15 };
+          transitionProp = { duration: 0.5, delay: (d.candleOrder ?? 0) * 0.35, ease: 'easeOut' };
+        } else if (wishCakeFade) {
+          animateProp = { opacity: 0, scale: 0.4 };
+          // Stagger by horizontal position so the cake "deflates" outward.
+          const stagger = (Math.abs(d.x) / 80) * 0.25;
+          transitionProp = { duration: 0.5, delay: stagger, ease: 'easeIn' };
+        } else if (morphPhase === 'launch') {
+          animateProp = {
+            x: [d.launchX, d.midX, d.approachX, d.x],
+            y: [d.launchY, d.midY, d.approachY, d.y],
+            scale: [0.2, 0.7, 1.15, 1],
+            opacity: [0, 0.45, 0.9, 1],
+          };
+          transitionProp = {
+            duration: ARC_DURATION,
+            delay: dotDelay,
+            times: [0, 0.42, 0.85, 1],
+            ease: ['easeIn', 'easeInOut', [0.16, 1, 0.3, 1]],
+          };
+        } else if (morphPhase === 'heart') {
+          animateProp = { x: d.heartX, y: d.heartY, scale: 1.05, opacity: 1 };
+          transitionProp = { duration: 0.85, ease: [0.4, 0, 0.2, 1] };
+        } else if (morphPhase === 'couple') {
+          animateProp = { x: d.coupleX, y: d.coupleY, scale: 1, opacity: 1 };
+          transitionProp = { duration: 0.95, ease: [0.4, 0, 0.2, 1] };
+        } else {
+          animateProp = { x: d.x, y: d.y, scale: 1, opacity: 1 };
+          transitionProp = { duration: 0.85, ease: [0.4, 0, 0.2, 1] };
+        }
         return (
           <motion.div
             key={d.idx}
@@ -1514,6 +1632,68 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
           </motion.div>
         );
       })}
+
+      {/* Tap region over the cake — only enabled once heart morph has finished
+          settling, so users don't accidentally blow before the show is set. */}
+      {morphPhase === 'lock' && !blown && (
+        <button
+          onClick={() => setBlown(true)}
+          aria-label="Blow out the candles"
+          className="absolute pointer-events-auto"
+          style={{
+            left: '50%',
+            top: '50%',
+            width: 200,
+            height: 160,
+            marginLeft: -100,
+            marginTop: -140, // shifts the hit-region up to the cake (cake centred at y=-60)
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            zIndex: 50,
+          }}
+        />
+      )}
+
+      {/* Sparkle burst — fires the moment the user taps to blow the candles. */}
+      {blown && Array.from({ length: 14 }).map((_, i) => {
+        const angle = (i / 14) * Math.PI * 2;
+        const dist = 70 + (i % 3) * 18;
+        return (
+          <motion.span
+            key={`spark-${i}`}
+            className="absolute pointer-events-none text-base"
+            style={{ left: '50%', top: '50%', marginTop: -60 }}
+            initial={{ x: 0, y: 0, opacity: 0, scale: 0 }}
+            animate={{
+              x: [0, Math.cos(angle) * dist],
+              y: [0, Math.sin(angle) * dist],
+              opacity: [0, 1, 0],
+              scale: [0, 1.3, 0.4],
+            }}
+            transition={{ duration: 1.3, delay: 1.0 + (i % 5) * 0.04, ease: 'easeOut' }}
+          >✨</motion.span>
+        );
+      })}
+
+      {/* 💝 emoji — replaces the cake once the wish is granted. */}
+      {wishConfirmed && (
+        <motion.div
+          className="absolute pointer-events-none"
+          style={{
+            left: '50%',
+            top: '50%',
+            marginTop: -60,
+            transform: 'translate(-50%, -50%)',
+            filter: 'drop-shadow(0 0 24px rgba(255,120,170,0.65))',
+          }}
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{ opacity: [0, 1, 1], scale: [0, 1.5, 1.05] }}
+          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <span style={{ fontSize: 96, lineHeight: 1 }}>💝</span>
+        </motion.div>
+      )}
     </div>
   );
 }
