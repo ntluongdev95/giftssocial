@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     // Geo verification — only for location-based check-ins (QR/NFC bypass, manual stays server-trusted)
     if ((method || 'location') === 'location' && target_type === 'business' && target_id) {
       if (typeof accuracy === 'number' && accuracy > MAX_GPS_ACCURACY_METERS) {
-        return NextResponse.json({ error: { code: 'low_accuracy', message: 'GPS accuracy too low, move outdoors and retry' } }, { status: 400 });
+        return NextResponse.json({ error: { code: 'low_accuracy', message: "Can't verify you're at the venue. Turn on precise location, make sure you're standing at the spot, and try again." } }, { status: 400 });
       }
       const venue = await db.prepare('SELECT location_lat AS lat, location_lng AS lng FROM businesses WHERE id = ?')
         .bind(target_id).first<{ lat: number; lng: number }>();
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       const d = distanceMeters(Number(location_lat), Number(location_lng), venue.lat, venue.lng);
       const tolerance = MAX_VENUE_DISTANCE_METERS + (typeof accuracy === 'number' ? accuracy : 0);
       if (d > tolerance) {
-        return NextResponse.json({ error: { code: 'too_far', message: `You need to be at the venue (~${Math.round(d)}m away)` } }, { status: 400 });
+        return NextResponse.json({ error: { code: 'too_far', message: `You're not at the venue yet — about ${Math.round(d)}m away. Walk closer to check in.` } }, { status: 400 });
       }
 
       // Cooldown: same venue once per 12h

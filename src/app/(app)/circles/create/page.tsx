@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Loader2, Globe, Lock, UserPlus, MapPin, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
+import AuthPopup from '@/components/ui/AuthPopup';
+import { useAuthStore } from '@/stores/auth-store';
 
 const CATEGORIES = [
   'Tech', 'Business', 'Food', 'Beauty', 'Fitness', 'Crypto',
@@ -24,6 +26,9 @@ const JOIN_MODE = [
 
 export default function CreateCirclePage() {
   const router = useRouter();
+  const isAuthed = useAuthStore(s => s.isAuthed);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -86,12 +91,29 @@ export default function CreateCirclePage() {
     }
   }, [city]);
 
+  // Gate: open AuthPopup on mount if not signed in; redirect away when popup is closed without login
+  const isLoggedIn = () => typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+
+  useEffect(() => {
+    if (!isLoggedIn() && !isAuthed) {
+      setShowAuth(true);
+    } else {
+      setShowAuth(false);
+    }
+    setAuthChecked(true);
+  }, [isAuthed]);
+
+  const handleAuthClose = () => {
+    setShowAuth(false);
+    if (!isLoggedIn()) router.replace('/circles');
+  };
+
   const handleCreate = async () => {
     if (!name.trim()) { toast.error('Circle name is required'); return; }
     if (!category) { toast.error('Pick a category'); return; }
 
-    const token = localStorage.getItem('access_token');
-    if (!token) { toast.error('Please login first'); return; }
+    if (!isLoggedIn()) { setShowAuth(true); return; }
+    const token = localStorage.getItem('access_token') || '';
 
     setSaving(true);
     try {
@@ -109,6 +131,7 @@ export default function CreateCirclePage() {
           location_lng: locationLng,
         }),
       });
+      if (res.status === 401 || res.status === 403) { setShowAuth(true); return; }
       if (res.ok) {
         toast.success('Circle created!');
         router.push('/circles');
@@ -119,6 +142,9 @@ export default function CreateCirclePage() {
     } catch { toast.error('Network error'); }
     finally { setSaving(false); }
   };
+
+  // While checking, render nothing — avoids form flash before AuthPopup mounts
+  if (!authChecked) return <div className="h-full" />;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -248,6 +274,7 @@ export default function CreateCirclePage() {
           </div>
         </div>
       </div>
+      <AuthPopup open={showAuth} onClose={handleAuthClose} />
     </div>
   );
 }

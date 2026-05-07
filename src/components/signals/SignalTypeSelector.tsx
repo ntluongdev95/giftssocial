@@ -8,7 +8,7 @@ const SUBTITLES: Record<SignalType, string> = {
   presence: 'Share your live location',
   intent: 'Tell others what you need',
   offer: 'Publish a deal or service',
-  event: 'Host a meetup or gathering',
+  event: "Share what's happening here right now",
   update: 'Post a quick update',
   proof: 'Rate a past experience',
 };

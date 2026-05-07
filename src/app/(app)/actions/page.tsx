@@ -7,7 +7,7 @@ import useSWR from 'swr';
 import { useLocationStore } from '@/stores/locationStore';
 import { useAuthStore } from '@/stores/auth-store';
 import {
-  Plus, Bot, MapPin, Tag, CalendarDays, FileText, AlertTriangle,
+  Plus, Bot, MapPin, Tag, FileText, AlertTriangle,
   Store, Calendar, Users, Sparkles, Shield, ChevronRight,
   Bookmark, Map, FileEdit, QrCode, Zap, TrendingUp,
 } from 'lucide-react';
@@ -23,7 +23,7 @@ const apiFetcher = (url: string) => fetch(url, {
 const QUICK_CREATE = [
   { href: '/create?type=presence', icon: <MapPin size={20} />, label: "I'm Here", color: '#3B82F6' },
   { href: '/create?type=offer', icon: <Tag size={20} />, label: 'Offer', color: '#fbbf24' },
-  { href: '/create?type=event', icon: <CalendarDays size={20} />, label: 'Event', color: '#f87171' },
+  { href: '/create?type=event', icon: <Zap size={20} />, label: 'Buzz', color: '#f87171' },
   { href: '/create?type=update', icon: <FileText size={20} />, label: 'Update', color: '#00d4ff' },
   { href: '/create?type=proof', icon: <AlertTriangle size={20} />, label: 'Proof', color: '#f0f4ff' },
 ];

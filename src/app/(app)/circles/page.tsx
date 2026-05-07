@@ -7,7 +7,7 @@ import { Search, Plus, Users, Briefcase, Cpu, Heart, Plane, Calendar, Globe, Che
 import { toast } from 'sonner';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import EventDetailPage from '@/components/events/EventDetailPage';
-import SignInGateSheet from '@/components/auth/SignInGateSheet';
+import AuthPopup from '@/components/ui/AuthPopup';
 import SignalSheet from '@/components/map/SignalSheet';
 import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 import type { Circle, Event } from '@/types';
@@ -137,22 +137,33 @@ function CircleGroupCard({ group, compact, onSelectCircle, onSelectEvent, onSele
   );
 }
 
-function ForYouFeed({ onSelectEvent, onSelectCircle }: { onSelectEvent: (e: Event) => void; onSelectCircle: (c: Circle) => void }) {
+function ForYouFeed({ onSelectEvent, onSelectCircle, onNeedAuth }: { onSelectEvent: (e: Event) => void; onSelectCircle: (c: Circle) => void; onNeedAuth: () => void }) {
   const [selectedSignal, setSelectedSignal] = useState<Record<string, unknown> | null>(null);
-  const { data, isLoading } = useSWR('/api/v1/circles/feed', authFetcher, { revalidateOnFocus: false });
+  const { data, isLoading, mutate: mutateFeed } = useSWR('/api/v1/circles/feed', authFetcher, { revalidateOnFocus: false });
   const feed = data?.data;
-  const { joinedCircleIds } = useJoinedCircles();
+  const { joinedCircleIds, refresh: refreshJoined } = useJoinedCircles();
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
   const handleQuickJoin = async (circleId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
+    const cookieAuthed = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+    if (!cookieAuthed) { onNeedAuth(); return; }
+    const token = localStorage.getItem('access_token') || '';
     setJoiningId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/join`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) toast.success('Joined!');
-      else { const d = await res.json(); toast.error(d.error?.message || 'Failed'); }
+      if (res.status === 401 || res.status === 403) { onNeedAuth(); return; }
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        refreshJoined();
+        mutateFeed();
+        toast.success('Joined!');
+      } else if (res.status === 400 && d?.error?.code === 'already_member') {
+        refreshJoined();
+        mutateFeed();
+      } else {
+        toast.error(d?.error?.message || 'Failed');
+      }
     } catch { toast.error('Network error'); }
     finally { setJoiningId(null); }
   };
@@ -164,7 +175,11 @@ function ForYouFeed({ onSelectEvent, onSelectCircle }: { onSelectEvent: (e: Even
   );
 
   const circleGroups = (feed?.circle_groups || []) as CircleGroup[];
-  const recommended = (feed?.recommended || []) as Record<string, unknown>[];
+  // Defensive client-side filter: drop any recommended circle that we already joined.
+  // The feed endpoint should already exclude these, but stale SWR cache or cross-tab joins
+  // can let one slip through and showing a "Join" button on it triggers 400 already_member.
+  const recommended = ((feed?.recommended || []) as Record<string, unknown>[])
+    .filter(c => !joinedCircleIds.has(c.id as string));
   const isEmpty = circleGroups.length === 0 && recommended.length === 0;
 
   return (
@@ -313,11 +328,12 @@ export default function CirclesPage() {
   const { joinedCircleIds, pendingCircleIds, refresh: refreshCircles } = useJoinedCircles();
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [leavingId, setLeavingId] = useState<string | null>(null);
-  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [showAuthPopup, setShowAuthPopup] = useState(false);
+
+  const isLoggedIn = () => typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
 
   const handleCreateCircle = () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { setShowAuthGate(true); return; }
+    if (!isLoggedIn()) { setShowAuthPopup(true); return; }
     router.push('/circles/create');
   };
 
@@ -332,14 +348,15 @@ export default function CirclesPage() {
   const apiEvents = eventsData?.data || [];
 
   const handleJoinCircle = async (circleId: string) => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { setShowAuthGate(true); return; }
+    if (!isLoggedIn()) { setShowAuthPopup(true); return; }
+    const token = localStorage.getItem('access_token') || '';
     setJoiningId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/join`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401 || res.status === 403) { setShowAuthPopup(true); return; }
       const data = await res.json();
       if (res.ok) {
         refreshCircles();
@@ -431,13 +448,19 @@ export default function CirclesPage() {
 
         {/* ── For You tab ── */}
         {activeTab === 'For You' && (
-          <ForYouFeed onSelectEvent={setSelectedEvent} onSelectCircle={setSelectedCircle} />
+          <ForYouFeed onSelectEvent={setSelectedEvent} onSelectCircle={setSelectedCircle} onNeedAuth={() => setShowAuthPopup(true)} />
         )}
 
         {/* ── Discover tab ── */}
         {activeTab === 'Discover' && (<>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Categories</h2>
           <div className="flex gap-3 mb-5 overflow-x-auto pb-1">
+            <div onClick={() => setSelectedCategory(null)} className="flex flex-col items-center gap-1.5 shrink-0 w-16 cursor-pointer transition-transform active:scale-95">
+              <div className="h-12 w-12 rounded-2xl flex items-center justify-center transition-all" style={selectedCategory === null ? { background: 'rgba(0,212,255,0.25)', color: '#00d4ff', border: '2px solid #00d4ff', boxShadow: '0 0 12px rgba(0,212,255,0.4)' } : { background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.2)' }}>
+                <Globe size={18} />
+              </div>
+              <span className="text-[10px] font-medium" style={{ color: selectedCategory === null ? '#00d4ff' : '#a3adc3' }}>All</span>
+            </div>
             {CATEGORIES.map(({ icon, label, color }) => {
               const catKey = label === 'AI & Tech' ? 'tech' : label.toLowerCase();
               const isActive = selectedCategory === catKey;
@@ -534,6 +557,10 @@ export default function CirclesPage() {
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4a5068] mb-3">Categories</h2>
               <div className="grid grid-cols-2 gap-2">
+                <div onClick={() => setSelectedCategory(null)} className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer transition-all" style={selectedCategory === null ? { background: 'rgba(0,212,255,0.15)', border: '1px solid rgba(0,212,255,0.4)', boxShadow: '0 0 10px rgba(0,212,255,0.2)' } : { background: 'rgba(17,19,24,0.4)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                  <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff' }}><Globe size={18} /></div>
+                  <span className="text-xs font-medium" style={{ color: selectedCategory === null ? '#00d4ff' : '#a3adc3' }}>All</span>
+                </div>
                 {CATEGORIES.map(({ icon, label, color }) => {
                   const catKey = label === 'AI & Tech' ? 'tech' : label.toLowerCase();
                   const isActive = selectedCategory === catKey;
@@ -553,7 +580,7 @@ export default function CirclesPage() {
           <div className="flex-1 min-w-0">
             {/* For You: Activity feed */}
             {activeTab === 'For You' && (
-              <ForYouFeed onSelectEvent={setSelectedEvent} onSelectCircle={setSelectedCircle} />
+              <ForYouFeed onSelectEvent={setSelectedEvent} onSelectCircle={setSelectedCircle} onNeedAuth={() => setShowAuthPopup(true)} />
             )}
 
             {/* Discover: Circles grid */}
@@ -641,7 +668,7 @@ export default function CirclesPage() {
 
       {selectedCircle && <CircleDetailSheet circle={selectedCircle} onClose={() => setSelectedCircle(null)} />}
       {selectedEvent && <EventDetailPage event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
-      <SignInGateSheet action="join" isOpen={showAuthGate} onClose={() => setShowAuthGate(false)} />
+      <AuthPopup open={showAuthPopup} onClose={() => setShowAuthPopup(false)} />
     </div>
   );
 }

@@ -165,7 +165,7 @@ export default function BusinessEditPage() {
             hours: b.hours && Object.keys(b.hours).length > 0
               ? b.hours
               : Object.fromEntries(DAYS.map(d => [d, { open: '09:00', close: '18:00', closed: d === 'Sun' }])),
-            booking_enabled: b.booking_enabled ?? false,
+            booking_enabled: Boolean(b.booking_enabled),
             services: b.services || [],
             social_links: b.social_links || [],
             cover_image: b.cover_image || '',

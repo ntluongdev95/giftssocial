@@ -62,7 +62,7 @@ export const SIGNAL_LABELS: Record<SignalType, string> = {
   presence: "I'm here",
   intent: 'I need something',
   offer: 'I offer something',
-  event: 'Create event',
+  event: 'Buzz',
   update: 'Share update',
   proof: 'Add proof',
 } as const;
