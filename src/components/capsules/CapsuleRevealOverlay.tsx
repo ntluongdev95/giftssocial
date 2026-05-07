@@ -115,13 +115,11 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
   };
 
   const burial = new Date(capsule.buried_at);
-  // Captured once on mount — `Date.now()` is impure and would re-evaluate on
-  // every render, drifting the displayed years and tripping the React purity
-  // lint rule.
-  const yearsBurried = useMemo(
-    () => ((Date.now() - burial.getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+  // Captured via useState initializer — `Date.now()` is impure; running it
+  // once on mount avoids drifting the displayed years and the React purity
+  // lint rule (which also flags Date.now inside useMemo).
+  const [yearsBurried] = useState(
+    () => ((Date.now() - new Date(initialCapsule.buried_at).getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1),
   );
 
   const handleShare = async () => {

@@ -48,6 +48,12 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
   const [following, setFollowing] = useState<RecipientUser[]>([]);
   const [followingLoaded, setFollowingLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Earliest unlock date (tomorrow) — captured via useState initializer so
+  // the impure Date.now() runs once on mount, not on every render.
+  const [minUnlockDate] = useState(
+    () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedTheme = getTheme(themeId);
@@ -500,7 +506,7 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
                   <input
                     type="date"
                     value={customDate}
-                    min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                    min={minUnlockDate}
                     onChange={e => setCustomDate(e.target.value)}
                     className="w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none"
                     style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
