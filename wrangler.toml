@@ -36,7 +36,7 @@ bucket_name = "gao-social-dev"
 
 [env.dev.vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
-NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID = "499445244143-pa0de62qhs87qbaorpsfno4sgcv0vq4i.apps.googleusercontent.com"
 
 [vars]
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
