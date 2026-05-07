@@ -23,6 +23,13 @@ jobs:
     name: CI (lint + typecheck + build)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Bind to the `development` GitHub Environment so `vars.*` resolves
+    # the NEXT_PUBLIC_* values that must be inlined into the Next.js
+    # client bundle at build time. Bundle-time inlining means these
+    # MUST be in process.env during `next build` — runtime worker vars
+    # in wrangler.toml [env.dev.vars] do NOT affect the client bundle.
+    environment:
+      name: development
     permissions:
       contents: read
     steps:
@@ -50,6 +57,18 @@ jobs:
         env:
           NODE_ENV: production
           CI: 'true'
+          # Gao ID + WalletConnect public vars — inlined into the client
+          # bundle by Next.js at build time. Sourced from the `development`
+          # GitHub Environment Variables (not secrets — these values are
+          # public origin/audience identifiers that ship in the JS bundle).
+          # Phase 2a: Gao ID layer is gated by NEXT_PUBLIC_GAO_ID_ENABLED;
+          # set to "false" in env vars so no behavior change ships yet.
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_GAO_ID_API: ${{ vars.NEXT_PUBLIC_GAO_ID_API }}
+          NEXT_PUBLIC_GAO_ID_AUDIENCE: ${{ vars.NEXT_PUBLIC_GAO_ID_AUDIENCE }}
+          NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN: ${{ vars.NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN }}
+          NEXT_PUBLIC_GAO_ID_ENABLED: ${{ vars.NEXT_PUBLIC_GAO_ID_ENABLED }}
+          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
         run: npm run build
 
       - name: OpenNext adapter build
