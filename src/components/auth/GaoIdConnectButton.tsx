@@ -176,7 +176,7 @@ function GaoIdConnectButtonInner({ variant }: { variant: GaoIdConnectButtonVaria
           console.info('[gao-id] verify ok rootId=' + verify.user.rootId.slice(0, 16) + '…');
           setFromVerifyResponse(verify);
 
-          console.info('[gao-id] hydrating /v2/me/');
+          console.info('[gao-id] hydrating /v2/me');
           const me = await gaoIdClient.getCompositeMe();
           setCompositeMe(me);
           console.info('[gao-id] flow complete');

@@ -106,7 +106,7 @@ From `dev-gao-core/gao-id-worker@main`:
 | POST | `/v2/auth/logout` | Revokes refresh family, clears cookies. |
 | GET | `/v2/auth/me` | Bearer-only: `{ rootId, walletAddress, chainId }`. Lightweight session-validity probe. |
 | GET | `/.well-known/jwks.json` | ES256 JWKS, `cache-control: max-age=300`. |
-| GET | `/v2/me/` | Bearer. **Canonical composite "current user" view** — identity + profile + wallets + domains summary + billing/affiliate summaries in a single round-trip. Use this for hydration after `/v2/auth/verify`. |
+| GET | `/v2/me` | Bearer. **Canonical composite "current user" view** — identity + profile + wallets + domains summary + billing/affiliate summaries in a single round-trip. Use this for hydration after `/v2/auth/verify`. NOTE: no trailing slash; `/v2/me/` falls through the issuer's router and returns 404 `route not found`. |
 | GET | `/v2/me/profile` | Bearer. **Canonical profile read.** Wire shape: `{ rootId: "gaoid_…", displayName, bio, avatarUrl, website, location, socialX, socialTg, metadata, version, createdAt, updatedAt }` (camelCase). Source: `src/routes/me-v2.ts:93`. |
 | PUT | `/v2/me/profile` | Bearer. **Canonical profile upsert.** Body is a partial patch of the same shape; server re-reads the row and returns the updated `CanonicalProfile`. Source: `src/routes/me-v2.ts:232`. |
 | POST | `/v2/me/avatar` | Bearer. **JSON-only avatar upload.** Body `{ mimeType: "image/jpeg" \| "image/png" \| "image/webp", base64: "…" }` → `{ avatarUrl }`. Limits: ≤512 KB decoded / ≤700 KB base64; rate-limit 10/min. Returned `avatarUrl` can be PUT directly into `/v2/me/profile.avatarUrl`. Source: `src/routes/me-v2.ts:218`. |
@@ -283,7 +283,7 @@ WALLET_CONNECTED_NOT_VERIFIED    wagmi connected, no SIWE yet
    │ user signs SIWE → /v2/auth/verify → 200
    ▼
 GAO_ID_AUTHENTICATED             ES256 Bearer in memory; provider_links row created
-   │ GET /v2/me/   (composite hydration: identity + profile + wallets + domains)
+   │ GET /v2/me   (composite hydration: identity + profile + wallets + domains)
    ▼
 GAO_PROFILE_MISSING              profile.displayName === null → CreateProfileModal
    │ POST /v2/me/avatar  (optional; returns avatarUrl)
@@ -353,7 +353,7 @@ commits, diff-first.
 |---|---|---|
 | **0** (this commit) | Plan committed; no runtime change. | Plan approved. |
 | **1** | gao-id-worker ops change: add `app-dev.gao.social` to `SIWE_DOMAIN` + `ALLOWED_ORIGINS` on the TEST tier (`id-test.gao.domains`, the official current Gao ID API for app-dev — see Section 4). Reown dashboard origin add. social-web GitHub Environment Variables added: `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_GAO_ID_API`, `NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN`, `NEXT_PUBLIC_GAO_ID_AUDIENCE`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`. No social-web code change yet. | Issuer reachable from `app-dev.gao.social` origin (verified via curl with manual Origin header). |
-| **2** | Add Gao ID layer to social-web **behind feature flag** `NEXT_PUBLIC_GAO_ID_ENABLED=false`: install web3 deps (`wagmi`, `viem`, `@reown/appkit`, `@reown/appkit-adapter-wagmi`, `siwe` or hand-rolled), add `src/lib/gao-id/*`, `src/stores/gao-id-store.ts`, `src/providers/Web3Provider.tsx`. Rename `useAuthStore` → `useBootstrapAuthStore` (semantic-only). Remove `localStorage.access_token` write + add cleanup in `AuthHydrator`. **Bootstrap login behavior unchanged.** | Internal smoke-test: feature flag on for admins → Connect Wallet → SIWE → Bearer minted → `GET /v2/me/` returns the composite view. |
+| **2** | Add Gao ID layer to social-web **behind feature flag** `NEXT_PUBLIC_GAO_ID_ENABLED=false`: install web3 deps (`wagmi`, `viem`, `@reown/appkit`, `@reown/appkit-adapter-wagmi`, `siwe` or hand-rolled), add `src/lib/gao-id/*`, `src/stores/gao-id-store.ts`, `src/providers/Web3Provider.tsx`. Rename `useAuthStore` → `useBootstrapAuthStore` (semantic-only). Remove `localStorage.access_token` write + add cleanup in `AuthHydrator`. **Bootstrap login behavior unchanged.** | Internal smoke-test: feature flag on for admins → Connect Wallet → SIWE → Bearer minted → `GET /v2/me` returns the composite view. |
 | **3** | Wire UI: `ConnectWalletSheet`, `SiweSignSheet`, `GaoIdGate`, `CreateProfileModal`. Add "Gao ID: Not connected / Connected" indicator next to bootstrap user chip. Add migration 006 (`provider_links` table). Implement linking + conflict rules (Section 8). Still flag-gated. | Internal admin pool confirms full flow + conflict UI. |
 | **4** | Public flag-on rollout. Mark canonical fields in `users` (`display_name`, `avatar_url`, `gao_domain`, `trust_score`, `trust_level`, `badges`, `wallet_address`) as **read-only legacy cache**: app code stops writing them; reads prefer `useGaoIdStore.profile` and fall back to `users.*` only if no Gao ID linked. Gate Gao-canonical features behind `<GaoIdGate>`. **Bootstrap login still works for non-canonical features.** | Read-path verified for all features; bootstrap-only users still functional. |
 | **5** | Schema cleanup (optional, requires data audit): drop or rename deprecated columns to `legacy_*`. Remove `firebase` orphan dep. Add `/api/v1/build` endpoint (deploy verification — tracked in deployment audit follow-up). **Bootstrap login still preserved.** | — |
@@ -376,7 +376,7 @@ commits, diff-first.
 - **Profile API**: `GET /v2/me/profile` and `PUT /v2/me/profile` are
   the canonical endpoints. `/v1/me/profile` is legacy and not a
   social-web target. Source: `me-v2.ts:93,232`.
-- **Composite hydration**: `GET /v2/me/` returns identity + profile +
+- **Composite hydration**: `GET /v2/me` returns identity + profile +
   wallets + domains + billing in a single round-trip; preferred for
   state hydration after SIWE success.
 

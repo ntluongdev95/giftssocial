@@ -9,7 +9,7 @@
  *   POST /v2/auth/refresh
  *   POST /v2/auth/logout
  *   GET  /v2/auth/me
- *   GET  /v2/me/
+ *   GET  /v2/me
  *   GET  /v2/me/profile
  *   PUT  /v2/me/profile
  *   POST /v2/me/avatar
@@ -65,9 +65,14 @@ export interface AuthMe {
 }
 
 /**
- * `/v2/me/` returns a composite view that's evolving on the issuer side.
+ * `/v2/me` returns a composite view that's evolving on the issuer side.
  * We keep an open shape and only type the fields callers will read in
  * later phases. Treat extras as forward-compatible.
+ *
+ * NOTE: the issuer's bearer-protected `/v2/me` route only matches when
+ * the request path has NO trailing slash. `/v2/me/` falls through the
+ * router and returns 404 `route not found` even with a valid bearer.
+ * Verified empirically 2026-05-08; do not add the trailing slash.
  */
 export interface CompositeMe {
   identity?: AuthMe;
@@ -249,7 +254,9 @@ export class GaoIdClient {
 
   /** Canonical composite view — identity + profile + wallets + domains in one round-trip. */
   async getCompositeMe(): Promise<CompositeMe> {
-    return this.bearerGet<CompositeMe>('/v2/me/');
+    // No trailing slash — `/v2/me/` returns 404 `route not found` from
+    // the issuer's bearer-gated router. See the CompositeMe note above.
+    return this.bearerGet<CompositeMe>('/v2/me');
   }
 
   async getProfile(): Promise<CanonicalProfile> {
