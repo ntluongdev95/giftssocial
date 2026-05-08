@@ -57,19 +57,38 @@ jobs:
         env:
           NODE_ENV: production
           CI: 'true'
-          # Gao ID + WalletConnect public vars — inlined into the client
-          # bundle by Next.js at build time. Sourced from the `development`
-          # GitHub Environment Variables (not secrets — these values are
-          # public origin/audience identifiers that ship in the JS bundle).
-          # Phase 2a: Gao ID layer is gated by NEXT_PUBLIC_GAO_ID_ENABLED;
-          # set to "false" in env vars so no behavior change ships yet.
+          # Gao ID + WalletConnect public vars — sourced from the
+          # `development` GitHub Environment Variables (not secrets;
+          # these are public origin/audience identifiers that ship in
+          # the JS bundle).
           NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
           NEXT_PUBLIC_GAO_ID_API: ${{ vars.NEXT_PUBLIC_GAO_ID_API }}
           NEXT_PUBLIC_GAO_ID_AUDIENCE: ${{ vars.NEXT_PUBLIC_GAO_ID_AUDIENCE }}
           NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN: ${{ vars.NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN }}
           NEXT_PUBLIC_GAO_ID_ENABLED: ${{ vars.NEXT_PUBLIC_GAO_ID_ENABLED }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
-        run: npm run build
+        # Next.js 16 + Turbopack only static-replaces
+        # `process.env.NEXT_PUBLIC_*` references from `.env*` files at
+        # build time. Setting the values purely as shell environment
+        # variables (the `env:` block above) leaves them as runtime
+        # process-polyfill lookups, which resolve to `undefined` in the
+        # browser bundle — observed 2026-05-08 by auditing the compiled
+        # `isGaoIdEnabled()` body. We therefore write `.env.production`
+        # (gitignored via `.env*`) immediately before `next build` so
+        # the static replacement actually inlines the values. The
+        # committed `.env.production.local` keeps higher precedence and
+        # continues to supply NEXT_PUBLIC_GOOGLE_CLIENT_ID and
+        # NEXT_PUBLIC_MAPTILER_KEY unchanged.
+        run: |
+          {
+            printf 'NEXT_PUBLIC_APP_URL=%s\n'                  "$NEXT_PUBLIC_APP_URL"
+            printf 'NEXT_PUBLIC_GAO_ID_API=%s\n'               "$NEXT_PUBLIC_GAO_ID_API"
+            printf 'NEXT_PUBLIC_GAO_ID_AUDIENCE=%s\n'          "$NEXT_PUBLIC_GAO_ID_AUDIENCE"
+            printf 'NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN=%s\n'       "$NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN"
+            printf 'NEXT_PUBLIC_GAO_ID_ENABLED=%s\n'           "$NEXT_PUBLIC_GAO_ID_ENABLED"
+            printf 'NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=%s\n' "$NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID"
+          } > .env.production
+          npm run build
 
       - name: OpenNext adapter build
         env:
