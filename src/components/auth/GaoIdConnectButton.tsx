@@ -49,6 +49,25 @@ const SIGN_TIMEOUT_MS = 90_000;
 const REJECTED_RE = /user.?reject|user.?denied|user.?cancel|reject(ed)?_by_user|denied/i;
 const TIMEOUT_RE = /timed?\s*out|did not respond|aborted/i;
 
+/**
+ * Build-time debug switch. When `NEXT_PUBLIC_GAO_ID_DEBUG === 'true'`
+ * the SIWE click handler emits a non-secret diagnostic toast at start
+ * (connector + chainId + truncated address + deep-link availability)
+ * so we can collect mobile reproduction data without DevTools. Off by
+ * default; never logs tokens, signatures or full SIWE messages.
+ */
+const DEBUG = process.env.NEXT_PUBLIC_GAO_ID_DEBUG === 'true';
+
+/**
+ * Reown AppKit / WalletConnect persists the chosen wallet's deep-link
+ * URL under this localStorage key on connect, but does NOT re-trigger
+ * it on subsequent sign requests. Re-using the value during a SIWE
+ * tap is what brings the user back to their wallet app on mobile
+ * external Safari/Chrome. Verified against
+ * `node_modules/@reown/appkit-controllers/dist/esm/src/utils/StorageUtil.js`.
+ */
+const WC_DEEPLINK_KEY = 'WALLETCONNECT_DEEPLINK_CHOICE';
+
 export type GaoIdConnectButtonVariant = 'modal' | 'compact';
 
 interface Props {
@@ -156,6 +175,40 @@ function GaoIdConnectButtonInner({
     <button
       type="button"
       onClick={async () => {
+        // [Patch II] WalletConnect sign-time deep-link.
+        //
+        // For mobile external Safari/Chrome users, Reown AppKit only
+        // deep-links to the wallet app on CONNECT. Subsequent sign
+        // requests are sent over the WalletConnect relay but the
+        // browser never auto-foregrounds the wallet, so a `personal_sign`
+        // dispatched by wagmi sits silently in the wallet app's
+        // background until the user manually switches.
+        //
+        // We re-use the wallet's deep-link href (saved by Reown at
+        // connect time under `WALLETCONNECT_DEEPLINK_CHOICE`) and fire
+        // it synchronously inside the user-gesture frame so iOS
+        // Safari permits the cross-app navigation. Custom URL schemes
+        // hand off to the OS; if no app handles the scheme the page
+        // stays put. Best-effort — the rest of the flow continues
+        // either way and the persistent toast still surfaces clear
+        // recovery instructions.
+        let deepLinkAttempted = false;
+        if (isWalletConnect && typeof window !== 'undefined') {
+          try {
+            const raw = window.localStorage.getItem(WC_DEEPLINK_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw) as { href?: string; name?: string };
+              if (parsed?.href) {
+                console.info('[gao-id] deep-linking to wallet:', parsed.name ?? 'unknown');
+                window.location.href = parsed.href;
+                deepLinkAttempted = true;
+              }
+            }
+          } catch {
+            /* fall through — toast UI will tell the user to switch app */
+          }
+        }
+
         setBusy(true);
         setError(null);
         const shortAddr = `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -166,7 +219,24 @@ function GaoIdConnectButtonInner({
           connectorName: connector?.name,
           connectorType: connector?.type,
           isWalletConnect,
+          deepLinkAttempted,
         });
+
+        // [Patch I] Debug toast — gated by NEXT_PUBLIC_GAO_ID_DEBUG.
+        // Surfaces non-secret diagnostics so a mobile tester can
+        // screenshot the actual connector / address / chainId / deep
+        // link state without needing DevTools.
+        if (DEBUG) {
+          const hasDeepLink =
+            typeof window !== 'undefined' && !!window.localStorage.getItem(WC_DEEPLINK_KEY);
+          toast.message('[gao-id debug] flow start', {
+            duration: 30000,
+            description:
+              `connector=${connector?.id ?? '?'}/${connector?.type ?? '?'} ` +
+              `chainId=${chainId} addr=${shortAddr} ` +
+              `wcLink=${hasDeepLink} deeplink=${deepLinkAttempted}`,
+          });
+        }
 
         // Mobile WalletConnect handoff: log when the user actually
         // switches to the wallet app and back. Helps diagnose stuck

@@ -66,6 +66,11 @@ jobs:
           NEXT_PUBLIC_GAO_ID_AUDIENCE: ${{ vars.NEXT_PUBLIC_GAO_ID_AUDIENCE }}
           NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN: ${{ vars.NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN }}
           NEXT_PUBLIC_GAO_ID_ENABLED: ${{ vars.NEXT_PUBLIC_GAO_ID_ENABLED }}
+          # Optional. Set to `true` in env=development to surface a
+          # non-secret diagnostic toast on each Gao ID SIWE click —
+          # connector id/type, chainId, truncated address, deep-link
+          # availability. Off by default.
+          NEXT_PUBLIC_GAO_ID_DEBUG: ${{ vars.NEXT_PUBLIC_GAO_ID_DEBUG }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
         # Next.js 16 + Turbopack only static-replaces
         # `process.env.NEXT_PUBLIC_*` references from `.env*` files at
@@ -86,6 +91,7 @@ jobs:
             printf 'NEXT_PUBLIC_GAO_ID_AUDIENCE=%s\n'          "$NEXT_PUBLIC_GAO_ID_AUDIENCE"
             printf 'NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN=%s\n'       "$NEXT_PUBLIC_GAO_ID_SIWE_DOMAIN"
             printf 'NEXT_PUBLIC_GAO_ID_ENABLED=%s\n'           "$NEXT_PUBLIC_GAO_ID_ENABLED"
+            printf 'NEXT_PUBLIC_GAO_ID_DEBUG=%s\n'             "$NEXT_PUBLIC_GAO_ID_DEBUG"
             printf 'NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=%s\n' "$NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID"
           } > .env.production
           npm run build
