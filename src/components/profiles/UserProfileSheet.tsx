@@ -34,7 +34,7 @@ export default function UserProfileSheet({ user: u, isFollowing, isFriend, onFol
   useEffect(() => {
     if (u.bio || (u.photos && u.photos.length > 0)) return;
     fetch(`/api/v1/users/${u.id}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      
     })
       .then(r => r.json())
       .then(d => { if (d.data) setFullUser(prev => ({ ...prev, bio: d.data.bio, photos: d.data.photos, city: d.data.city })); })

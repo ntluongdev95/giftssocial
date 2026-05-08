@@ -35,9 +35,8 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
 
   // Fetch current unlock state for this venue
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
-    if (!token) { setUnlocked(false); return; }
-    fetch('/api/v1/me/unlocked', { headers: { Authorization: `Bearer ${token}` } })
+    if (typeof document === 'undefined' || !document.cookie.includes('gao_logged_in=1')) { setUnlocked(false); return; }
+    fetch('/api/v1/me/unlocked', { })
       .then(r => r.json()).then(j => {
         const ids: string[] = (j?.data?.businesses || []).map((x: { id: string }) => x.id);
         setUnlocked(ids.includes(b.id));
@@ -54,10 +53,9 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
           enableHighAccuracy: true, timeout: 10000, maximumAge: 30000,
         });
       });
-      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
       const res = await fetch('/api/v1/checkins', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target_type: 'business', target_id: b.id,
           location_lat: pos.coords.latitude, location_lng: pos.coords.longitude,

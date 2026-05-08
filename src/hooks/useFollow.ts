@@ -3,7 +3,7 @@
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export function useFollow() {
@@ -21,7 +21,7 @@ export function useFollow() {
   const follow = async (target: { user_id?: string; business_id?: string; circle_id?: string }) => {
     const res = await fetch('/api/v1/follows', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(target),
     });
     if (res.ok) mutate();
@@ -31,7 +31,7 @@ export function useFollow() {
   const unfollow = async (target: { user_id?: string; business_id?: string; circle_id?: string }) => {
     const res = await fetch('/api/v1/follows', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(target),
     });
     if (res.ok) mutate();

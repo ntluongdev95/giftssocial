@@ -71,9 +71,8 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
     if (!open || followingLoaded) return;
     (async () => {
       try {
-        const token = localStorage.getItem('access_token') || '';
         const res = await fetch('/api/v1/follows?type=following', {
-          headers: { Authorization: `Bearer ${token}` },
+          
         });
         const data = await res.json();
         const rows = (data?.data || []) as Array<Record<string, unknown>>;
@@ -104,10 +103,9 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
       }
       setSearchingUsers(true);
       try {
-        const token = localStorage.getItem('access_token') || '';
         const res = await fetch(
           `/api/v1/search?q=${encodeURIComponent(trimmed)}&tab=people&limit=8`,
-          { headers: { Authorization: `Bearer ${token}` } },
+          { },
         );
         const data = await res.json();
         const people = (data?.data?.people || []) as RecipientUser[];
@@ -135,13 +133,11 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
     if (photos.length + files.length > 5) { toast.error('Max 5 photos'); return; }
     setUploading(true);
     try {
-      const token = localStorage.getItem('access_token') || '';
       for (const file of files) {
         const fd = new FormData();
         fd.append('file', file);
         const res = await fetch('/api/v1/upload', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
           body: fd,
         });
         if (res.ok) {
@@ -180,10 +176,9 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
 
     setSubmitting(true);
     try {
-      const token = localStorage.getItem('access_token') || '';
       const res = await fetch('/api/v1/capsules', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title, message, photos,
           location_lat: locationLat, location_lng: locationLng, location_name: locationName,

@@ -280,26 +280,7 @@ export interface SessionRow {
 }
 
 // ─── Projection Types ────────────────────────────────────────────────────
-
-/** Subset returned by SELECT in users/sync (16 columns) */
-export interface UserSyncRow {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-  trust_score: number;
-  trust_level: string;
-  badges: string | null;
-  gao_points: number;
-  gao_domain: string | null;
-  proofs_count: number;
-  bookings_count: number;
-  reviews_count: number;
-  circles_count: number;
-  followers_count: number;
-  following_count: number;
-  created_at: string;
-}
+// (UserSyncRow removed — the passkey sync route is gone.)
 
 /** Subset returned by auth/login query */
 export interface UserLoginRow {

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export default function MePage() {
@@ -95,7 +95,6 @@ export default function MePage() {
       credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}`,
       },
       body: JSON.stringify(payload),
     });

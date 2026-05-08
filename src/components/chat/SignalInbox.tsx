@@ -22,7 +22,7 @@ interface Props {
 }
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export default function SignalInbox({ signalId, signalTitle, onClose }: Props) {

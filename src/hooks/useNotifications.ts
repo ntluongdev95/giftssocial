@@ -3,7 +3,7 @@
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export function useNotifications() {
@@ -20,7 +20,7 @@ export function useNotifications() {
   const markAllRead = async () => {
     await fetch('/api/v1/notifications', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
     mutate();
@@ -29,7 +29,7 @@ export function useNotifications() {
   const markRead = async (id: string) => {
     await fetch('/api/v1/notifications', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     });
     mutate();
@@ -37,8 +37,7 @@ export function useNotifications() {
 
   const clearAll = async () => {
     await fetch('/api/v1/notifications', {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      method: 'DELETE'
     });
     mutate();
   };

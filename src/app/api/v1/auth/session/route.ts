@@ -56,10 +56,12 @@ export async function GET(req: NextRequest) {
 
       userId = payload.sub;
 
-      // Issue new tokens + rotate session
-      const newAccess = await signAccessToken(userId);
+      // Rotate first → new session row exists. Stamp its id into the access
+      // token's `sid` claim so middleware can revoke it.
       const newRefresh = await signRefreshToken(userId);
       await rotateRefreshToken(refreshTokenCookie, newRefresh, userId).catch(() => {});
+      const newSession = await validateRefreshToken(newRefresh).catch(() => null);
+      const newAccess = await signAccessToken(userId, 'user', newSession?.session_id ?? session.session_id);
 
       const db = getDB();
       const row = await db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).bind(userId).first<Record<string, unknown>>();

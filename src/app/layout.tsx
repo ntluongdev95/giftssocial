@@ -1,12 +1,22 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Caveat } from 'next/font/google';
 import SplashWrapper from '@/components/ui/SplashWrapper';
+import GoogleRedirectHandler from '@/components/ui/GoogleRedirectHandler';
 import './globals.css';
 
 const inter = Inter({
   variable: '--font-inter',
   subsets: ['latin'],
   display: 'swap',
+});
+
+// Handwritten script font — used for the capsule "letter" body so the message
+// reads like a real love-letter inked by hand.
+const caveat = Caveat({
+  variable: '--font-caveat',
+  subsets: ['latin', 'latin-ext'],
+  display: 'swap',
+  weight: ['400', '500', '600', '700'],
 });
 
 export const metadata: Metadata = {
@@ -68,7 +78,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full`}>
+    <html lang="en" className={`${inter.variable} ${caveat.variable} h-full`}>
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -76,6 +86,9 @@ export default function RootLayout({
       </head>
       <body className="h-full bg-[#0a0b0f] text-[#f0f4ff] overflow-x-hidden antialiased">
         <SplashWrapper />
+        {/* Picks up Google OAuth code if popup was blocked and Google sent the
+            user back via full-page redirect (mobile-critical fallback). */}
+        <GoogleRedirectHandler />
         {children}
       </body>
     </html>

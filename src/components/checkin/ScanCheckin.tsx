@@ -63,15 +63,14 @@ export default function ScanCheckin({ isOpen, onClose }: ScanCheckinProps) {
   }, [isOpen, mode, startScanner]);
 
   const handleCheckin = async (qrData?: string, code?: string) => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { toast.error('Please login first'); return; }
+    if (typeof document === 'undefined' || !document.cookie.includes('gao_logged_in=1')) { toast.error('Please login first'); return; }
 
     setChecking(true);
     setError(null);
     try {
       const res = await fetch('/api/v1/checkin', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qr_data: qrData, code }),
       });
       const data = await res.json();

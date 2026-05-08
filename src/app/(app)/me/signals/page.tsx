@@ -18,7 +18,7 @@ const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string 
 };
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export default function MySignalsPage() {
@@ -39,8 +39,7 @@ export default function MySignalsPage() {
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/v1/signals/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        method: 'DELETE'
       });
       if (res.ok) {
         toast.success('Signal deleted');

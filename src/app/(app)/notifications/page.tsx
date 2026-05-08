@@ -51,8 +51,7 @@ export default function NotificationsPage() {
 
     const refType = n.ref_type as string;
     const refId = n.ref_id as string;
-    const token = localStorage.getItem('access_token') || '';
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = {  };
 
     // Chat notifications
     if (n.type === 'new_message' && refId) {
@@ -79,13 +78,11 @@ export default function NotificationsPage() {
       if (needsLocation) {
         navigator.geolocation.getCurrentPosition(
           async (pos) => {
-            if (token) {
-              const lat = pos.coords.latitude;
-              const lng = pos.coords.longitude;
-              await fetch('/api/v1/users/me', { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ location_lat: lat, location_lng: lng }) }).catch(() => {});
-              await fetch('/api/v1/kisses', { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: refId, receiver_lat: lat, receiver_lng: lng }) }).catch(() => {});
-              toast.success('Location shared! Opening map...');
-            }
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            await fetch('/api/v1/users/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location_lat: lat, location_lng: lng }) }).catch(() => {});
+            await fetch('/api/v1/kisses', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: refId, receiver_lat: lat, receiver_lng: lng }) }).catch(() => {});
+            toast.success('Location shared! Opening map...');
             router.push(`/world?kiss=${refId}`);
           },
           () => router.push(`/world?kiss=${refId}&nofly=1`),

@@ -13,7 +13,7 @@ import { useJoinedCircles } from '@/hooks/useJoinedCircles';
 import type { Circle, Event } from '@/types';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
-const authFetcher = (url: string) => fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` } }).then(r => r.json());
+const authFetcher = (url: string) => fetch(url, { }).then(r => r.json());
 
 const TABS = ['For You', 'My Circles', 'Discover', 'Events'] as const;
 
@@ -148,10 +148,9 @@ function ForYouFeed({ onSelectEvent, onSelectCircle, onNeedAuth }: { onSelectEve
     e.stopPropagation();
     const cookieAuthed = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
     if (!cookieAuthed) { onNeedAuth(); return; }
-    const token = localStorage.getItem('access_token') || '';
     setJoiningId(circleId);
     try {
-      const res = await fetch(`/api/v1/circles/${circleId}/join`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/v1/circles/${circleId}/join`, { method: 'POST'});
       if (res.status === 401 || res.status === 403) { onNeedAuth(); return; }
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -349,12 +348,10 @@ export default function CirclesPage() {
 
   const handleJoinCircle = async (circleId: string) => {
     if (!isLoggedIn()) { setShowAuthPopup(true); return; }
-    const token = localStorage.getItem('access_token') || '';
     setJoiningId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/join`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        method: 'POST'
       });
       if (res.status === 401 || res.status === 403) { setShowAuthPopup(true); return; }
       const data = await res.json();
@@ -369,13 +366,10 @@ export default function CirclesPage() {
   };
 
   const handleLeaveCircle = async (circleId: string, isPending: boolean) => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
     setLeavingId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/leave`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        method: 'POST'
       });
       if (res.ok) {
         refreshCircles();

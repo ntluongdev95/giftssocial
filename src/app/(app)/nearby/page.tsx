@@ -216,7 +216,7 @@ export default function NearbyPage() {
   // Matched people nearby — only fetch when location granted
   const { data: matchedPeople } = useSWR(
     granted ? `/api/v1/match?type=people_nearby&${queryParams}` : null,
-    (url: string) => fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` } }).then(r => r.json()),
+    (url: string) => fetch(url, { }).then(r => r.json()),
     { revalidateOnFocus: false }
   );
 

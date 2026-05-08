@@ -24,7 +24,7 @@ interface Props {
 }
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export default function EventChat({ eventId, eventTitle, onClose }: Props) {
@@ -73,7 +73,7 @@ export default function EventChat({ eventId, eventTitle, onClose }: Props) {
     try {
       await fetch('/api/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room_type: 'event', room_id: eventId, body: msgText }),
       });
       mutate();

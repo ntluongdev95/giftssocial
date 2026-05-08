@@ -90,10 +90,9 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
     setPhase('digging');
 
     try {
-      const token = localStorage.getItem('access_token') || '';
       const res = await fetch(`/api/v1/capsules/${capsule.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
       const data = await res.json();
@@ -1059,8 +1058,8 @@ const HEART_BITMAP: number[][] = [
   [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0],
 ];
 
-// Outline silhouette of a layered birthday cake with 3 candles. 15 cells wide,
-// 12 tall. 1 = standard drone, 2 = flame drone (warm color + flicker), 0 = empty.
+// Cake silhouette with 3 candles. 15 wide × 12 tall.
+// 1 = standard drone, 2 = flame drone (warm + flicker), 0 = empty.
 const CAKE_BITMAP: number[][] = [
   [0,0,0,0,0,2,0,2,0,2,0,0,0,0,0],   // flame tips (3 candles at cols 5, 7, 9)
   [0,0,0,0,0,2,0,2,0,2,0,0,0,0,0],   // flame mids
@@ -1075,6 +1074,7 @@ const CAKE_BITMAP: number[][] = [
   [0,1,0,0,0,0,0,0,0,0,0,0,0,1,0],   // cake side
   [0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],   // cake bottom
 ];
+
 
 type DroneKind = 'std' | 'flame';
 

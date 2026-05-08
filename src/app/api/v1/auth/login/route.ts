@@ -38,18 +38,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate tokens
-    const accessToken = await signAccessToken(user.id);
+    // Create session row first so we can embed its id in the access token —
+    // middleware checks the session row on every request for per-device revoke.
     const refreshToken = await signRefreshToken(user.id);
-
-    // Create session in DB (token revocation support)
-    await createSession(user.id, refreshToken, req).catch(() => {});
+    const sessionId = await createSession(user.id, refreshToken, req).catch(() => null);
+    const accessToken = await signAccessToken(user.id, 'user', sessionId ?? undefined);
 
     const response = NextResponse.json({
       user_id: user.id,
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 2592000,
+      expires_in: 1800,
     });
 
     return setCsrfCookie(setAuthCookies(response, accessToken, refreshToken));

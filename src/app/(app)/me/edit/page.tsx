@@ -21,7 +21,7 @@ export default function EditProfilePage() {
   // Load existing data from DB
   useEffect(() => {
     fetch('/api/v1/users/me', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      
     })
       .then(r => r.json())
       .then(res => {
@@ -77,7 +77,6 @@ export default function EditProfilePage() {
         formData.append('file', avatarFile);
         const uploadRes = await fetch('/api/v1/upload', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
           body: formData,
         });
         if (uploadRes.ok) {
@@ -94,7 +93,6 @@ export default function EditProfilePage() {
           fd.append('file', photoFiles[i]!);
           const pRes = await fetch('/api/v1/upload', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
             body: fd,
           });
           if (pRes.ok) {
@@ -110,7 +108,7 @@ export default function EditProfilePage() {
       // Update profile
       const res = await fetch('/api/v1/users/me', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           display_name: displayName,
           full_name: displayName,

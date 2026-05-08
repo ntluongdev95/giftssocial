@@ -161,7 +161,7 @@ function CreateSignalPageInner() {
 
       const res = await fetch('/api/v1/signals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -177,7 +177,7 @@ function CreateSignalPageInner() {
       if (signalType === 'intent' && signalResult?.data?.id) {
         try {
           const matchRes = await fetch(`/api/v1/match?type=intent_to_business&signal_id=${signalResult.data.id}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+            
           });
           const matchData = await matchRes.json();
           if (matchData.data?.length > 0) {

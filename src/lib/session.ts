@@ -31,6 +31,26 @@ export async function createSession(
   return id;
 }
 
+/**
+ * Returns true if the session row exists, isn't revoked, and hasn't expired.
+ * Middleware calls this on every request that carries an access token whose
+ * payload includes a `sid` claim — gives us per-device revocation in O(1).
+ */
+export async function validateSession(sessionId: string): Promise<boolean> {
+  const db = getDB();
+  const row = await db
+    .prepare(
+      `SELECT id FROM sessions
+       WHERE id = ?
+         AND is_revoked = 0
+         AND expires_at > datetime('now')
+       LIMIT 1`
+    )
+    .bind(sessionId)
+    .first<{ id: string }>();
+  return !!row;
+}
+
 export async function validateRefreshToken(
   refreshToken: string
 ): Promise<{ session_id: string; user_id: string } | null> {

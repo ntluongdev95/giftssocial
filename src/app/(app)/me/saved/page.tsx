@@ -11,7 +11,7 @@ import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import type { Event, Business } from '@/types';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 const TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
@@ -31,7 +31,7 @@ export default function SavedPage() {
     try {
       await fetch('/api/v1/saved', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_type: itemType, item_id: itemId }),
       });
       toast.success('Removed from saved');

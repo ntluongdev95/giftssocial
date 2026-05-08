@@ -11,7 +11,7 @@ import BusinessDetailPage from '@/components/business/BusinessDetailPage';
 import type { Event, Business } from '@/types';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 const STATUS_CONFIG: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
@@ -38,7 +38,7 @@ export default function MyBookingsPage() {
     try {
       const res = await fetch(`/api/v1/bookings/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
       if (res.ok) { toast.success(`Booking ${status}`); mutate(); }
@@ -52,7 +52,7 @@ export default function MyBookingsPage() {
     try {
       const res = await fetch(`/api/v1/bookings/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ checkin: true }),
       });
       if (res.ok) { toast.success('Checked in! Proof earned 🛡'); mutate(); }
@@ -65,7 +65,7 @@ export default function MyBookingsPage() {
     try {
       const res = await fetch('/api/v1/reviews', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ business_id: businessId, event_id: eventId, booking_id: bookingId, rating, body: reviewBody }),
       });
       if (res.ok) { toast.success('Review submitted! Trust +2 🛡'); setShowReview(null); setReviewBody(''); setRating(5); }

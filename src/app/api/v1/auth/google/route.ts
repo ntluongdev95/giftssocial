@@ -43,9 +43,7 @@ export async function POST(req: NextRequest) {
           client_id: GOOGLE_CLIENT_ID,
           client_secret: GOOGLE_CLIENT_SECRET,
           redirect_uri: ALLOWED_REDIRECT_URIS.includes(body.redirect_uri) ? body.redirect_uri : ALLOWED_REDIRECT_URIS[0] || '',
-          grant_type: 'authorization_code',
-        }),
-      });
+          grant_type: 'authorization_code' }) });
 
       if (!tokenRes.ok) {
         const err = await tokenRes.json() as { error?: string };
@@ -57,8 +55,7 @@ export async function POST(req: NextRequest) {
 
       // Get user info from access token
       const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
+        headers: { Authorization: `Bearer ${tokens.access_token}` } });
 
       if (!userInfoRes.ok) {
         return NextResponse.json({ error: { code: 'userinfo_failed', message: 'Failed to get Google user info' } }, { status: 401 });
@@ -121,17 +118,18 @@ export async function POST(req: NextRequest) {
       ).bind(userId, email, name, avatarUrl).run();
     }
 
-    const accessToken = await signAccessToken(userId);
+    // Create the session row first so we can stamp its id into the access
+    // token's `sid` claim — middleware uses that to enforce per-device revoke.
     const refreshToken = await signRefreshToken(userId);
-    await createSession(userId, refreshToken, req).catch(() => {});
+    const sessionId = await createSession(userId, refreshToken, req).catch(() => null);
+    const accessToken = await signAccessToken(userId, 'user', sessionId ?? undefined);
 
     const response = NextResponse.json({
       user_id: userId,
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 2592000,
-      is_new_user: isNewUser,
-    });
+      expires_in: 1800, // 30min — middleware auto-refreshes silently
+      is_new_user: isNewUser });
 
     const final = setCsrfCookie(setAuthCookies(response, accessToken, refreshToken));
     return rl ? addRateLimitHeaders(final, rl.remaining, rl.resetIn, req.nextUrl.pathname) : final;

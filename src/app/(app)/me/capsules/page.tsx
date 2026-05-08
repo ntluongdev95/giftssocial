@@ -34,8 +34,7 @@ interface Capsule {
 }
 
 const fetcher = async (url: string): Promise<Capsule[]> => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(url, { });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error?.message || 'Failed to load');
   return (data?.data as Capsule[]) || [];
@@ -55,8 +54,7 @@ export default function CapsulesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this capsule? This cannot be undone.')) return;
     try {
-      const token = localStorage.getItem('access_token') || '';
-      const res = await fetch(`/api/v1/capsules/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/v1/capsules/${id}`, { method: 'DELETE'});
       if (res.ok) {
         toast.success('Capsule removed');
         mutate(prev => (prev || []).filter(x => x.id !== id), { revalidate: false });

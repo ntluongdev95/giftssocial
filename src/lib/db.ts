@@ -31,6 +31,7 @@ export function genId(prefix: string): string {
 const JSON_ARRAY_FIELDS = new Set([
   'badges', 'images', 'services', 'social_links', 'subcategories',
   'photos', 'skills', 'experience', 'education', 'languages',
+  'recipient_ids',
 ]);
 const JSON_OBJECT_FIELDS = new Set(['hours', 'metadata']);
 

@@ -64,7 +64,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
     try {
       const res = await fetch('/api/v1/bookings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: e.id, service_name: e.title, slot_time: e.start_time }),
       });
       if (res.ok) { setJustJoined(true); setExtraJoined(1); refresh(); toast.success('Joined! Check My Bookings for details.'); }
@@ -80,7 +80,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
   useEffect(() => {
     if (!joined || !isLoggedIn) { setShareGrant(null); return; }
     fetch(`/api/v1/events/${e.id}/location-grant`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      
     }).then(r => r.json()).then(j => {
       if (j?.data) setShareGrant(j.data);
     }).catch(() => {});
@@ -95,7 +95,6 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
         method: turningOn ? 'POST' : 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
         },
       });
       const j = await res.json().catch(() => ({}));

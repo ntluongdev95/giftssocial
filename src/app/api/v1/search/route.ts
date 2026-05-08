@@ -63,7 +63,11 @@ export async function GET(req: NextRequest) {
                   OR REPLACE(LOWER(users.username), ' ', '') LIKE ?)
            ORDER BY ${hasGeo ? 'distance ASC,' : ''} users.trust_score DESC
            LIMIT ?`
-        ).bind(pattern, pattern, pattern, normPattern, normPattern, pLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+        ).bind(
+          // Visibility CASE WHEN expects 9 viewerId placeholders BEFORE the LIKE/limit binds.
+          ...peopleVisibility.params,
+          pattern, pattern, pattern, normPattern, normPattern, pLimit,
+        ).all<Record<string, unknown>>().then(({ results: rows }) => {
           results.people = rows.map(r => ({
             id: r.id, type: 'people',
             title: r.display_name || r.username || 'User',
@@ -71,7 +75,7 @@ export async function GET(req: NextRequest) {
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
           }));
-        }).catch((err) => { console.error('[Search]', err); })
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
       );
     }
 

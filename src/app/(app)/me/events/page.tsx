@@ -100,7 +100,7 @@ export default function EventCreatePage() {
 
       const res = await fetch('/api/v1/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: form.title, description: form.description, category: form.category,
           location: { type: 'Point', coordinates: locationCoords || [lng || -96.797, lat || 32.7767] },

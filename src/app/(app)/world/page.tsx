@@ -42,8 +42,7 @@ const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
 
 const fetcher = (url: string) =>
   fetch(url, {
-    cache: 'no-store',
-    headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+    cache: 'no-store'
   }).then((r) => r.json());
 
 // ─── Time filter options ──────────────────────────────────────────────────
@@ -357,8 +356,6 @@ export default function WorldPage() {
     const kissId = params.get('kiss');
     if (!kissId) return;
 
-    const token = localStorage.getItem('access_token') || '';
-
     // Delay to let map initialize
     const timer = setTimeout(() => {
       // Public endpoint — works for anyone, not just sender/receiver
@@ -367,14 +364,13 @@ export default function WorldPage() {
         .then(data => {
           if (data.data) {
             setReplayKiss(data.data);
-            // Mark as opened if I'm the receiver
-            if (token) {
-              fetch('/api/v1/kisses', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ id: kissId }),
-              }).catch(() => {});
-            }
+            // Mark as opened if I'm the receiver. Server enforces auth — fire
+            // and ignore failures (the cookie carries the credentials).
+            fetch('/api/v1/kisses', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: kissId }),
+            }).catch(() => {});
           }
         })
         .catch(() => {});
@@ -387,8 +383,7 @@ export default function WorldPage() {
 
   // Fetch full entity from API and show detail popup (for search results)
   const showSearchEntityDetail = useCallback(async (id: string, type: string, preview?: { title: string; subtitle?: string; image?: string }) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
-    const headers = { Authorization: `Bearer ${token}` };
+    const headers = {  };
 
     if (type === 'people') {
       setSearchUser({ id, preview: preview || { title: 'User' } });

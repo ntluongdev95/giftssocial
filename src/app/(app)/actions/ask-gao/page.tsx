@@ -39,7 +39,7 @@ export default function AskGaoPage() {
     try {
       const res = await fetch('/api/v1/ai/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: finalQuery, context: { lat: lat ?? 32.7767, lng: lng ?? -96.797 } }),
       });
       if (!res.ok) throw new Error('Failed');

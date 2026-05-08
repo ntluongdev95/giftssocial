@@ -17,8 +17,13 @@ function GoogleCallbackInner() {
         window.location.origin
       );
     } else {
+      // Full-page fallback (popup blocked, eg. mobile). Preserve state through
+      // the redirect so the GoogleRedirectHandler at the app root can validate
+      // CSRF before exchanging the code.
       if (code) {
-        window.location.href = `/?google_code=${code}`;
+        const params = new URLSearchParams({ google_code: code });
+        if (state) params.set('google_state', state);
+        window.location.href = `/?${params.toString()}`;
       } else {
         window.location.href = '/';
       }

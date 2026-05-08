@@ -15,7 +15,7 @@ import dynamic from 'next/dynamic';
 const ScanCheckin = dynamic(() => import('@/components/checkin/ScanCheckin'), { ssr: false });
 
 const apiFetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 // ─── Data ────────────────────────────────────────────────────────────────

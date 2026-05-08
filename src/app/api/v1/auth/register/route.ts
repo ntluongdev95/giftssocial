@@ -44,16 +44,16 @@ export async function POST(req: NextRequest) {
        VALUES (?, ?, ?, 0, 'new', 'active')`
     ).bind(userId, email, display_name).run();
 
-    // Generate tokens
-    const accessToken = await signAccessToken(userId);
+    // Session row first → its id becomes the access token's `sid` claim.
     const refreshToken = await signRefreshToken(userId);
-    await createSession(userId, refreshToken, req).catch(() => {});
+    const sessionId = await createSession(userId, refreshToken, req).catch(() => null);
+    const accessToken = await signAccessToken(userId, 'user', sessionId ?? undefined);
 
     const response = NextResponse.json({
       user_id: userId,
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 2592000,
+      expires_in: 1800,
     });
 
     return setCsrfCookie(setAuthCookies(response, accessToken, refreshToken));

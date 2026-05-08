@@ -29,8 +29,7 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
         f.id === id
           ? { ...f, location: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] } }
           : f
-      ),
-    })),
+      ) })),
 
   toggleShowOnMap: () => {
     const next = !get().showOnMap;
@@ -42,13 +41,9 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
   },
 
   fetchFriends: async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-    if (!token) return;
     set({ loading: true });
     try {
-      const res = await fetch('/api/v1/friends', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch('/api/v1/friends');
       const data = await res.json();
       if (res.ok && data.data) {
         console.log('[FriendStore] fetched', data.data.length, 'friends');
@@ -56,5 +51,4 @@ export const useFriendStore = create<FriendStore>((set, get) => ({
       }
     } catch {}
     finally { set({ loading: false }); }
-  },
-}));
+  } }));

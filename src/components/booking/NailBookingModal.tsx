@@ -94,7 +94,7 @@ export default function NailBookingModal({ business: biz, initialService, onClos
     try {
       const res = await fetch('/api/v1/bookings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           business_id: biz.id,
           service_name: serviceNames,

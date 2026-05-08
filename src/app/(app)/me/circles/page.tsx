@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export default function MyCirclesPage() {
@@ -21,12 +21,10 @@ export default function MyCirclesPage() {
   const ownedCircleIds = circles.filter(c => c.my_role === 'owner').map(c => c.id as string);
   useEffect(() => {
     if (ownedCircleIds.length === 0) return;
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
     ownedCircleIds.forEach(async (cid) => {
       try {
         const res = await fetch(`/api/v1/circles/${cid}/members?status=pending`, {
-          headers: { Authorization: `Bearer ${token}` },
+          
         });
         const d = await res.json();
         setPendingMap(prev => ({ ...prev, [cid]: (d.data || []).length }));
@@ -39,8 +37,7 @@ export default function MyCirclesPage() {
     setLeavingId(circleId);
     try {
       const res = await fetch(`/api/v1/circles/${circleId}/leave`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        method: 'POST'
       });
       if (res.ok) { toast.success(isPending ? 'Request cancelled' : `Left ${circleName}`); mutate(); }
       else toast.error('Failed');

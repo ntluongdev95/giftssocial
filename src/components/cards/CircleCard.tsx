@@ -42,10 +42,8 @@ export default function CircleCard({ circle, isMember = false, isPending = false
     if (joinState !== 'idle') return;
     setJoinState('loading');
     try {
-      const token = localStorage.getItem('access_token') || '';
       const res = await fetch(`/api/v1/circles/${circle.id}/join`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        method: 'POST'
       });
       if (!res.ok) {
         const err = await res.json();

@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useFollow } from '@/hooks/useFollow';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 export default function FollowingPage() {

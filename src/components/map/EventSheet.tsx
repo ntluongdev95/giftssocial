@@ -50,7 +50,7 @@ export default function EventSheet({ event: e, onClose, onViewDetail }: Props) {
     try {
       const res = await fetch('/api/v1/bookings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: e.id, service_name: e.title, slot_time: e.start_time }),
       });
       if (res.ok) { setJustJoined(true); setExtraJoined(1); refresh(); toast.success('Joined! Check My Bookings for details.'); }

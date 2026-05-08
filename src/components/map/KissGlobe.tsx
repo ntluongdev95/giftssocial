@@ -15,7 +15,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useMapStore } from '@/stores/mapStore';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 interface Kiss {
@@ -81,10 +81,10 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
 
   useEffect(() => {
     fetchFriends();
-    // Also fetch following users as fallback
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      fetch('/api/v1/follows?type=following', { headers: { Authorization: `Bearer ${token}` } })
+    // Also fetch following users as fallback — auth flows through cookies, the
+    // server returns 401 if the viewer isn't logged in (we just ignore that).
+    if (typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1')) {
+      fetch('/api/v1/follows?type=following')
         .then(r => r.json())
         .then(d => {
           if (d.data) setFollowing(d.data.map((f: Record<string, unknown>) => ({
@@ -98,8 +98,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
   }, [fetchFriends]);
 
   const doSend = async (overrideReceiverCoords?: { lat: number; lng: number }) => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { setSendError('Please login first'); return; }
+    if (typeof document === 'undefined' || !document.cookie.includes('gao_logged_in=1')) { setSendError('Please login first'); return; }
     setSending(true);
     try {
       const payload: Record<string, unknown> = { receiver_id: receiverId, message, emoji, visibility, kiss_type: kissType };
@@ -110,7 +109,7 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
       }
       const res = await fetch('/api/v1/kisses', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (res.ok) { toast.success('Kiss sent! ✈️💋'); onSent(); onClose(); }
@@ -125,12 +124,11 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
     if (!receiverId) { setSendError('Pick someone to send to'); return; }
     if (receiverId === useAuthStore.getState().user?.id) { setSendError("Can't send a kiss to yourself"); return; }
     if (!emoji) { setSendError('Choose a gift first'); return; }
-    const token = localStorage.getItem('access_token');
-    if (!token) { setSendError('Please login first'); return; }
+    if (typeof document === 'undefined' || !document.cookie.includes('gao_logged_in=1')) { setSendError('Please login first'); return; }
 
     // Check if receiver has location
     try {
-      const res = await fetch(`/api/v1/users/${receiverId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/v1/users/${receiverId}`, { });
       const data = await res.json();
       if (data.data && !data.data.location_lat) {
         // Receiver has no location → show warning
@@ -420,11 +418,9 @@ function SendKissModal({ onClose, onSent, defaultReceiverId }: { onClose: () => 
                       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
                         navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
                       );
-                      const token = localStorage.getItem('access_token');
-                      if (!token) return;
                       const res = await fetch('/api/v1/users/me', {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ location_lat: pos.coords.latitude, location_lng: pos.coords.longitude }),
                       });
                       if (res.ok) {
@@ -1026,7 +1022,7 @@ export default function KissGlobe() {
         setRevealKiss(kiss);
         fetch('/api/v1/kisses', {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: kiss.id }),
         }).then(() => {
           mutate();

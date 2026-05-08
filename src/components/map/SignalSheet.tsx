@@ -83,7 +83,7 @@ export default function SignalSheet({ signal, onClose }: Props) {
     try {
       const res = await fetch('/api/v1/saved', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_type: 'signal', item_id: signal.id }),
       });
       if (res.ok) {

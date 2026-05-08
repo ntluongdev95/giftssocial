@@ -45,17 +45,17 @@ export async function POST(req: NextRequest) {
       return clearAuthCookies(response);
     }
 
-    // Issue new tokens
-    const accessToken = await signAccessToken(payload.sub);
+    // Rotate first so the new session row exists; then sign the access token
+    // with the new session_id so middleware can revoke it independently.
     const refreshToken = await signRefreshToken(payload.sub);
-
-    // Rotate: revoke old refresh token, create new session entry
     await rotateRefreshToken(refreshTokenInput, refreshToken, payload.sub).catch(() => {});
+    const newSession = await validateRefreshToken(refreshToken).catch(() => null);
+    const accessToken = await signAccessToken(payload.sub, 'user', newSession?.session_id ?? session.session_id);
 
     const response = NextResponse.json({
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 2592000,
+      expires_in: 1800,
     });
 
     return setAuthCookies(response, accessToken, refreshToken);

@@ -70,8 +70,7 @@ export default function UserSheet({ userId, preview, visibility, onClose }: Prop
   const isFollowing = isAuthed && !isMe && followingUserIds.has(userId);
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
-    fetch(`/api/v1/users/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`/api/v1/users/${userId}`, { })
       .then(r => r.json())
       .then(data => { if (data.data) setUser(data.data); })
       .catch(() => {})
@@ -424,13 +423,12 @@ function VisibilityBanner({ visibility }: { visibility: { reason: string; event_
   const [contextName, setContextName] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : '';
     if (visibility.reason === 'event' && visibility.event_id) {
-      fetch(`/api/v1/events/${visibility.event_id}`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/v1/events/${visibility.event_id}`, { })
         .then(r => r.json()).then(j => { if (j?.data?.title) setContextName(j.data.title); })
         .catch(() => {});
     } else if (visibility.reason === 'circle' && visibility.circle_id) {
-      fetch(`/api/v1/circles/${visibility.circle_id}`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/v1/circles/${visibility.circle_id}`, { })
         .then(r => r.json()).then(j => { if (j?.data?.name) setContextName(j.data.name); })
         .catch(() => {});
     }

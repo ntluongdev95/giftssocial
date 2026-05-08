@@ -30,7 +30,7 @@ export default function EditSignalPage() {
 
   useEffect(() => {
     fetch(`/api/v1/signals/${id}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      
     })
       .then(r => r.json())
       .then(res => {
@@ -53,7 +53,7 @@ export default function EditSignalPage() {
     try {
       const res = await fetch(`/api/v1/signals/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, category, visibility }),
       });
       if (!res.ok) {

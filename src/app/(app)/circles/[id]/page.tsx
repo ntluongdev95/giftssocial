@@ -10,7 +10,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import type { Circle, Event, Signal } from '@/types';
 
 const fetcher = (url: string) => fetch(url, {
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  
 }).then(r => r.json());
 
 type Member = { user_id: string; display_name: string; username?: string; avatar_url?: string; role: string; status: string; joined_at: string; trust_level?: string; trust_score?: number; bio?: string };
@@ -57,28 +57,24 @@ export default function CircleDetailPage() {
   const handleAvatarUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
     setUploading(true);
     try {
       const form = new FormData();
       form.append('file', file);
       form.append('folder', 'circles');
-      const uploadRes = await fetch('/api/v1/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+      const uploadRes = await fetch('/api/v1/upload', { method: 'POST', body: form });
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error?.message || 'Upload failed');
-      const patchRes = await fetch(`/api/v1/circles/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ avatar_url: uploadData.data?.url }) });
+      const patchRes = await fetch(`/api/v1/circles/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatar_url: uploadData.data?.url }) });
       if (patchRes.ok) { toast.success('Avatar updated!'); mutateCircle(); }
     } catch { toast.error('Failed to upload'); }
     finally { setUploading(false); }
   }, [id, mutateCircle]);
 
   const handleMemberAction = async (memberUserId: string, action: 'approve' | 'reject') => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
     setActioningId(memberUserId);
     try {
-      const res = await fetch(`/api/v1/circles/${id}/members`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ member_user_id: memberUserId, action }) });
+      const res = await fetch(`/api/v1/circles/${id}/members`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ member_user_id: memberUserId, action }) });
       if (res.ok) { toast.success(action === 'approve' ? 'Approved!' : 'Rejected'); mutatePending(); mutateMembers(); mutateCircle(); }
       else { const d = await res.json(); toast.error(d.error?.message || 'Failed'); }
     } catch { toast.error('Network error'); }
@@ -86,10 +82,9 @@ export default function CircleDetailPage() {
   };
 
   const handleJoin = async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { toast.error('Please login first'); return; }
+    if (typeof document === 'undefined' || !document.cookie.includes('gao_logged_in=1')) { toast.error('Please login first'); return; }
     try {
-      const res = await fetch(`/api/v1/circles/${id}/join`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/v1/circles/${id}/join`, { method: 'POST'});
       const d = await res.json();
       if (res.ok) { toast.success(d.data?.joined ? 'Joined!' : 'Request sent!'); mutateCircle(); mutateMembers(); }
       else toast.error(d.error?.message || 'Failed');
@@ -97,10 +92,8 @@ export default function CircleDetailPage() {
   };
 
   const handleLeave = async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
     try {
-      const res = await fetch(`/api/v1/circles/${id}/leave`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`/api/v1/circles/${id}/leave`, { method: 'POST'});
       if (res.ok) { toast.success('Left circle'); mutateCircle(); mutateMembers(); }
     } catch { toast.error('Network error'); }
   };

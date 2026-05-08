@@ -32,11 +32,10 @@ export const useAuthStore = create<AuthState>()((set) => ({
   setUser: (user) => set({ user, isAuthed: !!user, isGuest: !user }),
 
   setTokens: (accessToken, refreshToken) => {
+    // Tokens stay in memory only — auth flows through httpOnly cookies set by
+    // the API. Persisting in localStorage was a foot-gun (XSS-readable) and is
+    // no longer needed: same-origin fetches send the cookie automatically.
     set({ accessToken, refreshToken: refreshToken ?? null });
-    // Sync to localStorage — many components read access_token from there for API calls
-    if (typeof window !== 'undefined') {
-      try { localStorage.setItem('access_token', accessToken); } catch { /* ignore */ }
-    }
   },
 
   hydrateFromMe: (raw) => {
@@ -81,6 +80,8 @@ export const useAuthStore = create<AuthState>()((set) => ({
       accessToken: null,
       refreshToken: null,
     });
+    // Belt-and-braces: scrub the legacy localStorage key in case an older
+    // build of the app left a token there. New builds never write to it.
     if (typeof window !== 'undefined') {
       try { localStorage.removeItem('access_token'); } catch { /* ignore */ }
     }

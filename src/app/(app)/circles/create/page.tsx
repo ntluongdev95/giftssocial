@@ -113,13 +113,11 @@ export default function CreateCirclePage() {
     if (!category) { toast.error('Pick a category'); return; }
 
     if (!isLoggedIn()) { setShowAuth(true); return; }
-    const token = localStorage.getItem('access_token') || '';
-
     setSaving(true);
     try {
       const res = await fetch('/api/v1/circles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
           category: category.toLowerCase(),

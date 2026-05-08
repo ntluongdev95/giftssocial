@@ -8,17 +8,27 @@ function getJwtSecret(): Uint8Array {
   }
   return new TextEncoder().encode(raw || 'gao-social-dev-only-not-for-production');
 }
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
+// Access tokens are now short-lived — auto-refresh in middleware swaps them
+// silently. 30 days was a security hole: a leaked token gave attackers a
+// month-long window. 30min keeps the leak window small without forcing the
+// user to relogin (refresh runs transparently).
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30m';
 const REFRESH_EXPIRES_IN = '90d';
 
 export interface TokenPayload {
   sub: string; // user_id
   role: 'user' | 'guest';
+  // session_id — lets middleware revoke a single device by flipping the
+  // sessions row's is_revoked flag. Optional only for legacy tokens signed
+  // before this field existed; new logins always include it.
+  sid?: string;
   iat: number;
 }
 
-export async function signAccessToken(userId: string, role: 'user' | 'guest' = 'user'): Promise<string> {
-  return new SignJWT({ sub: userId, role } as unknown as Record<string, unknown>)
+export async function signAccessToken(userId: string, role: 'user' | 'guest' = 'user', sid?: string): Promise<string> {
+  const payload: Record<string, unknown> = { sub: userId, role };
+  if (sid) payload.sid = sid;
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(role === 'guest' ? '24h' : JWT_EXPIRES_IN)

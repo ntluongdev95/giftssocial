@@ -111,7 +111,7 @@ export default function ProfileEditPage() {
 
   useEffect(() => {
     fetch('/api/v1/profiles/me', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      
     })
       .then((r) => r.json())
       .then((res) => {
@@ -194,7 +194,7 @@ export default function ProfileEditPage() {
       }
       const res = await fetch('/api/v1/profiles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'Failed to save'); }

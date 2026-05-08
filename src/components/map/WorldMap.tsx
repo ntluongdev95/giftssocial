@@ -94,7 +94,7 @@ export default function WorldMap({
   const { data: meData } = useSWR<{ data: { location_sharing?: string } }>(
     isAuthed ? '/api/v1/users/me' : null,
     (url: string) => fetch(url, {
-      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+      
     }).then(r => r.json()),
   );
   const selfLocationHidden = meData?.data?.location_sharing === 'off';

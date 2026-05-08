@@ -14,8 +14,7 @@ import { parseUTC } from '@/lib/date';
 import { useLandmarkStore, type Landmark } from '@/stores/landmarkStore';
 
 const unlockedFetcher = (url: string) => fetch(url, {
-  cache: 'no-store',
-  headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('access_token') || '' : ''}` },
+  cache: 'no-store'
 }).then(r => r.json());
 
 // ─── SVG Marker Generators ───────────────────────────────────────────────
