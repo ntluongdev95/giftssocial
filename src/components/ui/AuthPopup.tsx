@@ -415,7 +415,13 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
     sessionStorage.setItem('gao_google_state', state);
 
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}&prompt=select_account&access_type=offline`;
+    // No `access_type=offline`: social-web exchanges the auth code once
+    // server-side (`/api/v1/auth/google`) to fetch profile data, then
+    // mints its own bootstrap JWT. We never persist Google's refresh
+    // token. Requesting offline access on a freshly-created OAuth
+    // client also raises Google's risk score, which surfaces extra
+    // passkey / password challenges to legitimate users.
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}&prompt=select_account`;
 
     // Open popup
     const w = 500, h = 600;
