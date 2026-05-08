@@ -59,19 +59,57 @@ const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
 const wagmiAdapter = new WagmiAdapter({
   networks,
   projectId,
-  ssr: false,
+  // ssr:true mirrors the proven test-gao-domains and gao-explorer config.
+  // Cloudflare Worker output goes through OpenNext SSR, and `ssr:false`
+  // can race with hydration on mobile WebKit and let the WC v2 client
+  // attempt to resume a parked pairing in parallel with a fresh connect.
+  ssr: true,
 });
+
+// Declared as a variable (not inline) so TypeScript's excess-property
+// check doesn't reject the extra `redirect` key. Reown's public Metadata
+// type is the minimal `{ name, description, url, icons }` shape, but its
+// underlying WalletConnect UniversalProvider accepts `redirect` at
+// runtime and forwards it into the WC v2 `proposer.metadata`. Setting
+// `universal` tells mobile wallets the https URL to refocus after
+// approving a session request — proven by test-gao-domains as the
+// single biggest cause of mobile wallets leaving the user stuck in the
+// wallet app after approving on iOS Safari/Chrome.
+const appKitMetadata = {
+  name: 'Gao Social',
+  description: 'Sign in with Gao ID',
+  url: appUrl,
+  icons: [`${appUrl}/icons/pwa-192.png`],
+  redirect: {
+    universal: appUrl,
+  },
+};
+
+if (typeof window !== 'undefined') {
+  console.info('[gao-id] AppKit init', {
+    projectId,
+    metadataUrl: appKitMetadata.url,
+    metadataRedirectUniversal: appKitMetadata.redirect.universal,
+    currentOrigin: window.location.origin,
+  });
+  // A drift between metadata.url and the live origin is the most
+  // common cause of iOS universal-link return landing on a foreign tab
+  // and the SIWE flow deadlocking. Surface it loudly in non-prod so
+  // it's caught during deploy smoke-testing.
+  if (appKitMetadata.url !== window.location.origin) {
+    console.warn(
+      '[gao-id] NEXT_PUBLIC_APP_URL does not match window.location.origin — iOS deeplink return will break',
+      { appUrl: appKitMetadata.url, origin: window.location.origin },
+    );
+  }
+}
 
 createAppKit({
   adapters: [wagmiAdapter],
   networks,
+  defaultNetwork: networks[0],
   projectId,
-  metadata: {
-    name: 'Gao Social',
-    description: 'Sign in with Gao ID',
-    url: appUrl,
-    icons: [`${appUrl}/icons/pwa-192.png`],
-  },
+  metadata: appKitMetadata,
   features: {
     email: false,
     socials: false,
