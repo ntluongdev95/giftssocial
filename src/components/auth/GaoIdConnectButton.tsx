@@ -83,9 +83,18 @@ function GaoIdConnectButtonInner({
   variant: GaoIdConnectButtonVariant;
   onAuthSuccess?: () => void;
 }) {
-  const { address, chainId, isConnected } = useAccount();
+  const { address, chainId, isConnected, connector } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { open } = useAppKit();
+
+  // WalletConnect bridges the signing prompt to a remote wallet app.
+  // On mobile external browsers (Safari, Chrome) the browser usually
+  // does NOT auto-deep-link the user across to their wallet — they
+  // have to switch apps manually to find the pending request. We
+  // detect the connector here so the SIWE flow can surface a
+  // "Open wallet" hint instead of just spinning forever.
+  const isWalletConnect =
+    connector?.id === 'walletConnect' || connector?.type === 'walletConnect';
 
   const status = useGaoIdStore((s) => s.status);
   const rootId = useGaoIdStore((s) => s.rootId);
@@ -150,7 +159,22 @@ function GaoIdConnectButtonInner({
         setBusy(true);
         setError(null);
         const shortAddr = `${address.slice(0, 6)}…${address.slice(-4)}`;
-        console.info('[gao-id] SIWE flow start', { addr: shortAddr, chainId });
+        console.info('[gao-id] SIWE flow start', {
+          addr: shortAddr,
+          chainId,
+          connectorId: connector?.id,
+          connectorName: connector?.name,
+          connectorType: connector?.type,
+          isWalletConnect,
+        });
+
+        // Mobile WalletConnect handoff: log when the user actually
+        // switches to the wallet app and back. Helps diagnose stuck
+        // sign flows where the wallet never receives the request.
+        const onVisibility = () =>
+          console.info('[gao-id] document.visibilityState=' + document.visibilityState);
+        document.addEventListener('visibilitychange', onVisibility);
+
         try {
           const { nonce } = await gaoIdClient.nonce(address as `0x${string}`, chainId);
           console.info('[gao-id] nonce ok');
@@ -163,6 +187,26 @@ function GaoIdConnectButtonInner({
 
           console.info('[gao-id] requesting wallet signature…');
           let signature: `0x${string}`;
+
+          // Surface a persistent "approve in your wallet" toast for
+          // WalletConnect users (mostly mobile external browsers).
+          // Sonner's `toast.loading` returns an id we can replace with
+          // success/error later, so the user always gets a clear
+          // terminal state — never just a silent spinner.
+          const progressToastId = isWalletConnect
+            ? toast.loading('Approve the sign-in in your wallet app', {
+                description:
+                  'Switch to your wallet app to approve. Tap "Open wallet" if it didn\'t open automatically.',
+                duration: SIGN_TIMEOUT_MS,
+                action: {
+                  label: 'Open wallet',
+                  onClick: () => {
+                    void open({ view: 'Account' });
+                  },
+                },
+              })
+            : null;
+
           try {
             // Race the wallet against a hard timeout. Many wallets (esp.
             // WalletConnect bridges) never resolve when the user closes
@@ -177,20 +221,27 @@ function GaoIdConnectButtonInner({
               ),
             ])) as `0x${string}`;
             console.info('[gao-id] signature received');
+            if (progressToastId !== null) toast.dismiss(progressToastId);
           } catch (e) {
+            if (progressToastId !== null) toast.dismiss(progressToastId);
             const errMsg = e instanceof Error ? e.message : String(e);
             let userMsg: string;
             if (REJECTED_RE.test(errMsg)) {
               userMsg = 'Signature rejected. Click the button to try again.';
             } else if (TIMEOUT_RE.test(errMsg)) {
-              userMsg =
-                'Wallet did not respond. If you used WalletConnect, open your mobile wallet and tap confirm. Otherwise reconnect and retry.';
+              userMsg = isWalletConnect
+                ? 'Wallet didn\'t respond. Open your wallet app, find the pending Gao Social request, and approve — or click Sign in again.'
+                : 'Wallet did not respond. Reconnect and retry.';
             } else {
               userMsg = `Signature failed: ${errMsg}`;
             }
             console.warn('[gao-id] signature aborted:', errMsg);
             setError(userMsg);
-            toast.error(userMsg);
+            toast.error(userMsg, {
+              action: isWalletConnect
+                ? { label: 'Open wallet', onClick: () => { void open({ view: 'Account' }); } }
+                : undefined,
+            });
             return;
           }
 
@@ -252,6 +303,7 @@ function GaoIdConnectButtonInner({
           setError(msg);
           toast.error(`Gao ID sign-in failed: ${msg}`);
         } finally {
+          document.removeEventListener('visibilitychange', onVisibility);
           setBusy(false);
         }
       }}
