@@ -77,6 +77,79 @@ const TIMEOUT_RE = /timed?\s*out|did not respond|aborted/i;
  */
 const DEBUG = process.env.NEXT_PUBLIC_GAO_ID_DEBUG === 'true';
 
+// ── Pending SIWE intent (sessionStorage) ──────────────────────────────────
+//
+// social-web mounts this button inside `AuthPopup`, which returns `null`
+// when closed. On mobile external Safari/Chrome the WalletConnect connect
+// handoff (page → wallet app → page) can collapse the modal — the user
+// returns to a fresh popup mount with `userInitiatedRef` reset, so the
+// auto-SIWE useEffect skips the sign even though the connect was clearly
+// user-initiated.
+//
+// Reference apps (gao-explorer, test-gao-domains) don't need this because
+// their header-mounted HeaderAuth component never unmounts. social-web
+// does, hence a tiny session-scoped intent flag.
+//
+// ONLY a boolean intent + timestamp + reason. Never tokens, signatures,
+// or SIWE messages — those stay in memory per the Gao ID auth plan.
+const PENDING_SIWE_KEY = 'gao_id_pending_siwe';
+const PENDING_SIWE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+interface PendingSiweIntent {
+  createdAt: number;
+  reason: 'wallet_connect' | 'manual_sign';
+}
+
+function setPendingSiweIntent(reason: PendingSiweIntent['reason']): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const intent: PendingSiweIntent = { createdAt: Date.now(), reason };
+    window.sessionStorage.setItem(PENDING_SIWE_KEY, JSON.stringify(intent));
+    console.info('[gao-id] pending intent set', { reason });
+  } catch {
+    /* sessionStorage may throw on Safari private mode — degrade gracefully */
+  }
+}
+
+function readPendingSiweIntent(): PendingSiweIntent | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_SIWE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingSiweIntent>;
+    if (
+      typeof parsed?.createdAt !== 'number' ||
+      (parsed.reason !== 'wallet_connect' && parsed.reason !== 'manual_sign')
+    ) {
+      return null;
+    }
+    return { createdAt: parsed.createdAt, reason: parsed.reason };
+  } catch {
+    return null;
+  }
+}
+
+function hasFreshPendingSiweIntent(): boolean {
+  const intent = readPendingSiweIntent();
+  if (!intent) return false;
+  const age = Date.now() - intent.createdAt;
+  if (age > PENDING_SIWE_TTL_MS) {
+    console.info('[gao-id] pending intent expired', { ageMs: age });
+    clearPendingSiweIntent();
+    return false;
+  }
+  return true;
+}
+
+function clearPendingSiweIntent(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(PENDING_SIWE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export type GaoIdConnectButtonVariant = 'modal' | 'compact';
 
 interface Props {
@@ -246,6 +319,11 @@ function GaoIdConnectButtonInner({
           userMsg = `Signature failed: ${errMsg}`;
         }
         console.warn('[gao-id] signature aborted:', errMsg);
+        // User rejection / wallet timeout: clear the intent. The user
+        // must click again to retry, which sets a fresh intent. Without
+        // this, the useEffect could re-attempt as soon as the next
+        // render landed (e.g. wagmi reports a chain change).
+        clearPendingSiweIntent();
         setError(userMsg);
         toast.error(userMsg, {
           action: isWalletConnect
@@ -312,6 +390,9 @@ function GaoIdConnectButtonInner({
       }
 
       console.info('[gao-id] flow complete', { newUser: bridge.is_new_user });
+      // Success: intent has done its job. Clear before close so a future
+      // sign-out/sign-in cycle starts clean.
+      clearPendingSiweIntent();
       toast.success('Signed in with Gao ID');
       onAuthSuccess?.();
     } catch (e) {
@@ -322,6 +403,9 @@ function GaoIdConnectButtonInner({
             ? e.message
             : 'unknown error';
       console.error('[gao-id] flow failed:', msg);
+      // Final failure (verify / /v2/me / bridge): clear intent so the
+      // useEffect doesn't loop the wallet sign request on next render.
+      clearPendingSiweIntent();
       setError(msg);
       toast.error(`Gao ID sign-in failed: ${msg}`);
     } finally {
@@ -349,29 +433,50 @@ function GaoIdConnectButtonInner({
   //   test-gao-domains/.../wallet-root/header-auth.tsx:244-261
   //
   // The effect runs when wagmi reports the wallet is connected with an
-  // address and a resolved chainId. It only proceeds if THIS tab saw a
-  // user click (`userInitiatedRef`) and the address has not been
-  // attempted yet. That gate is the entire point — it lets the wallet
-  // app, which is still in the foreground from AppKit's connect
-  // handoff, also handle the `personal_sign` prompt without needing a
-  // separate deep-link bounce on the SIWE click.
+  // address and a resolved chainId. Triggers if EITHER:
+  //   (a) `userInitiatedRef` is true — same-mount click → connect
+  //       → return to a still-mounted button (PC, in-wallet browser,
+  //       desktop).
+  //   (b) `hasFreshPendingSiweIntent()` is true — sessionStorage
+  //       intent set on click before AppKit opened. Survives the
+  //       AuthPopup remount that mobile external Safari/Chrome
+  //       triggers when the page returns from the wallet app.
+  //
+  // The intent is only set on a real Connect / Sign click, so passive
+  // wagmi reconnects after the TTL window do NOT auto-pop a wallet
+  // signing prompt for a user who didn't ask for it.
   useEffect(() => {
     if (!isConnected || !address || chainId === undefined) return;
-    if (!userInitiatedRef.current) return;
     if (isVerified) return;
     if (busy) return;
     const key = `${address.toLowerCase()}|${chainId}`;
     if (attemptedRef.current === key) return;
+
+    const refOk = userInitiatedRef.current;
+    const intentOk = hasFreshPendingSiweIntent();
+    if (!refOk && !intentOk) return;
+
+    // Restore the in-memory ref from the surviving intent so subsequent
+    // renders within this mount don't have to re-read sessionStorage.
+    if (intentOk && !refOk) userInitiatedRef.current = true;
+
     attemptedRef.current = key;
-    console.info('[gao-id] auto SIWE trigger');
+    console.info('[gao-id] auto SIWE trigger', {
+      reason: refOk ? 'ref' : 'sessionStorage',
+      addr: `${address.slice(0, 6)}…${address.slice(-4)}`,
+      chainId,
+    });
     void runSignIn();
   }, [isConnected, address, chainId, isVerified, busy, runSignIn]);
 
-  // Reset gates on disconnect so the next connect starts clean.
+  // Reset gates on disconnect so the next connect starts clean. Also
+  // clear any stale pending intent — if the user disconnected mid-flow
+  // they're no longer asking to sign in.
   useEffect(() => {
     if (!isConnected) {
       userInitiatedRef.current = false;
       attemptedRef.current = null;
+      clearPendingSiweIntent();
     }
   }, [isConnected]);
 
@@ -405,11 +510,17 @@ function GaoIdConnectButtonInner({
   if (!isConnected || !address || chainId === undefined) {
     // Disconnected → mark this tap as user-initiated and open AppKit.
     // The auto-SIWE useEffect fires once wagmi reports `isConnected`.
+    //
+    // Set the sessionStorage intent BEFORE opening AppKit. On mobile
+    // external Safari/Chrome the page may collapse this `AuthPopup`
+    // mount during the wallet handoff; the surviving intent is what
+    // resurrects the auto-SIWE on the next mount.
     return (
       <button
         type="button"
         onClick={() => {
           userInitiatedRef.current = true;
+          setPendingSiweIntent('wallet_connect');
           void open();
         }}
         disabled={busy}
@@ -424,17 +535,17 @@ function GaoIdConnectButtonInner({
 
   // Connected but not yet verified. Two cases:
   //   - busy: auto-SIWE (or a manual click) is in flight — show spinner.
-  //   - !userInitiatedRef && !busy: restored-session manual fallback.
-  //     wagmi reconnected from prior storage without a click in this
-  //     tab, so the auto-SIWE gate skipped the sign. Tapping this
-  //     button sets `userInitiatedRef` and runs SIWE explicitly. No
-  //     disconnect/reconnect required.
+  //   - !busy: manual fallback (restored session, or auto-SIWE rejected
+  //     and the user wants to retry). Tapping this button sets the
+  //     sessionStorage intent + ref + attempt key and runs SIWE
+  //     explicitly. No disconnect/reconnect required.
   return (
     <button
       type="button"
       onClick={() => {
         if (busy) return;
         userInitiatedRef.current = true;
+        setPendingSiweIntent('manual_sign');
         attemptedRef.current = `${address.toLowerCase()}|${chainId}`;
         void runSignIn();
       }}
