@@ -23,11 +23,30 @@ import { useState } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { useAppKit } from '@reown/appkit/react';
 import { Wallet } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { isGaoIdEnabled } from '@/lib/gao-id/config';
 import { gaoIdClient, GaoIdRequestError } from '@/lib/gao-id/client';
 import { buildSiweMessage } from '@/lib/gao-id/siwe';
 import { useGaoIdStore } from '@/stores/gao-id-store';
+
+/**
+ * Wallets routinely never resolve `signMessageAsync` if the user closes
+ * the wallet popup, switches apps mid-prompt, or is on a flaky
+ * WalletConnect bridge. Without a hard cap the SIWE button spins
+ * forever. 90 s covers normal WalletConnect QR scan + mobile-wallet
+ * confirm cycles and is short enough to surface real failures.
+ */
+const SIGN_TIMEOUT_MS = 90_000;
+
+/**
+ * Heuristic for "user rejected the signature" across viem / wagmi
+ * connector errors. Different connectors raise different shapes
+ * (`UserRejectedRequestError`, "User rejected", "User denied",
+ * "rejected_by_user", etc.) so we match permissively on the message.
+ */
+const REJECTED_RE = /user.?reject|user.?denied|user.?cancel|reject(ed)?_by_user|denied/i;
+const TIMEOUT_RE = /timed?\s*out|did not respond|aborted/i;
 
 export type GaoIdConnectButtonVariant = 'modal' | 'compact';
 
@@ -107,18 +126,61 @@ function GaoIdConnectButtonInner({ variant }: { variant: GaoIdConnectButtonVaria
       onClick={async () => {
         setBusy(true);
         setError(null);
+        const shortAddr = `${address.slice(0, 6)}…${address.slice(-4)}`;
+        console.info('[gao-id] SIWE flow start', { addr: shortAddr, chainId });
         try {
           const { nonce } = await gaoIdClient.nonce(address as `0x${string}`, chainId);
+          console.info('[gao-id] nonce ok');
+
           const message = buildSiweMessage({
             address: address as `0x${string}`,
             chainId,
             nonce,
           });
-          const signature = await signMessageAsync({ account: address, message });
-          const verify = await gaoIdClient.verify(message, signature as `0x${string}`);
+
+          console.info('[gao-id] requesting wallet signature…');
+          let signature: `0x${string}`;
+          try {
+            // Race the wallet against a hard timeout. Many wallets (esp.
+            // WalletConnect bridges) never resolve when the user closes
+            // the prompt, which previously left the spinner spinning.
+            signature = (await Promise.race([
+              signMessageAsync({ account: address, message }),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error(`Wallet did not respond within ${Math.round(SIGN_TIMEOUT_MS / 1000)}s`)),
+                  SIGN_TIMEOUT_MS,
+                ),
+              ),
+            ])) as `0x${string}`;
+            console.info('[gao-id] signature received');
+          } catch (e) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            let userMsg: string;
+            if (REJECTED_RE.test(errMsg)) {
+              userMsg = 'Signature rejected. Click the button to try again.';
+            } else if (TIMEOUT_RE.test(errMsg)) {
+              userMsg =
+                'Wallet did not respond. If you used WalletConnect, open your mobile wallet and tap confirm. Otherwise reconnect and retry.';
+            } else {
+              userMsg = `Signature failed: ${errMsg}`;
+            }
+            console.warn('[gao-id] signature aborted:', errMsg);
+            setError(userMsg);
+            toast.error(userMsg);
+            return;
+          }
+
+          console.info('[gao-id] verify…');
+          const verify = await gaoIdClient.verify(message, signature);
+          console.info('[gao-id] verify ok rootId=' + verify.user.rootId.slice(0, 16) + '…');
           setFromVerifyResponse(verify);
+
+          console.info('[gao-id] hydrating /v2/me/');
           const me = await gaoIdClient.getCompositeMe();
           setCompositeMe(me);
+          console.info('[gao-id] flow complete');
+          toast.success('Gao ID active');
         } catch (e) {
           const msg =
             e instanceof GaoIdRequestError
@@ -126,7 +188,9 @@ function GaoIdConnectButtonInner({ variant }: { variant: GaoIdConnectButtonVaria
               : e instanceof Error
                 ? e.message
                 : 'unknown error';
+          console.error('[gao-id] flow failed:', msg);
           setError(msg);
+          toast.error(`Gao ID sign-in failed: ${msg}`);
         } finally {
           setBusy(false);
         }

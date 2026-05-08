@@ -128,6 +128,42 @@ function fail(status: number, body: IssuerErrorBody, fallback: string): never {
   );
 }
 
+/**
+ * Default per-request timeout. Without it, a hung issuer / dead network
+ * leaves the SIWE flow's spinner spinning forever because `fetch` has
+ * no built-in timeout. 15 seconds is comfortable for a healthy worker
+ * cold start and short enough to surface infra issues quickly.
+ */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+async function timedFetch(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (e) {
+    // AbortError from our timer surfaces as a clear, user-actionable
+    // GaoIdRequestError instead of a cryptic DOMException.
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new GaoIdRequestError(
+        0,
+        'timeout',
+        null,
+        `Request to ${input} timed out after ${timeoutMs}ms`,
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class GaoIdClient {
   private accessToken: string | null = null;
   private csrfToken: string | null = null;
@@ -137,7 +173,7 @@ export class GaoIdClient {
 
   async nonce(address: `0x${string}`, chainId: number): Promise<NonceResponse> {
     const { issuer } = getConfig();
-    const r = await fetch(`${issuer}/v2/auth/nonce`, {
+    const r = await timedFetch(`${issuer}/v2/auth/nonce`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
@@ -149,7 +185,7 @@ export class GaoIdClient {
 
   async verify(message: string, signature: `0x${string}`): Promise<VerifyResponse> {
     const { issuer } = getConfig();
-    const r = await fetch(`${issuer}/v2/auth/verify`, {
+    const r = await timedFetch(`${issuer}/v2/auth/verify`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
@@ -174,7 +210,7 @@ export class GaoIdClient {
     const { issuer } = getConfig();
     const headers: Record<string, string> = {};
     if (this.csrfToken) headers['X-CSRF-Token'] = this.csrfToken;
-    const r = await fetch(`${issuer}/v2/auth/refresh`, {
+    const r = await timedFetch(`${issuer}/v2/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
       headers,
@@ -194,7 +230,7 @@ export class GaoIdClient {
     const headers: Record<string, string> = {};
     if (this.csrfToken) headers['X-CSRF-Token'] = this.csrfToken;
     try {
-      await fetch(`${issuer}/v2/auth/logout`, {
+      await timedFetch(`${issuer}/v2/auth/logout`, {
         method: 'POST',
         credentials: 'include',
         headers,
@@ -264,7 +300,7 @@ export class GaoIdClient {
 
   private async bearerGet<T>(path: string): Promise<T> {
     const { issuer } = getConfig();
-    const r = await fetch(`${issuer}${path}`, {
+    const r = await timedFetch(`${issuer}${path}`, {
       headers: { authorization: await this.authHeader() },
     });
     if (!r.ok) fail(r.status, await readError(r), `gao-id GET ${path} failed`);
@@ -273,7 +309,7 @@ export class GaoIdClient {
 
   private async bearerSend<T>(path: string, method: 'POST' | 'PUT', body: unknown): Promise<T> {
     const { issuer } = getConfig();
-    const r = await fetch(`${issuer}${path}`, {
+    const r = await timedFetch(`${issuer}${path}`, {
       method,
       headers: {
         authorization: await this.authHeader(),
