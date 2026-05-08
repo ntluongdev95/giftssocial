@@ -175,39 +175,30 @@ function GaoIdConnectButtonInner({
     <button
       type="button"
       onClick={async () => {
-        // [Patch II] WalletConnect sign-time deep-link.
-        //
-        // For mobile external Safari/Chrome users, Reown AppKit only
-        // deep-links to the wallet app on CONNECT. Subsequent sign
-        // requests are sent over the WalletConnect relay but the
-        // browser never auto-foregrounds the wallet, so a `personal_sign`
-        // dispatched by wagmi sits silently in the wallet app's
-        // background until the user manually switches.
-        //
-        // We re-use the wallet's deep-link href (saved by Reown at
-        // connect time under `WALLETCONNECT_DEEPLINK_CHOICE`) and fire
-        // it synchronously inside the user-gesture frame so iOS
-        // Safari permits the cross-app navigation. Custom URL schemes
-        // hand off to the OS; if no app handles the scheme the page
-        // stays put. Best-effort — the rest of the flow continues
-        // either way and the persistent toast still surfaces clear
-        // recovery instructions.
-        let deepLinkAttempted = false;
+        // Pre-read (do NOT fire yet) the wallet deep-link href Reown
+        // persisted on connect. The previous patch fired this here, at
+        // the top of the click handler, which opened the wallet app
+        // BEFORE wagmi had dispatched the WalletConnect `personal_sign`
+        // request — the wallet showed its home screen with nothing
+        // pending and the user got stuck. Deep-link timing is now
+        // moved below, after `signMessageAsync` has been invoked.
+        let wcDeepLinkHref: string | null = null;
+        let wcDeepLinkName: string | null = null;
         if (isWalletConnect && typeof window !== 'undefined') {
           try {
             const raw = window.localStorage.getItem(WC_DEEPLINK_KEY);
             if (raw) {
               const parsed = JSON.parse(raw) as { href?: string; name?: string };
               if (parsed?.href) {
-                console.info('[gao-id] deep-linking to wallet:', parsed.name ?? 'unknown');
-                window.location.href = parsed.href;
-                deepLinkAttempted = true;
+                wcDeepLinkHref = parsed.href;
+                wcDeepLinkName = parsed.name ?? 'unknown';
               }
             }
           } catch {
-            /* fall through — toast UI will tell the user to switch app */
+            /* ignore — toast still tells the user how to recover */
           }
         }
+        const hasDeepLink = wcDeepLinkHref !== null;
 
         setBusy(true);
         setError(null);
@@ -219,7 +210,7 @@ function GaoIdConnectButtonInner({
           connectorName: connector?.name,
           connectorType: connector?.type,
           isWalletConnect,
-          deepLinkAttempted,
+          hasDeepLink,
         });
 
         // [Patch I] Debug toast — gated by NEXT_PUBLIC_GAO_ID_DEBUG.
@@ -227,14 +218,12 @@ function GaoIdConnectButtonInner({
         // screenshot the actual connector / address / chainId / deep
         // link state without needing DevTools.
         if (DEBUG) {
-          const hasDeepLink =
-            typeof window !== 'undefined' && !!window.localStorage.getItem(WC_DEEPLINK_KEY);
           toast.message('[gao-id debug] flow start', {
             duration: 30000,
             description:
               `connector=${connector?.id ?? '?'}/${connector?.type ?? '?'} ` +
               `chainId=${chainId} addr=${shortAddr} ` +
-              `wcLink=${hasDeepLink} deeplink=${deepLinkAttempted}`,
+              `wcLink=${hasDeepLink}`,
           });
         }
 
@@ -277,12 +266,38 @@ function GaoIdConnectButtonInner({
               })
             : null;
 
+          // CRITICAL ORDER for mobile WalletConnect external browsers:
+          //   1. Invoke signMessageAsync — this kicks the
+          //      `personal_sign` request out over the WC relay so the
+          //      wallet app actually has something pending.
+          //   2. AFTER the request is in flight, deep-link the wallet
+          //      app so iOS/Android foregrounds it onto the prompt.
+          //   3. Await the signature with a hard timeout.
+          //
+          // Firing the deep-link before step 1 (the previous bug) just
+          // opened the wallet on its home screen with nothing pending.
+          // 250 ms is empirical: enough for wagmi/Reown to push the
+          // request through the relay but short enough that the user
+          // doesn't notice latency.
+          const signaturePromise = signMessageAsync({ account: address, message });
+          console.info('[gao-id] sign request promise created');
+
+          let deepLinkTimer: ReturnType<typeof setTimeout> | null = null;
+          if (isWalletConnect && wcDeepLinkHref) {
+            deepLinkTimer = setTimeout(() => {
+              console.info('[gao-id] opening wallet deep link:', wcDeepLinkName);
+              if (typeof window !== 'undefined') {
+                window.location.href = wcDeepLinkHref;
+              }
+            }, 250);
+          }
+
           try {
             // Race the wallet against a hard timeout. Many wallets (esp.
             // WalletConnect bridges) never resolve when the user closes
             // the prompt, which previously left the spinner spinning.
             signature = (await Promise.race([
-              signMessageAsync({ account: address, message }),
+              signaturePromise,
               new Promise<never>((_, reject) =>
                 setTimeout(
                   () => reject(new Error(`Wallet did not respond within ${Math.round(SIGN_TIMEOUT_MS / 1000)}s`)),
@@ -291,8 +306,10 @@ function GaoIdConnectButtonInner({
               ),
             ])) as `0x${string}`;
             console.info('[gao-id] signature received');
+            if (deepLinkTimer) clearTimeout(deepLinkTimer);
             if (progressToastId !== null) toast.dismiss(progressToastId);
           } catch (e) {
+            if (deepLinkTimer) clearTimeout(deepLinkTimer);
             if (progressToastId !== null) toast.dismiss(progressToastId);
             const errMsg = e instanceof Error ? e.message : String(e);
             let userMsg: string;
