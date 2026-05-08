@@ -29,6 +29,7 @@ import { isGaoIdEnabled } from '@/lib/gao-id/config';
 import { gaoIdClient, GaoIdRequestError } from '@/lib/gao-id/client';
 import { buildSiweMessage } from '@/lib/gao-id/siwe';
 import { useGaoIdStore } from '@/stores/gao-id-store';
+import { useAuthStore } from '@/stores/auth-store';
 
 /**
  * Wallets routinely never resolve `signMessageAsync` if the user closes
@@ -52,14 +53,36 @@ export type GaoIdConnectButtonVariant = 'modal' | 'compact';
 
 interface Props {
   variant?: GaoIdConnectButtonVariant;
+  /**
+   * Optional callback invoked AFTER the bootstrap session has been
+   * minted by `/api/v1/auth/gao-id` and `useAuthStore` is hydrated.
+   * Used by `AuthPopup` to close the modal; safe to leave undefined
+   * elsewhere (e.g. inside `/me` where the user is already in-app).
+   */
+  onAuthSuccess?: () => void;
 }
 
-export default function GaoIdConnectButton({ variant = 'modal' }: Props) {
+export default function GaoIdConnectButton({ variant = 'modal', onAuthSuccess }: Props) {
   if (!isGaoIdEnabled()) return null;
-  return <GaoIdConnectButtonInner variant={variant} />;
+  return <GaoIdConnectButtonInner variant={variant} onAuthSuccess={onAuthSuccess} />;
 }
 
-function GaoIdConnectButtonInner({ variant }: { variant: GaoIdConnectButtonVariant }) {
+interface BridgeResponse {
+  user_id: string;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  is_new_user: boolean;
+  gao_root_id: string;
+}
+
+function GaoIdConnectButtonInner({
+  variant,
+  onAuthSuccess,
+}: {
+  variant: GaoIdConnectButtonVariant;
+  onAuthSuccess?: () => void;
+}) {
   const { address, chainId, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { open } = useAppKit();
@@ -179,8 +202,45 @@ function GaoIdConnectButtonInner({ variant }: { variant: GaoIdConnectButtonVaria
           console.info('[gao-id] hydrating /v2/me');
           const me = await gaoIdClient.getCompositeMe();
           setCompositeMe(me);
-          console.info('[gao-id] flow complete');
-          toast.success('Gao ID active');
+
+          // Bridge the Gao ID bearer into a social-web bootstrap
+          // session so the rest of the app (which still gates on
+          // `useAuthStore` + `gao_token` cookies) treats the user as
+          // signed in. The bootstrap user record is local — canonical
+          // identity stays at gao-id-worker.
+          console.info('[gao-id] bridging to bootstrap session');
+          const bridgeRes = await fetch('/api/v1/auth/gao-id', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { authorization: `Bearer ${verify.accessToken}` },
+          });
+          if (!bridgeRes.ok) {
+            const body = (await bridgeRes.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
+            const code = body?.error?.code ?? `http_${bridgeRes.status}`;
+            const message = body?.error?.message ?? 'Bootstrap session bridge failed';
+            throw new GaoIdRequestError(bridgeRes.status, code, null, message);
+          }
+          const bridge = (await bridgeRes.json()) as BridgeResponse;
+
+          // Hydrate `useAuthStore` exactly the way the Google flow
+          // does: stash tokens in memory, then refetch
+          // `/api/v1/auth/session` so the canonical user shape (which
+          // the rest of the app reads) lands in the store.
+          const auth = useAuthStore.getState();
+          auth.setTokens(bridge.access_token, bridge.refresh_token);
+          try {
+            const sessRes = await fetch('/api/v1/auth/session', { credentials: 'same-origin' });
+            if (sessRes.ok) {
+              const sessBody = await sessRes.json();
+              if (sessBody?.data?.id) auth.hydrateFromMe(sessBody);
+            }
+          } catch {
+            /* hydration is best-effort; the bootstrap cookie is set */
+          }
+
+          console.info('[gao-id] flow complete', { newUser: bridge.is_new_user });
+          toast.success('Signed in with Gao ID');
+          onAuthSuccess?.();
         } catch (e) {
           const msg =
             e instanceof GaoIdRequestError

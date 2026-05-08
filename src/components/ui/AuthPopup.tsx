@@ -601,8 +601,10 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
 
             {/* Gao ID wallet entry — renders null when NEXT_PUBLIC_GAO_ID_ENABLED !== 'true'.
                 Bootstrap (Google / Apple) flow above is unaffected; this is a third,
-                additive option that mints a canonical Gao identity via SIWE. */}
-            <GaoIdConnectButton variant="modal" />
+                additive option that mints a canonical Gao identity via SIWE.
+                `onAuthSuccess` fires AFTER the local bootstrap session is bridged so
+                this modal closes the same way it does after Google login. */}
+            <GaoIdConnectButton variant="modal" onAuthSuccess={onClose} />
 
           </>
         )}
