@@ -19,11 +19,19 @@
  *      calls `runSignIn` explicitly.
  *   3. SIWE verified                → disabled badge with rootId tail.
  *
- * No manual WalletConnect deep-linking. Reown AppKit handles mobile
- * wallet handoff at connect time; firing SIWE in a useEffect immediately
- * after wagmi reports `isConnected` lets the wallet still in the
- * foreground from the connect handoff also handle the `personal_sign`
- * prompt — no second deep-link required, no second user tap required.
+ * Mobile external wallet (WalletConnect) handoff:
+ *   - On `Connect`, AppKit foregrounds the wallet via WC's connect
+ *     deep-link.
+ *   - Returning to the web tab can leave wagmi `isConnected: true` while
+ *     the wallet app is in the background. A subsequent `personal_sign`
+ *     dispatch reaches the relay but the wallet shows nothing on screen
+ *     because the OS hasn't been told to bring it forward — so the user
+ *     experiences an inert "Sign in" button. We dispatch the sign first,
+ *     wait ~250ms for the relay to deliver, then deep-link the wallet
+ *     using `provider.session.peer.metadata.redirect.{native,universal}`.
+ *     If no redirect metadata is present we surface a visible fallback
+ *     panel (Open wallet to sign / Retry / Cancel) so the user is never
+ *     stuck on a silent spinner.
  *
  * Renders `null` when NEXT_PUBLIC_GAO_ID_ENABLED !== 'true' so the
  * component is safe to mount unconditionally; the wagmi/Reown context
@@ -58,6 +66,14 @@ import { useAuthStore } from '@/stores/auth-store';
  * to surface real failures.
  */
 const SIGN_TIMEOUT_MS = 90_000;
+
+/**
+ * Delay between dispatching `personal_sign` and attempting to deep-link
+ * the wallet to the foreground. The relay needs a moment to deliver the
+ * request — if we redirect first the wallet may foreground without a
+ * pending request to display.
+ */
+const FOREGROUND_DELAY_MS = 250;
 
 /**
  * Heuristic for "user rejected the signature" across viem / wagmi
@@ -150,6 +166,87 @@ function clearPendingSiweIntent(): void {
   }
 }
 
+// ── WalletConnect deep-link helpers ───────────────────────────────────────
+//
+// WalletConnect `personal_sign` is delivered via the relay; the wallet
+// app only surfaces a UI prompt to the user if the OS brings it to the
+// foreground. On mobile external Safari/Chrome the wallet is in the
+// background after the connect handoff returns, so the user doesn't see
+// the request and the spinner stays up. The active session's
+// `peer.metadata.redirect` carries the wallet's deep-link target — we
+// use it to foreground the wallet right after dispatching the sign.
+
+interface WalletConnectRedirect {
+  native?: string;
+  universal?: string;
+}
+
+interface ProviderWithSession {
+  session?: {
+    peer?: { metadata?: { redirect?: WalletConnectRedirect } };
+  };
+  signer?: {
+    client?: {
+      session?: {
+        values?: Array<{ peer?: { metadata?: { redirect?: WalletConnectRedirect } } }>;
+      };
+    };
+  };
+}
+
+interface ConnectorLike {
+  getProvider?: () => Promise<unknown> | unknown;
+}
+
+async function getWalletConnectRedirect(
+  connector: ConnectorLike | null | undefined,
+): Promise<WalletConnectRedirect | null> {
+  try {
+    const provider = (await connector?.getProvider?.()) as ProviderWithSession | undefined;
+    if (!provider) return null;
+    const direct = provider.session?.peer?.metadata?.redirect;
+    if (direct?.native || direct?.universal) return direct;
+    const nested = provider.signer?.client?.session?.values?.[0]?.peer?.metadata?.redirect;
+    if (nested?.native || nested?.universal) return nested;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function isMobileUserAgent(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+interface ForegroundResult {
+  visibility: string;
+  hasRedirect: boolean;
+  redirect: WalletConnectRedirect | null;
+}
+
+async function foregroundWallet(
+  connector: ConnectorLike | null | undefined,
+): Promise<ForegroundResult> {
+  const redirect = await getWalletConnectRedirect(connector);
+  const visibility = typeof document !== 'undefined' ? document.visibilityState : 'unknown';
+  const hasRedirect = !!(redirect?.native || redirect?.universal);
+  console.info('[gao-id] wallet foreground fallback', { visibility, hasRedirect, redirect });
+  if (typeof window === 'undefined' || !hasRedirect) {
+    return { visibility, hasRedirect, redirect };
+  }
+  // Native scheme first — when a wallet is installed, iOS/Android route
+  // the request to it without leaving the page. Universal links are the
+  // safer fallback for browsers that block custom schemes silently.
+  const target = redirect?.native || redirect?.universal;
+  try {
+    if (target) window.location.href = target;
+  } catch {
+    /* ignore — visible fallback panel still surfaces an Open wallet CTA */
+  }
+  return { visibility, hasRedirect, redirect };
+}
+
 export type GaoIdConnectButtonVariant = 'modal' | 'compact';
 
 interface Props {
@@ -177,6 +274,9 @@ interface BridgeResponse {
   gao_root_id: string;
 }
 
+type SignAbortKind = 'cancel' | 'retry';
+type SiweStage = 'nonce' | 'siwe_build' | 'sign' | 'verify' | 'me' | 'bridge' | 'hydrate';
+
 function GaoIdConnectButtonInner({
   variant,
   onAuthSuccess,
@@ -189,10 +289,9 @@ function GaoIdConnectButtonInner({
   const { open } = useAppKit();
 
   // WalletConnect bridges the signing prompt to a remote wallet app.
-  // We still detect it so the persistent toast can include an "Open
-  // wallet" affordance for mobile users who switched away from the
-  // wallet app mid-prompt. NO manual deep-linking from this component
-  // — AppKit owns the connect-time handoff.
+  // We detect it so the persistent toast and the visible fallback panel
+  // can include "Open wallet" affordances. AppKit owns the connect-time
+  // handoff; we own the sign-time handoff via session redirect metadata.
   const isWalletConnect =
     connector?.id === 'walletConnect' || connector?.type === 'walletConnect';
 
@@ -203,6 +302,11 @@ function GaoIdConnectButtonInner({
   const setError = useGaoIdStore((s) => s.setError);
 
   const [busy, setBusy] = useState(false);
+  // Mobile external WC: rendered while `signMessageAsync` is pending so
+  // the user always has Open wallet / Retry / Cancel CTAs even when the
+  // wallet did not auto-foreground (no redirect metadata, OS suppressed
+  // the deep-link, etc.). `null` = no pending mobile-WC sign.
+  const [signPending, setSignPending] = useState<{ hasRedirect: boolean } | null>(null);
 
   const isVerified =
     status === 'authenticated' || status === 'profile_missing' || status === 'profile_active';
@@ -215,8 +319,19 @@ function GaoIdConnectButtonInner({
   const userInitiatedRef = useRef(false);
   // attemptedRef: lower-case `address|chainId` of the most recent SIWE
   // attempt. Prevents the auto-SIWE useEffect from re-entering after a
-  // user rejection or while a sign request is already in flight.
+  // user rejection or while a sign request is already in flight. The
+  // explicit Sign in click resets this so a tap is never blocked by a
+  // stale attempt key.
   const attemptedRef = useRef<string | null>(null);
+  // Always-current connector ref so `runSignIn` can read provider
+  // metadata without forcing the `useCallback` to depend on the
+  // connector object (which changes identity on every render).
+  const connectorRef = useRef(connector);
+  connectorRef.current = connector;
+  // Set while a sign is racing against timeout/cancel. Calling it
+  // rejects the race with `user_cancel` or `user_retry` so the flow
+  // unwinds cleanly without waiting for the wallet.
+  const cancelSignRef = useRef<((kind: SignAbortKind) => void) | null>(null);
 
   const runSignIn = useCallback(async (): Promise<void> => {
     if (!address || chainId === undefined) {
@@ -226,6 +341,7 @@ function GaoIdConnectButtonInner({
     }
     setBusy(true);
     setError(null);
+    setSignPending(null);
 
     const shortAddr = `${address.slice(0, 6)}…${address.slice(-4)}`;
     console.info('[gao-id] SIWE flow start', {
@@ -244,6 +360,13 @@ function GaoIdConnectButtonInner({
           `chainId=${chainId} addr=${shortAddr}`,
       });
     }
+    if (isWalletConnect && isMobileUserAgent()) {
+      console.info('[gao-id] mobile external SIWE path', {
+        connectorId: connector?.id,
+        address: shortAddr,
+        chainId,
+      });
+    }
 
     // Mobile WalletConnect handoff: log when the user actually switches
     // to the wallet app and back. Helps diagnose stuck sign flows where
@@ -253,25 +376,25 @@ function GaoIdConnectButtonInner({
     document.addEventListener('visibilitychange', onVisibility);
 
     let progressToastId: string | number | null = null;
+    let stage: SiweStage = 'nonce';
     try {
+      console.info('[gao-id] nonce request start');
       const { nonce } = await gaoIdClient.nonce(address as `0x${string}`, chainId);
       console.info('[gao-id] nonce ok');
 
+      stage = 'siwe_build';
       const message = buildSiweMessage({
         address: address as `0x${string}`,
         chainId,
         nonce,
       });
+      console.info('[gao-id] SIWE message built');
 
-      console.info('[gao-id] requesting wallet signature…');
-
+      stage = 'sign';
       // Surface a persistent "approve in your wallet" toast for
-      // WalletConnect users (mostly mobile external browsers). Sonner's
-      // toast.loading returns an id we can dismiss later, so the user
-      // always gets a clear terminal state — never just a silent
-      // spinner. The "Open wallet" action lets the user re-foreground
-      // the wallet via AppKit's account view if they accidentally
-      // dismissed it.
+      // WalletConnect users. The "Open wallet" action deep-links the
+      // wallet via session redirect metadata (not just AppKit's account
+      // view), so the user always has a real path to the wallet app.
       progressToastId = isWalletConnect
         ? toast.loading('Approve the sign-in in your wallet app', {
             description:
@@ -280,19 +403,46 @@ function GaoIdConnectButtonInner({
             action: {
               label: 'Open wallet',
               onClick: () => {
-                void open({ view: 'Account' });
+                void foregroundWallet(connectorRef.current);
               },
             },
           })
         : null;
 
+      console.info('[gao-id] personal_sign dispatch');
+      const signPromise = signMessageAsync({ account: address as `0x${string}`, message });
+      console.info('[gao-id] personal_sign pending');
+
+      // Mobile external WalletConnect: deep-link the wallet AFTER the
+      // sign promise is dispatched so the relay has a chance to deliver
+      // the request first. If the user already left for the wallet
+      // (visibility !== 'visible') we skip — they're already there.
+      if (isWalletConnect && isMobileUserAgent()) {
+        await new Promise<void>((r) => setTimeout(r, FOREGROUND_DELAY_MS));
+        let fg: ForegroundResult | null = null;
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+          fg = await foregroundWallet(connectorRef.current);
+        }
+        // Even if we *did* deep-link, the OS may not actually foreground
+        // the wallet (no app installed, custom-scheme blocked). Render
+        // the visible fallback panel so the user has explicit Open
+        // wallet / Retry / Cancel CTAs.
+        setSignPending({ hasRedirect: !!fg?.hasRedirect });
+      }
+
+      // Race the wallet against (a) hard timeout — WC bridges can leave
+      // signMessageAsync pending forever if the wallet prompt is closed;
+      // (b) user-driven cancel/retry from the fallback panel.
+      let cancelReject: ((e: Error) => void) | null = null;
+      const cancelPromise = new Promise<never>((_, reject) => {
+        cancelReject = reject;
+      });
+      cancelSignRef.current = (kind) => cancelReject?.(new Error(`user_${kind}`));
+
       let signature: `0x${string}`;
       try {
-        // Race the wallet against a hard timeout. WalletConnect bridges
-        // can leave signMessageAsync pending forever if the user closes
-        // the wallet prompt; without a cap the spinner never resolves.
         signature = (await Promise.race([
-          signMessageAsync({ account: address as `0x${string}`, message }),
+          signPromise,
           new Promise<never>((_, reject) =>
             setTimeout(
               () =>
@@ -304,10 +454,22 @@ function GaoIdConnectButtonInner({
               SIGN_TIMEOUT_MS,
             ),
           ),
+          cancelPromise,
         ])) as `0x${string}`;
         console.info('[gao-id] signature received');
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
+        // user_cancel / user_retry are explicit aborts from the fallback
+        // panel. Treat both silently — for retry, the click handler
+        // schedules a fresh `runSignIn` after this one unwinds.
+        if (errMsg === 'user_cancel' || errMsg === 'user_retry') {
+          console.info('[gao-id] sign aborted', { reason: errMsg });
+          clearPendingSiweIntent();
+          if (errMsg === 'user_cancel') {
+            toast.message('Sign-in cancelled');
+          }
+          return;
+        }
         let userMsg: string;
         if (REJECTED_RE.test(errMsg)) {
           userMsg = 'Signature rejected. Click the button to try again.';
@@ -318,7 +480,7 @@ function GaoIdConnectButtonInner({
         } else {
           userMsg = `Signature failed: ${errMsg}`;
         }
-        console.warn('[gao-id] signature aborted:', errMsg);
+        console.warn('[gao-id] SIWE error', { stage, message: errMsg });
         // User rejection / wallet timeout: clear the intent. The user
         // must click again to retry, which sets a fresh intent. Without
         // this, the useEffect could re-attempt as soon as the next
@@ -330,24 +492,28 @@ function GaoIdConnectButtonInner({
             ? {
                 label: 'Open wallet',
                 onClick: () => {
-                  void open({ view: 'Account' });
+                  void foregroundWallet(connectorRef.current);
                 },
               }
             : undefined,
         });
         return;
       } finally {
+        cancelSignRef.current = null;
         if (progressToastId !== null) {
           toast.dismiss(progressToastId);
           progressToastId = null;
         }
+        setSignPending(null);
       }
 
-      console.info('[gao-id] verify…');
+      stage = 'verify';
+      console.info('[gao-id] verify start');
       const verify = await gaoIdClient.verify(message, signature);
-      console.info('[gao-id] verify ok rootId=' + verify.user.rootId.slice(0, 16) + '…');
+      console.info('[gao-id] verify ok');
       setFromVerifyResponse(verify);
 
+      stage = 'me';
       console.info('[gao-id] hydrating /v2/me');
       const me = await gaoIdClient.getCompositeMe();
       setCompositeMe(me);
@@ -357,6 +523,7 @@ function GaoIdConnectButtonInner({
       // gao_token cookies) treats the user as signed in. The bootstrap
       // user record is local — canonical identity stays at
       // gao-id-worker.
+      stage = 'bridge';
       console.info('[gao-id] bridging to bootstrap session');
       const bridgeRes = await fetch('/api/v1/auth/gao-id', {
         method: 'POST',
@@ -377,6 +544,7 @@ function GaoIdConnectButtonInner({
       // stash tokens in memory, then refetch `/api/v1/auth/session` so
       // the canonical user shape (which the rest of the app reads)
       // lands in the store.
+      stage = 'hydrate';
       const auth = useAuthStore.getState();
       auth.setTokens(bridge.access_token, bridge.refresh_token);
       try {
@@ -402,7 +570,7 @@ function GaoIdConnectButtonInner({
           : e instanceof Error
             ? e.message
             : 'unknown error';
-      console.error('[gao-id] flow failed:', msg);
+      console.error('[gao-id] SIWE error', { stage, message: msg });
       // Final failure (verify / /v2/me / bridge): clear intent so the
       // useEffect doesn't loop the wallet sign request on next render.
       clearPendingSiweIntent();
@@ -412,6 +580,8 @@ function GaoIdConnectButtonInner({
       if (progressToastId !== null) toast.dismiss(progressToastId);
       document.removeEventListener('visibilitychange', onVisibility);
       setBusy(false);
+      setSignPending(null);
+      cancelSignRef.current = null;
     }
   }, [
     address,
@@ -421,7 +591,6 @@ function GaoIdConnectButtonInner({
     connector?.type,
     isWalletConnect,
     onAuthSuccess,
-    open,
     setCompositeMe,
     setError,
     setFromVerifyResponse,
@@ -476,9 +645,66 @@ function GaoIdConnectButtonInner({
     if (!isConnected) {
       userInitiatedRef.current = false;
       attemptedRef.current = null;
+      cancelSignRef.current = null;
+      setSignPending(null);
       clearPendingSiweIntent();
     }
   }, [isConnected]);
+
+  // Manual "Sign in with Gao ID" tap. Treated as a fresh user action:
+  // any expired sessionStorage intent, stale `userInitiatedRef`, stale
+  // `attemptedRef` key, or in-flight sign lock is refreshed/cleared so
+  // the user is never blocked by leftover state from a prior attempt.
+  const handleSignInClick = useCallback(() => {
+    console.info('[gao-id] sign in click');
+    if (!address || chainId === undefined) {
+      console.info('[gao-id] sign in blocked', {
+        reason: 'no_account',
+        hasAddress: !!address,
+        hasChainId: chainId !== undefined,
+      });
+      return;
+    }
+    const shortAddr = `${address.slice(0, 6)}…${address.slice(-4)}`;
+    if (busy) {
+      // A previous sign attempt is still racing. Cancel it (so the race
+      // unwinds) and queue a fresh attempt — this is what the user
+      // intends when they re-tap Sign in.
+      if (cancelSignRef.current) {
+        console.info('[gao-id] sign in click accepted', {
+          mode: 'cancel_in_flight_and_retry',
+          addr: shortAddr,
+          chainId,
+          connectorId: connector?.id,
+        });
+        cancelSignRef.current('retry');
+        // Yield a tick so the previous run's `finally` clears
+        // `busy`/`signPending`/`cancelSignRef`, then start fresh.
+        setTimeout(() => {
+          userInitiatedRef.current = true;
+          setPendingSiweIntent('manual_sign');
+          attemptedRef.current = null;
+          void runSignIn();
+        }, 80);
+        return;
+      }
+      console.info('[gao-id] sign in blocked', { reason: 'busy_no_cancel' });
+      return;
+    }
+    console.info('[gao-id] sign in click accepted', {
+      addr: shortAddr,
+      chainId,
+      connectorId: connector?.id,
+    });
+    // Refresh every gate so a stale TTL/ref/key cannot suppress the
+    // explicit click. The auto-SIWE useEffect will see `attemptedRef`
+    // is null on the next render, but `runSignIn` is invoked
+    // synchronously here so it always wins the race.
+    userInitiatedRef.current = true;
+    setPendingSiweIntent('manual_sign');
+    attemptedRef.current = null;
+    void runSignIn();
+  }, [address, busy, chainId, connector?.id, runSignIn]);
 
   // Tailwind shells (unchanged from prior versions).
   const baseModal =
@@ -533,22 +759,71 @@ function GaoIdConnectButtonInner({
     );
   }
 
+  // Connected + WalletConnect mid-sign on mobile: render the visible
+  // fallback panel so the user always has Open wallet / Retry / Cancel
+  // CTAs even when the wallet didn't auto-foreground.
+  if (busy && signPending) {
+    return (
+      <div className="flex w-full flex-col gap-2">
+        <div
+          className={shell}
+          style={{ ...shellStyle, cursor: 'default' }}
+          aria-live="polite"
+        >
+          <Loader2 size={iconSize} className="animate-spin text-[#00d4ff]" />
+          <span className={labelClass}>Waiting for wallet signature…</span>
+        </div>
+        {!signPending.hasRedirect && (
+          <p className="px-1 text-[10px] text-[#8892a8]">
+            Your wallet didn&apos;t open automatically. Open it manually and approve the request,
+            or tap Retry to send a fresh sign request.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            void foregroundWallet(connectorRef.current);
+          }}
+          className={baseModal}
+          style={shellStyle}
+        >
+          <Wallet size={iconSize} className="text-[#00d4ff]" />
+          <span className={labelClass}>Open wallet to sign</span>
+        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleSignInClick}
+            className="flex items-center justify-center gap-2 rounded-2xl py-2.5 cursor-pointer transition-all active:scale-[0.97]"
+            style={shellStyle}
+          >
+            <span className="text-[11px] font-semibold text-white">Retry</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              cancelSignRef.current?.('cancel');
+            }}
+            className="flex items-center justify-center gap-2 rounded-2xl py-2.5 cursor-pointer transition-all active:scale-[0.97]"
+            style={shellStyle}
+          >
+            <span className="text-[11px] font-semibold text-white">Cancel</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Connected but not yet verified. Two cases:
-  //   - busy: auto-SIWE (or a manual click) is in flight — show spinner.
+  //   - busy (non-mobile-WC): auto-SIWE or click in flight — spinner.
   //   - !busy: manual fallback (restored session, or auto-SIWE rejected
-  //     and the user wants to retry). Tapping this button sets the
-  //     sessionStorage intent + ref + attempt key and runs SIWE
-  //     explicitly. No disconnect/reconnect required.
+  //     and the user wants to retry). `handleSignInClick` refreshes
+  //     intent + ref + attempted key and runs SIWE explicitly. No
+  //     disconnect/reconnect required.
   return (
     <button
       type="button"
-      onClick={() => {
-        if (busy) return;
-        userInitiatedRef.current = true;
-        setPendingSiweIntent('manual_sign');
-        attemptedRef.current = `${address.toLowerCase()}|${chainId}`;
-        void runSignIn();
-      }}
+      onClick={handleSignInClick}
       disabled={busy}
       className={shell}
       style={shellStyle}
