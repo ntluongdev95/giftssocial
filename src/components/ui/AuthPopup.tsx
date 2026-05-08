@@ -345,6 +345,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import GaoIdConnectButton from '@/components/auth/GaoIdConnectButton';
 
 interface AuthPopupProps {
   open: boolean;
@@ -597,6 +598,11 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
                 <span className="text-[12px] font-semibold text-white">Apple</span>
               </button>
             </div>
+
+            {/* Gao ID wallet entry — renders null when NEXT_PUBLIC_GAO_ID_ENABLED !== 'true'.
+                Bootstrap (Google / Apple) flow above is unaffected; this is a third,
+                additive option that mints a canonical Gao identity via SIWE. */}
+            <GaoIdConnectButton variant="modal" />
 
           </>
         )}

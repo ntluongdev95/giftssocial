@@ -2,13 +2,19 @@
  * Gao ID — Connect button.
  *
  * Three-state UI driven by `useGaoIdStore`:
- *   1. wallet not connected   → opens the Reown AppKit modal
- *   2. wallet connected, no SIWE yet → triggers the nonce → sign → verify flow
- *   3. SIWE verified          → shows the rootId tail (read-only)
+ *   1. wallet not connected         → opens the Reown AppKit modal
+ *   2. wallet connected, no SIWE    → triggers the nonce → sign → verify flow
+ *   3. SIWE verified                → shows the rootId tail (read-only)
  *
  * Renders `null` when NEXT_PUBLIC_GAO_ID_ENABLED !== 'true' so the
  * component is safe to mount unconditionally; the wagmi/Reown context
  * is only available below `<Web3Provider>` when the flag is on.
+ *
+ * Two visual variants:
+ *   - "modal"   — full-width pill matching the auth modal's Google /
+ *                 Apple buttons (used inside `AuthPopup`).
+ *   - "compact" — smaller right-aligned button (used inside the
+ *                 `/me` Gao ID account section).
  */
 
 'use client';
@@ -16,18 +22,25 @@
 import { useState } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { useAppKit } from '@reown/appkit/react';
+import { Wallet } from 'lucide-react';
 
 import { isGaoIdEnabled } from '@/lib/gao-id/config';
 import { gaoIdClient, GaoIdRequestError } from '@/lib/gao-id/client';
 import { buildSiweMessage } from '@/lib/gao-id/siwe';
 import { useGaoIdStore } from '@/stores/gao-id-store';
 
-export default function GaoIdConnectButton() {
-  if (!isGaoIdEnabled()) return null;
-  return <GaoIdConnectButtonInner />;
+export type GaoIdConnectButtonVariant = 'modal' | 'compact';
+
+interface Props {
+  variant?: GaoIdConnectButtonVariant;
 }
 
-function GaoIdConnectButtonInner() {
+export default function GaoIdConnectButton({ variant = 'modal' }: Props) {
+  if (!isGaoIdEnabled()) return null;
+  return <GaoIdConnectButtonInner variant={variant} />;
+}
+
+function GaoIdConnectButtonInner({ variant }: { variant: GaoIdConnectButtonVariant }) {
   const { address, chainId, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { open } = useAppKit();
@@ -43,10 +56,30 @@ function GaoIdConnectButtonInner() {
   const isVerified =
     status === 'authenticated' || status === 'profile_missing' || status === 'profile_active';
 
+  // Tailwind shells for the two variants. Both are dark-glass pills with
+  // a thin border, matching the existing AuthPopup aesthetic.
+  const baseModal =
+    'flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 cursor-pointer transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseCompact =
+    'inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 cursor-pointer transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed';
+  const shell = variant === 'modal' ? baseModal : baseCompact;
+  const shellStyle = {
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.08)',
+  } as const;
+  const iconSize = variant === 'modal' ? 16 : 14;
+  const labelClass =
+    variant === 'modal'
+      ? 'text-[12px] font-semibold text-white'
+      : 'text-[11px] font-semibold text-white';
+
   if (isVerified) {
     return (
-      <button type="button" disabled className="gao-id-connect-button gao-id-active">
-        Gao ID: {rootId ? `${rootId.slice(0, 12)}…` : 'active'}
+      <button type="button" disabled className={shell} style={shellStyle}>
+        <Wallet size={iconSize} className="text-emerald-400" />
+        <span className={labelClass}>
+          Gao ID: {rootId ? `${rootId.slice(0, 12)}…` : 'active'}
+        </span>
       </button>
     );
   }
@@ -59,9 +92,11 @@ function GaoIdConnectButtonInner() {
           void open();
         }}
         disabled={busy}
-        className="gao-id-connect-button gao-id-connect"
+        className={shell}
+        style={shellStyle}
       >
-        Connect GaoKey / Wallet
+        <Wallet size={iconSize} className="text-[#00d4ff]" />
+        <span className={labelClass}>Connect GaoKey / Wallet</span>
       </button>
     );
   }
@@ -97,9 +132,13 @@ function GaoIdConnectButtonInner() {
         }
       }}
       disabled={busy}
-      className="gao-id-connect-button gao-id-sign"
+      className={shell}
+      style={shellStyle}
     >
-      {busy ? 'Signing in…' : 'Sign in with Gao ID'}
+      <Wallet size={iconSize} className="text-[#00d4ff]" />
+      <span className={labelClass}>
+        {busy ? 'Signing in…' : 'Sign in with Gao ID'}
+      </span>
     </button>
   );
 }
