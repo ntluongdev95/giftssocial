@@ -46,7 +46,9 @@ const TYPE_CONFIG: Record<string, { emoji: string; color: string; label: string 
 export default function SignalSheet({ signal, onClose }: Props) {
   const cfg = TYPE_CONFIG[signal.type] || TYPE_CONFIG.presence;
   const timeAgo = (() => { const d = signal.created_at ? parseUTC(signal.created_at) : null; return d ? formatDistanceToNow(d, { addSuffix: true }) : ''; })();
-  const expiresIn = (() => { const d = signal.expires_at ? parseUTC(signal.expires_at) : null; return d ? formatDistanceToNow(d, { addSuffix: true }) : ''; })();
+  const expiresDate = signal.expires_at ? parseUTC(signal.expires_at) : null;
+  const isExpired = expiresDate ? expiresDate.getTime() <= Date.now() : false;
+  const expiresIn = expiresDate ? formatDistanceToNow(expiresDate, { addSuffix: true }) : '';
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -189,9 +191,9 @@ export default function SignalSheet({ signal, onClose }: Props) {
                 </div>
               )}
               {expiresIn && (
-                <div className="flex items-center gap-2 text-xs text-[#a3adc3]">
-                  <Clock size={13} className="text-[#4a5068]" />
-                  <span>Expires {expiresIn}</span>
+                <div className="flex items-center gap-2 text-xs" style={{ color: isExpired ? '#f87171' : '#a3adc3' }}>
+                  <Clock size={13} style={{ color: isExpired ? '#f87171' : '#4a5068' }} />
+                  <span>{isExpired ? `Expired ${expiresIn}` : `Expires ${expiresIn}`}</span>
                 </div>
               )}
             </div>
@@ -200,9 +202,18 @@ export default function SignalSheet({ signal, onClose }: Props) {
           {/* Actions — fixed at bottom, never scrolls away */}
           <div className="shrink-0 px-5 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)] lg:pb-4 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             {!isOwner && (
-              <button onClick={handleChat} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
-                <MessageCircle size={15} /> Chat
-              </button>
+              isExpired ? (
+                <div
+                  className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-not-allowed"
+                  style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171' }}
+                >
+                  <Clock size={15} /> Signal expired
+                </div>
+              ) : (
+                <button onClick={handleChat} className="flex-1 rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer" style={{ background: '#00d4ff', color: '#0a0b0f' }}>
+                  <MessageCircle size={15} /> Chat
+                </button>
+              )
             )}
             <button onClick={handleShare} className="rounded-xl py-3 px-4 cursor-pointer" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', color: '#a3adc3' }}>
               <Share2 size={15} />

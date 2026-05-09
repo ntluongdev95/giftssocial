@@ -139,28 +139,123 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[999] flex items-center justify-center"
-        style={{ background: 'radial-gradient(ellipse at center, #1a0b2e 0%, #0a0b0f 100%)' }}
+        style={{ background: 'radial-gradient(ellipse at center, #08091a 0%, #03050e 55%, #000005 100%)' }}
       >
         <button onClick={onClose} className="absolute top-6 right-6 z-[1000] h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white cursor-pointer" style={{ background: 'rgba(0,0,0,0.5)' }}>
           <X size={18} />
         </button>
 
-        {/* Floating particles bg */}
-        {Array.from({ length: 20 }).map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute rounded-full pointer-events-none"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              width: 2 + Math.random() * 3,
-              height: 2 + Math.random() * 3,
-              background: ['rgba(168,85,247,0.6)', 'rgba(236,72,153,0.6)', 'rgba(255,255,255,0.4)'][i % 3],
-            }}
-            animate={{ y: [0, -30, 0], opacity: [0.3, 1, 0.3] }}
-            transition={{ duration: 3 + Math.random() * 3, delay: i * 0.2, repeat: Infinity }}
-          />
-        ))}
+        {/* Night-sky starfield: 120 stars in three brightness tiers + four
+            occasional shooting stars vúting across at staggered angles. */}
+        {Array.from({ length: 120 }).map((_, i) => {
+          const tier = (i * 53) % 100;
+          const isBright = tier < 8;
+          const isMid = tier >= 8 && tier < 30;
+          const size = isBright ? 2.4 + ((i * 7) % 14) / 10 : isMid ? 1.6 + ((i * 11) % 9) / 10 : 1 + ((i * 13) % 7) / 10;
+          const colourRoll = (i * 41) % 100;
+          const colour = colourRoll < 70 ? '255,255,255'
+            : colourRoll < 85 ? '255,220,160'
+            : colourRoll < 95 ? '180,200,255'
+            : '255,180,220';
+          const baseOpacity = 0.3 + ((i * 17) % 55) / 100;
+          return (
+            <motion.div
+              key={`star-${i}`}
+              className="absolute rounded-full pointer-events-none"
+              style={{
+                left: `${(i * 37) % 100}%`,
+                top: `${(i * 71) % 100}%`,
+                width: size,
+                height: size,
+                background: `rgba(${colour},${baseOpacity})`,
+                boxShadow: isBright
+                  ? `0 0 ${size * 2.5}px rgba(${colour},${baseOpacity * 0.55}), 0 0 ${size * 5}px rgba(${colour},0.22)`
+                  : undefined,
+              }}
+              animate={{
+                opacity: [baseOpacity, Math.min(1, baseOpacity * 1.6), baseOpacity * 0.4, baseOpacity],
+              }}
+              transition={{
+                duration: 2.5 + ((i * 19) % 50) / 10,
+                delay: ((i * 23) % 60) / 10,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+          );
+        })}
+        {/* Shooting stars — 8 streaks crossing the sky from all four
+            directions (left↔right and top↔bottom), each at its own altitude
+            and slight angle so they never look like a procession. */}
+        {[
+          // Left → right (slight down tilt)
+          { dir: 'lr' as const, cross: 14, jitter: 18, delay: 3, repeatDelay: 12 },
+          { dir: 'lr' as const, cross: 52, jitter: 10, delay: 19, repeatDelay: 14 },
+          // Right → left
+          { dir: 'rl' as const, cross: 28, jitter: 14, delay: 9, repeatDelay: 13 },
+          { dir: 'rl' as const, cross: 78, jitter: 22, delay: 25, repeatDelay: 11 },
+          // Top → bottom (with sideways drift)
+          { dir: 'tb' as const, cross: 35, jitter: 18, delay: 6, repeatDelay: 16 },
+          { dir: 'tb' as const, cross: 72, jitter: -14, delay: 22, repeatDelay: 15 },
+          // Bottom → top
+          { dir: 'bt' as const, cross: 22, jitter: -20, delay: 13, repeatDelay: 17 },
+          { dir: 'bt' as const, cross: 80, jitter: 16, delay: 30, repeatDelay: 14 },
+        ].map((s, i) => {
+          // Direction → wrapper anchor + rotation. CSS rotate is clockwise:
+          // 0° = right, 90° = down, 180° = left, 270° = up.
+          let startLeft = '-12%';
+          let startTop = `${s.cross}%`;
+          let rotation = s.jitter;
+          let distance = '130vw';
+          if (s.dir === 'rl') {
+            startLeft = '112%';
+            startTop = `${s.cross}%`;
+            rotation = 180 - s.jitter; // bias toward "down-left"
+            distance = '130vw';
+          } else if (s.dir === 'tb') {
+            startLeft = `${s.cross}%`;
+            startTop = '-12%';
+            rotation = 90 + s.jitter;
+            distance = '130vh';
+          } else if (s.dir === 'bt') {
+            startLeft = `${s.cross}%`;
+            startTop = '112%';
+            rotation = 270 + s.jitter;
+            distance = '130vh';
+          }
+          return (
+            <div
+              key={`shoot-${i}`}
+              className="absolute pointer-events-none"
+              style={{
+                left: startLeft,
+                top: startTop,
+                transform: `rotate(${rotation}deg)`,
+                transformOrigin: 'left center',
+              }}
+            >
+              <motion.div
+                initial={{ x: 0, opacity: 0 }}
+                animate={{ x: distance, opacity: [0, 1, 1, 0] }}
+                transition={{
+                  duration: 1.3,
+                  delay: s.delay,
+                  repeat: Infinity,
+                  repeatDelay: s.repeatDelay,
+                  times: [0, 0.08, 0.7, 1],
+                  ease: 'linear',
+                }}
+                style={{
+                  width: 110,
+                  height: 1.6,
+                  background:
+                    'linear-gradient(to right, transparent, rgba(255,255,255,0.95), rgba(255,255,255,0.55) 60%, transparent)',
+                  filter: 'drop-shadow(0 0 5px rgba(255,255,255,0.75))',
+                }}
+              />
+            </div>
+          );
+        })}
 
         {/* PHASE: Approaching — show capsule on ground */}
         {phase === 'approaching' && (
@@ -316,15 +411,88 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
               animate={{ opacity: 1, y: 0 }}
               // Delayed for birthday so the user sees the full show before the
               // button competes for attention: text typed-live → cake → heart
-              // morph → couple morph → back to lock. Total ≈ 18s.
-              transition={{ delay: theme.id === 'birthday' ? 18 : 6 }}
+              // morph → couple morph → can-lift+pour scene → back to lock (~23s).
+              transition={{ delay: theme.id === 'birthday' ? 23 : 6 }}
             >
               <p className="text-[10px] uppercase tracking-[0.3em] mb-2" style={{ color: theme.accentColor }}>From {yearsBurried} years ago</p>
-              <h2 className="text-2xl font-bold text-white mb-3">{capsule.title}</h2>
+              {/* For birthday theme the drone formation already says "HAPPY
+                  BIRTHDAY <name>", so showing the same title would duplicate.
+                  Use a romantic tagline that inks in word-by-word with a soft
+                  blur + handwritten rotation jitter, set against a pink glow. */}
+              {theme.id === 'birthday' ? (
+                <div className="inline-block mb-3" style={{ minWidth: '14em' }}>
+                  {/* Row 1: plane track — plane has its own line above the
+                      tagline so it never overlaps with the words or caption. */}
+                  <div className="relative" style={{ height: '1.8em' }}>
+                  <motion.span
+                    className="absolute pointer-events-none"
+                    style={{ top: '0', fontSize: '1.4em', zIndex: 2 }}
+                    initial={{ left: '-22%', opacity: 0 }}
+                    animate={{ left: '122%', opacity: [0, 1, 1, 0] }}
+                    transition={{
+                      delay: 23.1,
+                      duration: 3.6,
+                      times: [0, 0.06, 0.94, 1],
+                      ease: 'linear',
+                    }}
+                  >
+                    ✈️
+                  </motion.span>
+                  {/* Vapour-trail sparkles riding behind the plane */}
+                  {Array.from({ length: 5 }).map((_, k) => (
+                    <motion.span
+                      key={`trail-${k}`}
+                      className="absolute pointer-events-none"
+                      style={{ top: '0.45em', fontSize: '0.55em', zIndex: 1, color: 'rgba(255,247,214,0.85)' }}
+                      initial={{ left: '-22%', opacity: 0 }}
+                      animate={{ left: '122%', opacity: [0, 0.7, 0] }}
+                      transition={{
+                        delay: 23.1 + 0.08 + k * 0.07,
+                        duration: 3.6,
+                        times: [0, 0.55, 1],
+                        ease: 'linear',
+                      }}
+                    >
+                      ✦
+                    </motion.span>
+                  ))}
+                  </div>
+
+                  {/* Row 2: tagline — words drop from the plane track above. */}
+                <h2
+                  className="text-2xl italic"
+                  style={{
+                    fontFamily: 'var(--font-caveat), "Caveat", cursive',
+                    fontWeight: 500,
+                    letterSpacing: '0.01em',
+                    color: '#fff7d6',
+                    filter: 'drop-shadow(0 0 14px rgba(236,72,153,0.55)) drop-shadow(0 0 28px rgba(168,85,247,0.3))',
+                  }}
+                >
+                  {'A letter the sky kept just for you'.split(' ').map((word, i, arr) => (
+                    <motion.span
+                      key={i}
+                      initial={{ opacity: 0, y: -36, scale: 0.85, rotate: ((i * 13) % 7) - 3 }}
+                      animate={{ opacity: 1, y: 0, scale: 1, rotate: ((i * 7) % 3) - 1 }}
+                      transition={(() => {
+                        const wordCentreFrac = (i + 0.5) / arr.length;
+                        const dropOffset = ((wordCentreFrac + 0.22) / 1.44) * 3.6;
+                        return { delay: 23.1 + dropOffset, type: 'spring', damping: 11, stiffness: 180 };
+                      })()}
+                      style={{ display: 'inline-block', whiteSpace: 'pre' }}
+                    >
+                      {word}{i < arr.length - 1 ? ' ' : ''}
+                    </motion.span>
+                  ))}
+                </h2>
+                </div>
+              ) : (
+                <h2 className="text-2xl font-bold text-white mb-3">{capsule.title}</h2>
+              )}
 
               <button
                 onClick={() => setPhase('message')}
-                className="rounded-xl px-6 py-3 text-sm font-bold cursor-pointer mt-4"
+                className="block mx-auto rounded-xl px-6 py-3 text-sm font-bold cursor-pointer mt-16"
                 style={{ background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}
               >
                 Read the message →
@@ -1015,6 +1183,53 @@ const LETTER_BITMAPS: Record<string, number[][]> = {
   ],
 };
 
+// Goblet/champagne flute silhouette with two-tone liquid inside.
+// Cells: 1 = red liquid (top layer), 2 = white glass outline,
+// 3 = blue liquid (bottom layer). 10 wide × 17 tall.
+const GOBLET_BITMAP: number[][] = [
+  [0,2,2,2,2,2,2,2,2,0], // rim (white)
+  [2,2,1,1,1,1,1,1,2,2], // upper liquid red
+  [2,1,1,1,1,1,1,1,1,2],
+  [2,1,1,1,1,1,1,1,1,2],
+  [2,3,3,3,3,3,3,3,3,2], // lower liquid blue layer
+  [0,2,2,3,3,3,3,2,2,0],
+  [0,0,2,2,2,2,2,2,0,0], // bowl narrowing
+  [0,0,0,2,2,2,2,0,0,0], // bowl bottom
+  [0,0,0,0,2,2,0,0,0,0], // stem
+  [0,0,0,0,2,2,0,0,0,0],
+  [0,0,0,0,2,2,0,0,0,0],
+  [0,0,0,0,2,2,0,0,0,0],
+  [0,0,0,0,2,2,0,0,0,0],
+  [0,0,0,2,2,2,2,0,0,0], // foot widening
+  [0,0,2,2,2,2,2,2,0,0],
+  [0,2,2,2,2,2,2,2,2,0],
+  [2,2,2,2,2,2,2,2,2,2], // base
+];
+
+// Cylindrical can silhouette (vertical at design time) — rectangle with
+// rounded white lids top + bottom, red body in between. At render the cell
+// positions are rotated counter-clockwise so the can leans with its body
+// crossing the sky like a tilted soda can. Cells: 1 = red body, 2 = white
+// lid edge. 8 wide × 16 tall.
+const BOTTLE_BITMAP: number[][] = [
+  [0,2,2,2,2,2,2,0], // top lid (rounded)
+  [2,2,2,2,2,2,2,2], // top lid full width
+  [1,1,1,1,1,1,1,1], // red body
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1],
+  [2,2,2,2,2,2,2,2], // bottom lid full width
+  [0,2,2,2,2,2,2,0], // bottom lid (rounded)
+];
+
 // Romantic couple silhouette — two people standing close, heads slightly apart
 // with a small heart hovering between them. 20 wide × 17 tall. Used as the
 // second morph after the heart, so the show reads as: text → heart → couple.
@@ -1101,6 +1316,9 @@ interface DronePoint {
   idx: number;
   // 'flame' drones use a warm gradient + faster, bigger flicker
   kind: DroneKind;
+  // ~15% of std drones are tagged "sparkle" — bigger size, brighter core,
+  // dramatic flicker so the formation actually twinkles like a real LED show.
+  sparkle: boolean;
   // Logical "letter slot" — drones in the same letter share this. Used to
   // sequence letters so the formation appears typed (H… HA… HAP… …).
   letterIdx: number;
@@ -1112,6 +1330,21 @@ interface DronePoint {
   // Target position for the couple-silhouette morph that follows the heart.
   coupleX: number;
   coupleY: number;
+  // Target position for the princess-scene morph (princess + crown-cake) that
+  // follows the couple morph.
+  princessX: number;
+  princessY: number;
+  // Colour zone the drone adopts during the princess phase ('gold' | 'blue'
+  // | 'white' | 'red'). Outside that phase the drone uses its default gold.
+  princessZone?: 'gold' | 'blue' | 'white' | 'red';
+  // Liquid-fill delay (seconds) — set only on goblet liquid drones so the
+  // glass appears to fill bottom-up as the can pours during princess phase.
+  fillDelay?: number;
+  // Pre-pour "lift" position for can drones — vertical (un-rotated), lower
+  // than the final tilted pose. The drone goes couple → lift → tilted-final
+  // so the can looks like it's being picked up and angled to pour.
+  liftX?: number;
+  liftY?: number;
   // Wish-blow metadata — tells the render layer when to extinguish flames in
   // candle order and which drones belong to the cake (so the cake can fade
   // into a 💝 emoji once the wish is granted).
@@ -1166,11 +1399,14 @@ function buildDronePoint(
     launchJitter: (Math.random() - 0.5) * 0.18,
     idx,
     kind,
+    sparkle: !isFlame && Math.random() < 0.15,
     letterIdx,
-    heartX: 0, // heartX/Y and coupleX/Y are filled in by post-passes below
+    heartX: 0, // heart/couple/princess targets are filled in by post-passes
     heartY: 0,
     coupleX: 0,
     coupleY: 0,
+    princessX: 0,
+    princessY: 0,
     isCake,
     candleOrder,
   };
@@ -1267,7 +1503,7 @@ function getDronePosition(d: DronePoint, progress: number): [number, number] {
 }
 
 function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
-  const drones = useMemo<DronePoint[]>(() => {
+  const sceneData = useMemo<{ points: DronePoint[]; mouthX: number; mouthY: number; rimX: number; rimY: number; cellSize: number }>(() => {
     // Greeting + optional recipient name on a second line below.
     const greeting = 'HAPPY BIRTHDAY';
     const recipientLine = normalizeNameForDrones(name);
@@ -1278,8 +1514,10 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
     const letterCols = 5;
     const greetingCellsWide = 79; // see measureLineWidth math: 13 letters @5 + 11 gaps + 1 word-gap (3)
     const vw = typeof window !== 'undefined' ? window.innerWidth : 1100;
-    const targetWidth = Math.min(vw - 32, 760);
-    const cellSize = Math.max(2, Math.min(Math.floor(targetWidth / greetingCellsWide), 7));
+    // On desktop let the line span up to ~1500px with cells up to 16px so
+    // HAPPY BIRTHDAY dominates the sky. Mobile/tablet scale down naturally.
+    const targetWidth = Math.min(vw - 32, 1500);
+    const cellSize = Math.max(2, Math.min(Math.floor(targetWidth / greetingCellsWide), 16));
     const letterGap = cellSize;
     const wordGap = cellSize * 3;
     const lineHeight = 7 * cellSize;
@@ -1289,7 +1527,10 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
     const lineSpacing = cellSize * 2.4;
 
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const formationOffsetY = -Math.max(220, Math.min(vh * 0.36, 360));
+    // Pull the formation a touch lower so HAPPY BIRTHDAY isn't kissing the
+    // top of the viewport — leaves headroom for shooting stars + the close
+    // button. 28% of viewport with 280px cap.
+    const formationOffsetY = -Math.max(180, Math.min(vh * 0.28, 280));
     // Stack greeting on top, name below; centre the whole stack on formationOffsetY.
     const totalStackHeight = lineHeight + (recipientLine ? lineSpacing + nameLineHeight : 0);
     const stackTop = formationOffsetY - totalStackHeight / 2;
@@ -1395,8 +1636,113 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
       });
     }
 
-    return points;
+    // Champagne-pour scene morph — vertical goblet on the left + tilted bottle
+    // on the right (mouth pointed toward the goblet, classic pouring pose).
+    // Both share one cell pool so drones distribute across both halves.
+    const sceneCellSize = Math.max(4, Math.min(Math.floor(vw / 38), 12));
+    const gobletCols = GOBLET_BITMAP[0].length;
+    const gobletRows = GOBLET_BITMAP.length;
+    const bottleCols = BOTTLE_BITMAP[0].length;
+    const bottleRows = BOTTLE_BITMAP.length;
+
+    // Goblet sits to the left of centre, vertically.
+    const gobletAnchorX = -sceneCellSize * 8;
+    const gobletAnchorY = sceneCellSize * 2;
+    const gobletLeft = gobletAnchorX - (gobletCols * sceneCellSize) / 2;
+    const gobletTop = gobletAnchorY - (gobletRows * sceneCellSize) / 2;
+
+    // Glass rim screen position — used to anchor the can so its lower-left
+    // end (after rotation) hovers far above the rim, leaving room for an
+    // animated pour stream between them.
+    const gobletRimX = gobletAnchorX;
+    const gobletRimY = gobletTop;
+
+    // Can leans 35° counter-clockwise. With that rotation, the bitmap's
+    // bottom-row (the "mouth"/pouring lid) ends up at the lower-left of the
+    // can. We solve for the can centre so the lower-left lid sits up-and-
+    // right of the rim with enough gap for the pour-stream animation.
+    const bottleCx = (bottleCols - 1) / 2;
+    const bottleCy = (bottleRows - 1) / 2;
+    const bottleAngle = Math.PI * (35 / 180); // 35° CCW
+    const cosA = Math.cos(bottleAngle);
+    const sinA = Math.sin(bottleAngle);
+    const lowerEndDx = 0 * cosA - (bottleCy * sceneCellSize) * sinA;
+    const lowerEndDy = 0 * sinA + (bottleCy * sceneCellSize) * cosA;
+    // Wide gap: 9 cells right and 7 cells above the rim — matches reference.
+    const bottleAnchorX = gobletRimX + sceneCellSize * 9 - lowerEndDx;
+    const bottleAnchorY = gobletRimY - sceneCellSize * 7 - lowerEndDy;
+
+    type SceneZone = 'gold' | 'blue' | 'white' | 'red';
+    // [x, y, zone, optional fill-delay (sec), optional lift-x, optional lift-y]
+    type SceneCell = [number, number, SceneZone, number?, number?, number?];
+    const sceneCells: SceneCell[] = [];
+
+    // Pre-pour lift position for the can — vertical (un-rotated), placed
+    // lower so the can visibly "rises" up before tilting into the final pour.
+    const liftAnchorX = bottleAnchorX;
+    const liftAnchorY = gobletRimY + sceneCellSize * 6;
+
+    // Liquid spans rows 1..5 of the goblet bitmap. Bottom rows fill first;
+    // higher rows wait longer so the drink visually rises in the glass.
+    const LIQUID_TOP_ROW = 1;
+    const LIQUID_BOTTOM_ROW = 5;
+    const FILL_PER_ROW = 0.4; // seconds per row
+
+    // Goblet (vertical placement)
+    GOBLET_BITMAP.forEach((row, ry) => {
+      row.forEach((cell, cx) => {
+        if (cell === 0) return;
+        const zone: SceneZone = cell === 1 ? 'red' : cell === 2 ? 'white' : 'blue';
+        let fillDelay: number | undefined;
+        if ((cell === 1 || cell === 3) && ry >= LIQUID_TOP_ROW && ry <= LIQUID_BOTTOM_ROW) {
+          fillDelay = (LIQUID_BOTTOM_ROW - ry) * FILL_PER_ROW;
+        }
+        sceneCells.push([gobletLeft + cx * sceneCellSize, gobletTop + ry * sceneCellSize, zone, fillDelay]);
+      });
+    });
+
+    // Bottle (rotated). Each cell also stores its lift target — the same
+    // bitmap position rendered un-rotated at the lower anchor — so the can
+    // can morph couple → lift (vertical low) → final-tilted (high pouring).
+    BOTTLE_BITMAP.forEach((row, ry) => {
+      row.forEach((cell, cx) => {
+        if (cell === 0) return;
+        const zone: SceneZone = cell === 1 ? 'red' : 'white';
+        const lx = (cx - bottleCx) * sceneCellSize;
+        const ly = (ry - bottleCy) * sceneCellSize;
+        const rx = lx * cosA - ly * sinA;
+        const ryRot = lx * sinA + ly * cosA;
+        const finalX = bottleAnchorX + rx;
+        const finalY = bottleAnchorY + ryRot;
+        const liftX = liftAnchorX + lx;
+        const liftY = liftAnchorY + ly;
+        sceneCells.push([finalX, finalY, zone, undefined, liftX, liftY]);
+      });
+    });
+
+    // Liquid pour stream is rendered separately as an animated layer in JSX
+    // (see PourStream below) so it can flow continuously instead of being a
+    // static line. Expose the mouth + rim coords needed by that animation.
+    const mouthX = bottleAnchorX + lowerEndDx;
+    const mouthY = bottleAnchorY + lowerEndDy;
+
+    if (sceneCells.length > 0) {
+      points.forEach((p, i) => {
+        // Different prime so swarm path differs from heart/couple morphs.
+        const cellIdx = (i * 71 + 13) % sceneCells.length;
+        const [sx, sy, zone, fd, lx, ly] = sceneCells[cellIdx];
+        p.princessX = sx;
+        p.princessY = sy;
+        p.princessZone = zone;
+        p.fillDelay = fd;
+        p.liftX = lx;
+        p.liftY = ly;
+      });
+    }
+
+    return { points, mouthX, mouthY, rimX: gobletRimX, rimY: gobletRimY, cellSize: sceneCellSize };
   }, [name]);
+  const drones = sceneData.points;
 
   // ─── Wish-blow interactive ─────────────────────────────────────────────
   // After the heart morph returns to lock, the user can tap the cake to
@@ -1413,28 +1759,30 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
   }, [blown]);
 
   // ─── Morph state machine ─────────────────────────────────────────────
-  // 'launch' → arc into letter/cake formation
-  // 'heart'  → drones rearrange into a giant heart and hold
-  // 'couple' → heart melts into two figures standing together (with a tiny
-  //            heart hovering between them) and holds
-  // 'lock'   → drones fly back to the letter/cake formation (final state,
-  //            tap-to-blow becomes available here)
-  const [morphPhase, setMorphPhase] = useState<'launch' | 'heart' | 'couple' | 'lock'>('launch');
+  // 'launch'   → arc into letter/cake formation
+  // 'heart'    → drones rearrange into a giant heart, hold briefly
+  // 'couple'   → heart melts into two figures standing together, hold briefly
+  // 'princess' → couple gives way to a princess + crown-cake celebration scene
+  // 'lock'     → drones fly back to the letter/cake formation (final state,
+  //              tap-to-blow becomes available here)
+  const [morphPhase, setMorphPhase] = useState<'launch' | 'heart' | 'couple' | 'princess' | 'lock'>('launch');
   useEffect(() => {
     if (drones.length === 0) return;
     const maxLetterIdx = drones.reduce((m, d) => Math.max(m, d.letterIdx), 0);
     const lastDotDelay = delay + maxLetterIdx * 0.22 + drones.length * 0.004 + 0.1;
     const allLockedSec = lastDotDelay + ARC_DURATION + 0.3;
-    // Sequence: 0.7s pause → heart in (0.85s tween) → heart hold → couple in →
-    // couple hold → back to lock. Hold values are *between* phase changes, so
-    // each includes the 0.85s tween plus the time the formation is actually held.
+    // Holds are the time between phase changes; each starts with a ~0.85s
+    // morph tween, so a 1.5s hold means the new formation is visible for
+    // roughly 0.65s before the next morph fires.
     const heartInMs = (allLockedSec + 0.7) * 1000;
-    const coupleInMs = heartInMs + 1500;  // heart visible for ~0.65s after settle
-    const lockInMs = coupleInMs + 2500;    // couple visible for ~1.65s after settle
+    const coupleInMs = heartInMs + 1500;     // heart visible ~0.65s after settle
+    const princessInMs = coupleInMs + 1700;  // couple visible ~0.85s after settle
+    const lockInMs = princessInMs + 4500;    // princess: 1s lift + 0.9s tilt + ~2.6s pour
     const t1 = setTimeout(() => setMorphPhase('heart'), heartInMs);
     const t2 = setTimeout(() => setMorphPhase('couple'), coupleInMs);
-    const t3 = setTimeout(() => setMorphPhase('lock'), lockInMs);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    const t3 = setTimeout(() => setMorphPhase('princess'), princessInMs);
+    const t4 = setTimeout(() => setMorphPhase('lock'), lockInMs);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
   }, [drones, delay]);
 
   // ─── Canvas trail "comet tails" ─────────────────────────────────────────
@@ -1533,12 +1881,18 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
         // ripple instead of popping in instantly.
         const dotDelay = delay + d.letterIdx * 0.22 + d.idx * 0.004 + d.launchJitter;
         const isFlame = d.kind === 'flame';
-        // Flame drones flicker harder + larger range. Standard drones do a slow GPS hover.
+        const isSparkle = !isFlame && d.sparkle;
+        // Flame drones flicker harder. Sparkle drones twinkle dramatically
+        // (over-driven scale + bright surge). Standard drones do a slow hover.
         const flickerScale = isFlame
           ? [1, 1.45, 0.7, 1.3, 0.85, 1]
+          : isSparkle
+          ? [1, 1.55, 0.85, 1.35, 1, 1]
           : [1, 0.85, 1];
         const flickerOpacity = isFlame
           ? [1, 0.65, 1, 0.75, 1]
+          : isSparkle
+          ? [1, 1, 0.55, 1, 1, 1]
           : [1, 0.55, 1];
         // Wish-blow overrides take priority over morph phase. Flames are
         // extinguished in candle order; cake-body drones fade once the wish
@@ -1576,6 +1930,52 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
         } else if (morphPhase === 'couple') {
           animateProp = { x: d.coupleX, y: d.coupleY, scale: 1, opacity: 1 };
           transitionProp = { duration: 0.95, ease: [0.4, 0, 0.2, 1] };
+        } else if (morphPhase === 'princess') {
+          // Wait for the can to lift+tilt before liquid pours / rises.
+          const LIFT_DUR = 1.0;     // couple → lift (vertical low)
+          const TILT_DUR = 0.9;     // lift → final tilted (rise + tilt)
+          const POUR_START = LIFT_DUR + TILT_DUR; // 1.9s — when pouring begins
+          if (d.liftX !== undefined && d.liftY !== undefined) {
+            // Can drone — 2-keyframe path so framer interpolates couple →
+            // lift, then lift → final-tilted, with a clear pause at lift.
+            animateProp = {
+              x: [d.liftX, d.princessX],
+              y: [d.liftY, d.princessY],
+              scale: 1,
+              opacity: 1,
+            };
+            transitionProp = {
+              duration: LIFT_DUR + TILT_DUR,
+              times: [LIFT_DUR / (LIFT_DUR + TILT_DUR), 1],
+              ease: [0.4, 0, 0.2, 1],
+            };
+          } else if (d.fillDelay !== undefined) {
+            // Liquid drone — invisible until the can finishes tilting + the
+            // drone's row-based fill delay, then fades in (bottom rows first).
+            const fadeDur = 0.3;
+            const wait = POUR_START + d.fillDelay;
+            const totalDur = wait + fadeDur + 0.05;
+            const fadeStartFrac = wait / totalDur;
+            const fadeEndFrac = (wait + fadeDur) / totalDur;
+            animateProp = {
+              x: d.princessX,
+              y: d.princessY,
+              scale: 1,
+              opacity: [0, 0, 1, 1],
+            };
+            transitionProp = {
+              duration: totalDur,
+              ease: [0.4, 0, 0.2, 1],
+              opacity: {
+                duration: totalDur,
+                times: [0, fadeStartFrac, fadeEndFrac, 1],
+                ease: 'linear',
+              },
+            };
+          } else {
+            animateProp = { x: d.princessX, y: d.princessY, scale: 1, opacity: 1 };
+            transitionProp = { duration: 0.95, ease: [0.4, 0, 0.2, 1] };
+          }
         } else {
           animateProp = { x: d.x, y: d.y, scale: 1, opacity: 1 };
           transitionProp = { duration: 0.85, ease: [0.4, 0, 0.2, 1] };
@@ -1605,29 +2005,125 @@ function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
                 repeat: Infinity,
                 ease: 'easeInOut',
               }}
-              style={
-                isFlame
-                  ? {
-                      width: 5,
-                      height: 5,
-                      marginLeft: -2.5,
-                      marginTop: -2.5,
-                      borderRadius: '50%',
-                      background: 'radial-gradient(circle, #fff4c2 0%, #ffb347 35%, #ff5722 75%, transparent 100%)',
-                      boxShadow:
-                        '0 0 4px rgba(255,244,194,1), 0 0 10px rgba(255,152,0,0.95), 0 0 18px rgba(255,87,34,0.85), 0 0 28px rgba(220,38,38,0.55)',
-                    }
-                  : {
-                      width: 4,
-                      height: 4,
-                      marginLeft: -2,
-                      marginTop: -2,
-                      borderRadius: '50%',
-                      background: '#fff7d6',
-                      boxShadow:
-                        '0 0 4px rgba(255,247,214,0.95), 0 0 10px rgba(251,191,36,0.85), 0 0 18px rgba(236,72,153,0.45)',
-                    }
-              }
+              style={(() => {
+                if (isFlame) return {
+                  width: 5,
+                  height: 5,
+                  marginLeft: -2.5,
+                  marginTop: -2.5,
+                  borderRadius: '50%',
+                  background: 'radial-gradient(circle, #fff4c2 0%, #ffb347 35%, #ff5722 75%, transparent 100%)',
+                  boxShadow:
+                    '0 0 4px rgba(255,244,194,1), 0 0 10px rgba(255,152,0,0.95), 0 0 18px rgba(255,87,34,0.85), 0 0 28px rgba(220,38,38,0.55)',
+                };
+                // During the princess phase, std drones adopt the colour of
+                // the scene cell they're sitting on (beret/ribbon = blue,
+                // hair/shoulders = gold, jewelry = white). Other phases use
+                // the default warm cream-gold styling.
+                const inPrincess = morphPhase === 'princess' && d.princessZone;
+                const zone = inPrincess ? d.princessZone : 'gold';
+                if (zone === 'blue') return {
+                  width: 4,
+                  height: 4,
+                  marginLeft: -2,
+                  marginTop: -2,
+                  borderRadius: '50%',
+                  background: '#d6ecff',
+                  boxShadow:
+                    '0 0 4px rgba(214,236,255,1), 0 0 10px rgba(70,150,250,0.95), 0 0 20px rgba(20,100,230,0.7), 0 0 32px rgba(0,80,200,0.45)',
+                };
+                if (zone === 'red') return {
+                  width: 4,
+                  height: 4,
+                  marginLeft: -2,
+                  marginTop: -2,
+                  borderRadius: '50%',
+                  background: '#ffb0b8',
+                  boxShadow:
+                    '0 0 4px rgba(255,176,184,1), 0 0 10px rgba(255,60,80,0.95), 0 0 20px rgba(220,20,40,0.75), 0 0 32px rgba(180,10,30,0.5)',
+                };
+                if (zone === 'white') return {
+                  width: 5,
+                  height: 5,
+                  marginLeft: -2.5,
+                  marginTop: -2.5,
+                  borderRadius: '50%',
+                  background: '#ffffff',
+                  boxShadow:
+                    '0 0 5px rgba(255,255,255,1), 0 0 14px rgba(230,240,255,0.95), 0 0 26px rgba(180,210,255,0.55)',
+                };
+                if (isSparkle) return {
+                  // Bright accent — bigger dot, white core, 4-layer halo so
+                  // every flicker reads as a sparkle, not just a dim pulse.
+                  width: 6,
+                  height: 6,
+                  marginLeft: -3,
+                  marginTop: -3,
+                  borderRadius: '50%',
+                  background: 'radial-gradient(circle, #ffffff 0%, #fff7d6 55%, #fde68a 100%)',
+                  boxShadow:
+                    '0 0 6px rgba(255,255,255,1), 0 0 16px rgba(253,224,138,0.95), 0 0 32px rgba(251,191,36,0.7), 0 0 50px rgba(236,72,153,0.45)',
+                };
+                return {
+                  width: 4,
+                  height: 4,
+                  marginLeft: -2,
+                  marginTop: -2,
+                  borderRadius: '50%',
+                  background: '#fff7d6',
+                  boxShadow:
+                    '0 0 4px rgba(255,247,214,0.95), 0 0 10px rgba(251,191,36,0.85), 0 0 18px rgba(236,72,153,0.45)',
+                };
+              })()}
+            />
+          </motion.div>
+        );
+      })}
+
+      {/* Animated pour stream — drones flow continuously from the can mouth
+          to the goblet rim during the princess scene phase. The stream waits
+          for the can to lift + tilt (~1.9s) before pouring begins. Each drone
+          runs on its own infinite loop, staggered so the stream never gaps. */}
+      {morphPhase === 'princess' && Array.from({ length: 10 }).map((_, i) => {
+        const POUR_START = 1.9; // matches LIFT_DUR + TILT_DUR above
+        const cycleDur = 1.4;
+        const stagger = POUR_START + (i / 10) * cycleDur;
+        const midX = (sceneData.mouthX + sceneData.rimX) / 2;
+        // Mid-arc dips slightly under the straight line so the stream curves
+        // like a real pour rather than tracing a flat diagonal.
+        const midY = (sceneData.mouthY + sceneData.rimY) / 2 + sceneData.cellSize * 0.6;
+        return (
+          <motion.div
+            key={`pour-${i}`}
+            className="absolute pointer-events-none"
+            style={{ left: '50%', top: '50%' }}
+            initial={{ x: sceneData.mouthX, y: sceneData.mouthY, opacity: 0, scale: 0.6 }}
+            animate={{
+              x: [sceneData.mouthX, midX, sceneData.rimX],
+              y: [sceneData.mouthY, midY, sceneData.rimY],
+              opacity: [0, 1, 1, 0],
+              scale: [0.6, 1, 0.5],
+            }}
+            transition={{
+              duration: cycleDur,
+              delay: stagger,
+              times: [0, 0.5, 1],
+              opacity: { duration: cycleDur, delay: stagger, times: [0, 0.15, 0.85, 1], repeat: Infinity, ease: 'linear' },
+              repeat: Infinity,
+              ease: 'easeIn', // gravity acceleration toward the glass
+            }}
+          >
+            <div
+              style={{
+                width: 4,
+                height: 4,
+                marginLeft: -2,
+                marginTop: -2,
+                borderRadius: '50%',
+                background: '#ffb0b8',
+                boxShadow:
+                  '0 0 4px rgba(255,176,184,1), 0 0 10px rgba(255,60,80,0.95), 0 0 18px rgba(220,20,40,0.7)',
+              }}
             />
           </motion.div>
         );

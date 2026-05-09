@@ -27,6 +27,11 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
   const timeAgo = createdDate ? formatDistanceToNow(createdDate, { addSuffix: true }) : '';
   // eslint-disable-next-line react-hooks/purity
   const isLive = createdDate ? createdDate.getTime() > Date.now() - 30 * 60 * 1000 : false;
+  // Expired signals can no longer be replied to — the listing API filters
+  // them out, but a card opened from a stale cache could still slip through.
+  const expiresDate = s.expires_at ? parseUTC(s.expires_at as string) : null;
+  // eslint-disable-next-line react-hooks/purity
+  const isExpired = expiresDate ? expiresDate.getTime() <= Date.now() : false;
 
   return (
     <div
@@ -64,8 +69,8 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
             <p className="text-[11px] text-[#4a5068] mt-0.5 line-clamp-2">{s.description as string}</p>
           )}
 
-          {/* Author + time */}
-          <div className="flex items-center gap-3 mt-2 text-[10px] text-[#4a5068]">
+          {/* Author + time + expiry */}
+          <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] text-[#4a5068]">
             <span className="flex items-center gap-1">
               {s.author_avatar
                 ? <img src={s.author_avatar as string} alt="" className="h-4 w-4 rounded-full object-cover" />
@@ -75,14 +80,20 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
             </span>
             {timeAgo && (
               <span className="flex items-center gap-1">
-                <Clock size={9} /> {timeAgo}
+                <Clock size={9} /> Posted {timeAgo}
+              </span>
+            )}
+            {expiresDate && (
+              <span className="flex items-center gap-1" style={{ color: isExpired ? '#f87171' : '#a3adc3' }}>
+                {isExpired ? '⏱ Expired' : '⏳ Expires'} {formatDistanceToNow(expiresDate, { addSuffix: true })}
               </span>
             )}
           </div>
         </div>
 
-        {/* Chat CTA — hide for signal owner */}
-        {!isOwner && (
+        {/* Chat CTA — hide for signal owner; replace with "Expired" badge if
+            the signal has lapsed (no chat allowed on expired signals). */}
+        {!isOwner && !isExpired && (
           <button
             onClick={(e) => { e.stopPropagation(); onClick?.(); }}
             className="shrink-0 h-9 w-9 rounded-lg flex items-center justify-center cursor-pointer"
@@ -90,6 +101,14 @@ export default function SignalCard({ signal: s, onClick }: SignalCardProps) {
           >
             <MessageCircle size={16} />
           </button>
+        )}
+        {!isOwner && isExpired && (
+          <span
+            className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold"
+            style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171' }}
+          >
+            Expired
+          </span>
         )}
       </div>
     </div>

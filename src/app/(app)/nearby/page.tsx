@@ -288,15 +288,28 @@ export default function NearbyPage() {
       case 'Signals': {
         const rawSignals = (data?.data as Record<string, unknown> | undefined)?.signals;
         const sigs = (Array.isArray(rawSignals) ? rawSignals : []) as Record<string, unknown>[];
-        return sigs.length === 0 ? (
+        // Belt-and-braces: API already filters expired but stale SWR cache or
+        // a clock skew between client/server can let an expired signal slip
+        // through. Drop them here too so the feed never shows a dead signal.
+        const now = Date.now();
+        const liveSigs = sigs.filter((s) => {
+          const exp = s.expires_at ? Date.parse(s.expires_at as string) : null;
+          return !exp || exp > now;
+        });
+        return liveSigs.length === 0 ? (
           <EmptyState lat={lat ?? undefined} lng={lng ?? undefined} onSelectBusiness={setSelectedBusiness} onSelectCircle={setSelectedCircle} onSelectEvent={setSelectedEvent} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (
-          sigs.map((s) => <SignalCard key={s.id as string} signal={s} onClick={() => setSelectedSignal(s)} />)
+          liveSigs.map((s) => <SignalCard key={s.id as string} signal={s} onClick={() => setSelectedSignal(s)} />)
         );
       }
 
       case 'Offers': {
-        const offers = nearby.offers;
+        // Offers are signals too — apply the same expired-cache safety net.
+        const now = Date.now();
+        const offers = nearby.offers.filter((s) => {
+          const exp = s.expires_at ? Date.parse(s.expires_at as string) : null;
+          return !exp || exp > now;
+        });
         return offers.length === 0 ? (
           <EmptyState lat={lat ?? undefined} lng={lng ?? undefined} onSelectBusiness={setSelectedBusiness} onSelectCircle={setSelectedCircle} onSelectEvent={setSelectedEvent} onExpandRadius={handleExpandRadius} onSwitchCategory={handleSwitchCategory} radius={radius} />
         ) : (

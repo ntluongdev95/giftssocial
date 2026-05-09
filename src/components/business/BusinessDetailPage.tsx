@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { Business } from '@/types';
 import NailBookingModal from '@/components/booking/NailBookingModal';
+import AuthPopup from '@/components/ui/AuthPopup';
 
 interface Props {
   business: Business;
@@ -32,6 +33,7 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
   const [imgIdx, setImgIdx] = useState(0);
   const [unlocked, setUnlocked] = useState<boolean | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
 
   // Fetch current unlock state for this venue
   useEffect(() => {
@@ -45,6 +47,11 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
 
   const handleCheckIn = async () => {
     if (checkingIn || unlocked) return;
+    // Gate: must be logged in to check in. The check-in API needs a user
+    // identity (it grants Gao Points + paints the user's map), so prompt the
+    // auth popup instead of letting the request fail with 401.
+    const loggedIn = typeof document !== 'undefined' && document.cookie.includes('gao_logged_in=1');
+    if (!loggedIn) { setShowAuth(true); return; }
     setCheckingIn(true);
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -403,6 +410,9 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
           onBooked={() => setShowBooking(false)}
         />
       )}
+
+      {/* Auth gate — opened when a guest taps "Unlock this place" */}
+      <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
     </>
   );
 }

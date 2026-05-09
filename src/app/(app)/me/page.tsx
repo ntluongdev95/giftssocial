@@ -9,7 +9,7 @@ import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import {
   MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
-  HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw, Clock,
+  HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw, Clock, Gift,
 } from 'lucide-react';
 
 const fetcher = (url: string) => fetch(url, {
@@ -328,6 +328,7 @@ export default function MePage() {
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
           <ActivityRow icon={<span className="text-base">🪦</span>} label="Time Capsules" value="Bury memories" href="/me/capsules" onClick={() => router.push('/me/capsules')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
+          <ActivityRow icon={<Gift size={16} />} label="My Wallet" value="Claimed gift cards" href="/me/wallet" onClick={() => router.push('/me/wallet')} />
           <ActivityRow icon={<Wallet size={16} />} label="Wallet & Rewards" value="0 Gao Points" href="#" onClick={() => {}} last />
         </div>
 
@@ -336,6 +337,7 @@ export default function MePage() {
         <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
           <ActivityRow icon={<UserCheck size={16} />} label="Professional Profile" href="/me/profile" onClick={() => router.push('/me/profile')} />
           <ActivityRow icon={<Store size={16} />} label="My Business" href="/me/business" onClick={() => router.push('/me/business')} />
+          <ActivityRow icon={<Gift size={16} />} label="Gift Cards" value="Drops & vouchers" href="/me/gift-cards" onClick={() => router.push('/me/gift-cards')} />
           <ActivityRow icon={<Calendar size={16} />} label="Create Event" href="/me/events" onClick={() => router.push('/me/events')} />
           <ActivityRow icon={<Bot size={16} />} label="My Agents" href="#" onClick={() => {}} last />
         </div>
@@ -457,6 +459,7 @@ export default function MePage() {
                 <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" onClick={() => router.push('/me/signals')} />
                 <ActivityCard icon={<span className="text-lg leading-none">🪦</span>} label="Time Capsules" value="Bury memories" color="#94a3b8" onClick={() => router.push('/me/capsules')} />
                 <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" onClick={() => {}} />
+                <ActivityCard icon={<Gift size={18} />} label="My Wallet" value="Claimed gift cards" color="#00d4ff" onClick={() => router.push('/me/wallet')} />
                 <ActivityCard icon={<Wallet size={18} />} label="Wallet & Rewards" value="0 Gao Points" color="#a78bfa" onClick={() => {}} />
                 <ActivityCard icon={<Award size={18} />} label="Trust & Badges" value="Build reputation" color="#34d399" onClick={() => {}} />
               </div>
@@ -467,6 +470,7 @@ export default function MePage() {
               <div className="grid grid-cols-3 gap-3">
                 <ManageCard icon={<UserCheck size={20} />} label="Professional Profile" sub="Edit your CV" href="/me/profile" onClick={() => router.push('/me/profile')} />
                 <ManageCard icon={<Store size={20} />} label="My Business" sub="Manage your store" href="/me/business" onClick={() => router.push('/me/business')} />
+                <ManageCard icon={<Gift size={20} />} label="Gift Cards" sub="Drops & vouchers" href="/me/gift-cards" onClick={() => router.push('/me/gift-cards')} />
                 <ManageCard icon={<Calendar size={20} />} label="Create Event" sub="Host an event" href="/me/events" onClick={() => router.push('/me/events')} />
               </div>
             </div>

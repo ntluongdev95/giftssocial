@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Caveat } from 'next/font/google';
 import SplashWrapper from '@/components/ui/SplashWrapper';
 import GoogleRedirectHandler from '@/components/ui/GoogleRedirectHandler';
+import { Toaster } from 'sonner';
 import './globals.css';
 
 const inter = Inter({
@@ -90,6 +91,19 @@ export default function RootLayout({
             user back via full-page redirect (mobile-critical fallback). */}
         <GoogleRedirectHandler />
         {children}
+        <Toaster
+          position="top-center"
+          theme="dark"
+          richColors
+          closeButton
+          toastOptions={{
+            style: {
+              background: '#0f1117',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#f0f4ff',
+            },
+          }}
+        />
       </body>
     </html>
   );
