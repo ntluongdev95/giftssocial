@@ -8,6 +8,7 @@
  */
 
 import { SiweMessage } from 'siwe';
+import { getAddress } from 'viem';
 
 import { getConfig } from './config';
 
@@ -33,9 +34,14 @@ export const SIWE_STATEMENT = 'Sign in with Gao ID';
  */
 export function buildSiweMessage(input: BuildSiweMessageInput): string {
   const { siweDomain, appUrl } = getConfig();
+  // SIWE requires line 2 (the address) to be EIP-55 checksummed. Mobile
+  // WalletConnect connectors sometimes return all-lowercase addresses
+  // from `useAccount()`, which trips the `siwe` library's strict parse
+  // ("invalid EIP-55 address …"). Normalize defensively here.
+  const checksummed = getAddress(input.address) as `0x${string}`;
   const message = new SiweMessage({
     domain: siweDomain,
-    address: input.address,
+    address: checksummed,
     statement: SIWE_STATEMENT,
     uri: appUrl,
     version: '1',
