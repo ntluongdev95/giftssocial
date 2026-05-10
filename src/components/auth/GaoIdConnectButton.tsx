@@ -301,7 +301,7 @@ function GaoIdConnectButtonInner({
 }) {
   const { address, chainId, isConnected, connector } = useAccount();
   const { signMessageAsync } = useSignMessage();
-  const { open } = useAppKit();
+  const { open, close: closeAppKit } = useAppKit();
 
   // WalletConnect bridges the signing prompt to a remote wallet app.
   // We detect it so the persistent toast and the visible fallback panel
@@ -576,6 +576,10 @@ function GaoIdConnectButtonInner({
       // Success: intent has done its job. Clear before close so a future
       // sign-out/sign-in cycle starts clean.
       clearPendingSiweIntent();
+      // Some users see the AppKit "Open <wallet>" modal lingering after a
+      // successful sign-in if the wallet didn't auto-close it. Force-close
+      // here so the page is clean by the time we redirect/close popup.
+      try { await closeAppKit(); } catch { /* modal may already be closed */ }
       toast.success('Signed in with Gao ID');
       onAuthSuccess?.();
     } catch (e) {
@@ -601,6 +605,7 @@ function GaoIdConnectButtonInner({
   }, [
     address,
     chainId,
+    closeAppKit,
     connector?.id,
     connector?.name,
     connector?.type,
@@ -736,6 +741,25 @@ function GaoIdConnectButtonInner({
     variant === 'modal'
       ? 'text-[12px] font-semibold text-white'
       : 'text-[11px] font-semibold text-white';
+
+  // While the SIWE flow is mid-flight, always render a spinner — even
+  // after `setFromVerifyResponse` has already flipped status to
+  // 'authenticated' and `isVerified` is true. There's still a 200-500ms
+  // window for the bridge call + /me hydration before `onAuthSuccess`
+  // closes the popup; without this guard the user briefly sees the
+  // static "Gao ID: gaoid_…" label, which looks like nothing is
+  // happening. Mobile-WC waiting state has its own dedicated panel
+  // below and is excluded here.
+  if (busy && !signPending) {
+    return (
+      <button type="button" disabled className={shell} style={shellStyle} aria-live="polite">
+        <Loader2 size={iconSize} className="animate-spin text-[#00d4ff]" />
+        <span className={labelClass}>
+          {isVerified ? 'Welcoming you in…' : 'Signing in…'}
+        </span>
+      </button>
+    );
+  }
 
   if (isVerified) {
     return (

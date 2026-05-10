@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 const LivePanel = dynamic(() => import('@/components/live/LivePanel'), { ssr: false });
 import { DomainBadge } from '@/components/gao/DomainBadge';
 import { useAuthStore } from '@/stores/auth-store';
+import { useGaoIdStore } from '@/stores/gao-id-store';
 import { useNotifications } from '@/hooks/useNotifications';
 import AuthPopup from '@/components/ui/AuthPopup';
 
@@ -46,11 +47,17 @@ export default function Sidebar() {
       ]);
     } catch { /* proceed with local cleanup regardless */ }
 
-    // 2. Local cleanup — always runs even if server fails
+    // 2. Local cleanup — always runs even if server fails. Also clear
+    // `gao_last_user` and the Gao ID store so AuthPopup re-opens clean
+    // (without "Welcome back, …" + a stale Gao ID button that no longer
+    // signs in). Required: a hard page refresh used to be the only way
+    // to recover otherwise.
     document.cookie = 'gao_logged_in=; Max-Age=0; path=/';
     document.cookie = 'gao_csrf=; Max-Age=0; path=/';
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('gao_last_user');
+    try { useGaoIdStore.getState().clear(); } catch { /* store may not be init'd */ }
     logoutStorage();
     setLoggingOut(false);
   };
