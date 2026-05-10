@@ -149,6 +149,27 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Apply every D1 migration file before the worker deploys, so any
+      # newly-required schema is in place when the new code goes live.
+      # All migrations are idempotent (CREATE … IF NOT EXISTS / INSERT OR
+      # IGNORE), so re-applying old ones every run is safe and cheap.
+      - name: Apply D1 migrations (gao-social-dev)
+        if: steps.preflight.outputs.ready == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          shopt -s nullglob
+          migrations=(src/db/migration-*.sql)
+          if [ ${#migrations[@]} -eq 0 ]; then
+            echo "No migration files found, skipping."
+            exit 0
+          fi
+          for f in "${migrations[@]}"; do
+            echo "→ Applying $f"
+            npx --yes wrangler@4 d1 execute gao-social-dev --remote --file="$f"
+          done
+
       - name: Deploy to Cloudflare (env=dev)
         if: steps.preflight.outputs.ready == 'true'
         env:
