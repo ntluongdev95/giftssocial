@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@mediapipe/tasks-vision": "^0.10.35",
     "@opennextjs/cloudflare": "^1.18.0",
     "@types/qrcode": "^1.5.6",
     "@types/three": "^0.183.1",
