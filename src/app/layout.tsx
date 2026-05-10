@@ -91,7 +91,10 @@ export default function RootLayout({
         {/* Picks up Google OAuth code if popup was blocked and Google sent the
             user back via full-page redirect (mobile-critical fallback). */}
         <GoogleRedirectHandler />
-        {children}
+        {/* Web3Provider wraps the entire app so wagmi/Reown hooks anywhere
+            in the tree see WagmiProvider's context. When NEXT_PUBLIC_GAO_ID_ENABLED
+            is 'false' it short-circuits to a fragment — zero runtime cost. */}
+        <Web3Provider>{children}</Web3Provider>
         <Toaster
           position="top-center"
           theme="dark"
@@ -105,7 +108,6 @@ export default function RootLayout({
             },
           }}
         />
-        <Web3Provider>{children}</Web3Provider>
       </body>
     </html>
   );

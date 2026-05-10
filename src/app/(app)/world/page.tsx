@@ -227,12 +227,10 @@ export default function WorldPage() {
     { refreshInterval: 30000, fallbackData: { data: [] } }
   );
 
-  // Fetch agents
-  const { data: agentsData } = useSWR<{ data: Agent[] }>(
-    `/api/v1/agents?${queryParams}`,
-    fetcher,
-    { refreshInterval: 30000, fallbackData: { data: [] } }
-  );
+  // Agents endpoint isn't deployed on dev — short-circuit to an empty list
+  // so the SWR fetcher never hits a 404. Re-enable by passing the URL string
+  // here once the API route ships.
+  const agentsData: { data: Agent[] } | undefined = { data: [] };
 
   // Fetch profiles
   const { data: profilesData } = useSWR<{ data: Profile[] }>(
