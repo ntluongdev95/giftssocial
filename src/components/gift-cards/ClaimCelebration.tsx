@@ -969,6 +969,14 @@ function Starfield() {
   );
 }
 
+// Deterministic pseudo-random (sin-based hash). Same input → same output,
+// so star positions / shooting-star timings stay stable across renders and
+// keep the React 19 react-hooks/purity rule happy.
+function pseudoRand(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 function ShootingStars() {
   // Six shooting stars from deterministic positions / timings (purity rule).
   const shots = useMemo(
