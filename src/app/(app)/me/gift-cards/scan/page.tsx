@@ -65,6 +65,7 @@ export default function GiftCardScannerPage() {
   const [amountInput, setAmountInput] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [result, setResult] = useState<RedeemResult | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   // ─── html5-qrcode scanner ─────────────────────────────────────────────
   const scannerRef = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
@@ -86,7 +87,39 @@ export default function GiftCardScannerPage() {
 
   const startScanner = useCallback(async () => {
     if (scannerRef.current || stoppedRef.current) return;
+
+    // Modern browsers require a secure context (HTTPS or localhost) for
+    // camera access. If we're served over plain HTTP from a network IP we
+    // can fail fast with a clear message instead of waiting for the lib
+    // to throw a cryptic error.
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setCameraError(
+        'Camera needs HTTPS or localhost. This page is on plain HTTP — open it on https:// or use Manual entry.'
+      );
+      return;
+    }
+
+    setCameraError(null);
     try {
+      // First, make sure the DOM element actually exists. React might still
+      // be in the middle of rendering on a fast retry.
+      const target = document.getElementById('gc-qr-reader');
+      if (!target) {
+        // Wait a tick and retry once.
+        await new Promise((r) => setTimeout(r, 100));
+        if (!document.getElementById('gc-qr-reader')) {
+          throw new Error('Scanner UI not ready, try again');
+        }
+      }
+
+      // Probe getUserMedia directly first — surfaces a clean DOMException
+      // we can read, instead of the opaque thing html5-qrcode rethrows.
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const probeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        // Release the probe immediately — html5-qrcode opens its own stream.
+        probeStream.getTracks().forEach((t) => t.stop());
+      }
+
       const { Html5Qrcode } = await import('html5-qrcode');
       const scanner = new Html5Qrcode('gc-qr-reader');
       scannerRef.current = scanner;
@@ -94,16 +127,32 @@ export default function GiftCardScannerPage() {
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 280, height: 280 } },
         (decodedText) => {
-          // Stop scanning as soon as we have a hit, then preview.
           stopScanner();
           handleDetected(decodedText);
         },
         () => {} // ignore mid-scan errors
       );
     } catch (err) {
-      console.warn('[Scanner] camera unavailable:', (err as Error).message);
-      toast.error('Camera not available — use manual entry');
-      setMode('manual');
+      console.warn('[Scanner] camera unavailable. Raw error:', err);
+      // err can be a DOMException, an Error, a string, or something exotic
+      // from html5-qrcode. Normalize.
+      let name = '';
+      let message = '';
+      if (err && typeof err === 'object') {
+        name = (err as { name?: string }).name || '';
+        message = (err as { message?: string }).message || '';
+      } else if (typeof err === 'string') {
+        message = err;
+      }
+      const reason =
+        name === 'NotAllowedError' ? 'Camera permission was denied. Allow it in your browser settings, or use Manual entry.'
+        : name === 'NotFoundError' || name === 'OverconstrainedError'
+          ? 'No camera found on this device.'
+        : name === 'NotReadableError' ? 'Camera is in use by another app.'
+        : name === 'SecurityError' ? 'Camera blocked by browser security policy. Try a different browser or HTTPS.'
+        : message || 'Camera not available. Use Manual entry instead.';
+      setCameraError(reason);
+      scannerRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -241,7 +290,7 @@ export default function GiftCardScannerPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setMode('scan')}
+            onClick={() => { setCameraError(null); setMode('scan'); }}
             className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold cursor-pointer"
             style={{
               background: mode === 'scan' ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.04)',
@@ -271,15 +320,50 @@ export default function GiftCardScannerPage() {
           <>
             {mode === 'scan' && (
               <div className="space-y-3">
-                <div
-                  id="gc-qr-reader"
-                  className="relative aspect-square w-full overflow-hidden rounded-2xl"
-                  style={{ background: '#000', border: '1px solid rgba(255,255,255,0.06)' }}
-                />
-                <div className="flex items-center justify-center gap-2 text-xs text-[#a3adc3]">
-                  <ScanLine size={14} className="text-[#00d4ff]" />
-                  Point camera at the customer's QR
-                </div>
+                {/* Camera viewport — hidden when camera errored so the error
+                    state doesn't get covered by an empty black box. */}
+                {!cameraError && (
+                  <div
+                    id="gc-qr-reader"
+                    className="relative aspect-square w-full overflow-hidden rounded-2xl"
+                    style={{ background: '#000', border: '1px solid rgba(255,255,255,0.06)' }}
+                  />
+                )}
+
+                {cameraError ? (
+                  <div
+                    className="rounded-2xl p-5 text-center"
+                    style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)' }}
+                  >
+                    <div className="mx-auto mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full" style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171' }}>
+                      <AlertTriangle size={18} />
+                    </div>
+                    <p className="text-sm font-semibold">Camera unavailable</p>
+                    <p className="mt-1 text-[12px] leading-relaxed text-[#a3adc3]">{cameraError}</p>
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        onClick={() => { setCameraError(null); stoppedRef.current = false; startScanner(); }}
+                        className="flex-1 rounded-lg py-2.5 text-sm font-semibold cursor-pointer"
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#f0f4ff' }}
+                      >
+                        Try again
+                      </button>
+                      <button
+                        onClick={() => setMode('manual')}
+                        className="flex-1 rounded-lg py-2.5 text-sm font-bold cursor-pointer"
+                        style={{ background: '#00d4ff', color: '#0a0b0f' }}
+                      >
+                        Use manual
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 text-xs text-[#a3adc3]">
+                    <ScanLine size={14} className="text-[#00d4ff]" />
+                    Point camera at the customer's QR
+                  </div>
+                )}
+
                 {previewing && (
                   <div className="flex items-center justify-center gap-2 text-xs text-[#00d4ff]">
                     <Loader2 size={14} className="animate-spin" /> Looking up card…

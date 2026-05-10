@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { ArrowLeft, Wallet, Loader2, Clock, Sparkles, X, QrCode } from 'lucide-react';
+import { ArrowLeft, Wallet, Loader2, Clock, Sparkles, X, QrCode, Compass, TicketCheck } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { toast } from 'sonner';
 import QRCodeLib from 'qrcode';
@@ -66,9 +66,21 @@ export default function CustomerWalletPage() {
   // when the merchant just redeemed it).
   const [openCardId, setOpenCardId] = useState<string | null>(null);
 
+  // Tab filter — click to scope which cards are visible.
+  const [filter, setFilter] = useState<'all' | 'active' | 'used' | 'expired'>('all');
+
   const cards = data || [];
   const activeCards = cards.filter((c) => c.status === 'active');
-  const inactiveCards = cards.filter((c) => c.status !== 'active');
+  const usedCards = cards.filter((c) => c.status === 'redeemed');
+  const expiredCards = cards.filter((c) => c.status === 'expired' || c.status === 'revoked');
+  const inactiveCards = [...usedCards, ...expiredCards];
+
+  const visibleCards =
+    filter === 'active' ? activeCards
+    : filter === 'used' ? usedCards
+    : filter === 'expired' ? expiredCards
+    : cards;
+
   const openCard = openCardId ? cards.find((c) => c.id === openCardId) || null : null;
 
   return (
@@ -87,19 +99,13 @@ export default function CustomerWalletPage() {
         <h1 className="text-lg font-bold">My Wallet</h1>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        {/* Hero */}
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Wallet size={20} className="text-[#00d4ff] shrink-0" />
-              <span>Your gift cards</span>
-            </h2>
-            <p className="mt-1 text-[13px] leading-relaxed text-[#a3adc3] sm:text-xs">
-              Tap a card to show its QR — the merchant scans it to redeem in-store.
-            </p>
-          </div>
-        </div>
+      <div className="mx-auto max-w-6xl px-4 py-6 lg:px-8 lg:py-10">
+        {/* ── HERO with stats ─────────────────────────────────────────── */}
+        <WalletHero
+          activeCount={activeCards.length}
+          inactiveCount={inactiveCards.length}
+          totalValue={computeTotalValue(activeCards)}
+        />
 
         {!isAuthed && (
           <CenteredState
@@ -123,33 +129,52 @@ export default function CustomerWalletPage() {
         )}
 
         {isAuthed && !isLoading && !error && cards.length === 0 && (
-          <CenteredState
-            title="No cards yet"
-            sub="When you claim a gift card, it lands here. Scan a merchant's QR or tap a shared link to claim one."
-            icon={<Wallet size={28} />}
-          />
+          <EmptyWallet onDiscover={() => router.push('/world')} />
         )}
 
-        {/* Active cards */}
-        {activeCards.length > 0 && (
-          <Section title="Active" count={activeCards.length}>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {activeCards.map((c) => (
-                <WalletCard key={c.id} card={c} onClick={() => setOpenCardId(c.id)} />
-              ))}
-            </div>
-          </Section>
-        )}
+        {/* Filter tabs — only show when there are any cards */}
+        {isAuthed && !isLoading && !error && cards.length > 0 && (
+          <>
+            <FilterTabs
+              filter={filter}
+              onChange={setFilter}
+              counts={{
+                all: cards.length,
+                active: activeCards.length,
+                used: usedCards.length,
+                expired: expiredCards.length,
+              }}
+            />
 
-        {/* Past cards (redeemed / expired) */}
-        {inactiveCards.length > 0 && (
-          <Section title="Past" count={inactiveCards.length} muted>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 opacity-70">
-              {inactiveCards.map((c) => (
-                <WalletCard key={c.id} card={c} onClick={() => setOpenCardId(c.id)} />
-              ))}
-            </div>
-          </Section>
+            {/* Cards grid — applies opacity to non-active filters */}
+            {visibleCards.length === 0 ? (
+              <CenteredState
+                title={`No ${filter} cards`}
+                sub={
+                  filter === 'active'
+                    ? 'Claim a drop to fill this section.'
+                    : filter === 'used'
+                    ? 'Cards you redeem at the shop will appear here.'
+                    : 'Cards that expire without being used will appear here.'
+                }
+                icon={<Wallet size={28} />}
+              />
+            ) : (
+              <div
+                className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6 ${
+                  filter === 'used' || filter === 'expired' ? 'opacity-85' : ''
+                }`}
+              >
+                {visibleCards.map((c) => (
+                  <WalletCard key={c.id} card={c} onClick={() => setOpenCardId(c.id)} />
+                ))}
+                {/* Discover-more CTA only on Active or All when there's space */}
+                {(filter === 'all' || filter === 'active') && activeCards.length < 3 && (
+                  <DiscoverCard onClick={() => router.push('/world')} />
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -408,6 +433,220 @@ function RedeemQr({ cardId, gradientFrom }: { cardId: string; gradientFrom: stri
         {cardId}
       </button>
     </div>
+  );
+}
+
+// ─── Hero with stats — top of the wallet ─────────────────────────────────
+function WalletHero({
+  activeCount,
+  inactiveCount,
+  totalValue,
+}: {
+  activeCount: number;
+  inactiveCount: number;
+  totalValue: { amount: number; currency: string } | null;
+}) {
+  return (
+    <div
+      className="mb-6 rounded-2xl p-5 lg:mb-8 lg:p-7 lg:flex lg:items-center lg:justify-between lg:gap-8"
+      style={{
+        background: 'linear-gradient(135deg, rgba(0,212,255,0.08) 0%, rgba(167,139,250,0.06) 100%)',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      <div className="lg:max-w-md">
+        <h2 className="text-xl font-bold flex items-center gap-2 lg:text-2xl">
+          <Wallet size={22} className="text-[#00d4ff] shrink-0" />
+          <span>My Wallet</span>
+        </h2>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-[#a3adc3] lg:text-sm">
+          Tap any card to show its QR. The merchant scans it to redeem in-store —
+          your wallet updates automatically.
+        </p>
+      </div>
+      {/* Stat tiles */}
+      <div className="mt-4 grid grid-cols-3 gap-2 lg:mt-0 lg:gap-3 lg:min-w-[420px]">
+        <StatTile
+          label="Active"
+          value={`${activeCount}`}
+          color="#22C55E"
+          icon={<Sparkles size={14} />}
+        />
+        <StatTile
+          label={totalValue ? `Value · ${totalValue.currency}` : 'Value'}
+          value={totalValue ? formatBigMoney(totalValue.amount) : '—'}
+          color="#00d4ff"
+          icon={<Wallet size={14} />}
+        />
+        <StatTile
+          label="Used"
+          value={`${inactiveCount}`}
+          color="#a3adc3"
+          icon={<TicketCheck size={14} />}
+        />
+      </div>
+    </div>
+  );
+}
+
+function StatTile({
+  label, value, color, icon,
+}: { label: string; value: string; color: string; icon: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5 lg:px-4 lg:py-3"
+      style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div className="flex items-center gap-1.5" style={{ color }}>
+        {icon}
+        <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+      </div>
+      <div className="mt-1 text-lg font-black truncate lg:text-xl">{value}</div>
+    </div>
+  );
+}
+
+// Compute the total stored-value remaining across the user's active cards.
+// Returns the dominant currency (most cards) and its summed value, or null if
+// there are no stored-value cards.
+function computeTotalValue(active: MyCard[]): { amount: number; currency: string } | null {
+  const sums: Record<string, number> = {};
+  for (const c of active) {
+    if (c.type === 'stored_value' && c.value_remaining > 0) {
+      sums[c.currency] = (sums[c.currency] || 0) + c.value_remaining;
+    }
+  }
+  const entries = Object.entries(sums);
+  if (entries.length === 0) return null;
+  // Pick the currency with the largest summed amount as primary.
+  entries.sort((a, b) => b[1] - a[1]);
+  return { currency: entries[0][0], amount: entries[0][1] };
+}
+
+const CURRENCY_SYMBOLS_MINI: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', JPY: '¥', SGD: 'S$',
+};
+
+function formatBigMoney(amount: number): string {
+  const n = Math.round(amount);
+  return n.toLocaleString();
+}
+
+// (Symbol ignored in StatTile — currency goes in the label "Value · USD")
+void CURRENCY_SYMBOLS_MINI;
+
+// ─── Filter tabs ─────────────────────────────────────────────────────────
+function FilterTabs({
+  filter,
+  onChange,
+  counts,
+}: {
+  filter: 'all' | 'active' | 'used' | 'expired';
+  onChange: (f: 'all' | 'active' | 'used' | 'expired') => void;
+  counts: { all: number; active: number; used: number; expired: number };
+}) {
+  const tabs: Array<{
+    id: 'all' | 'active' | 'used' | 'expired';
+    label: string;
+    count: number;
+    color: string;
+  }> = [
+    { id: 'all',     label: 'All',     count: counts.all,     color: '#00d4ff' },
+    { id: 'active',  label: 'Active',  count: counts.active,  color: '#22C55E' },
+    { id: 'used',    label: 'Used',    count: counts.used,    color: '#a3adc3' },
+    { id: 'expired', label: 'Expired', count: counts.expired, color: '#f87171' },
+  ];
+  return (
+    <div className="mb-5 flex gap-1.5 overflow-x-auto rounded-xl p-1 lg:mb-7 lg:gap-2 lg:p-1.5"
+      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+    >
+      {tabs.map((t) => {
+        const active = filter === t.id;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap"
+            style={{
+              background: active ? `${t.color}1f` : 'transparent',
+              border: `1px solid ${active ? `${t.color}50` : 'transparent'}`,
+              color: active ? t.color : '#a3adc3',
+            }}
+          >
+            {t.label}
+            <span
+              className="inline-flex items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-tight"
+              style={{
+                background: active ? `${t.color}33` : 'rgba(255,255,255,0.06)',
+                color: active ? t.color : '#4a5068',
+                minWidth: '18px',
+                height: '18px',
+              }}
+            >
+              {t.count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Empty wallet — first-time onboarding ────────────────────────────────
+function EmptyWallet({ onDiscover }: { onDiscover: () => void }) {
+  return (
+    <div
+      className="rounded-2xl p-8 text-center lg:p-12"
+      style={{
+        background: 'linear-gradient(135deg, rgba(0,212,255,0.06), rgba(167,139,250,0.04))',
+        border: '1px dashed rgba(255,255,255,0.1)',
+      }}
+    >
+      <div
+        className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full"
+        style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
+      >
+        <Wallet size={26} />
+      </div>
+      <h3 className="text-lg font-bold lg:text-xl">No cards in your wallet yet</h3>
+      <p className="mx-auto mt-1.5 max-w-md text-sm text-[#a3adc3] lg:text-[13px]">
+        Scan a merchant's QR or tap a shared link to claim a gift card. They'll appear here, ready to use in-store.
+      </p>
+      <button
+        onClick={onDiscover}
+        className="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold cursor-pointer"
+        style={{ background: '#00d4ff', color: '#0a0b0f' }}
+      >
+        <Compass size={14} /> Discover drops nearby
+      </button>
+    </div>
+  );
+}
+
+// ─── Discover card — filler tile in the grid when there's room ───────────
+function DiscoverCard({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center justify-center gap-3 rounded-2xl py-10 text-center cursor-pointer transition-colors hover:bg-white/[0.03]"
+      style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px dashed rgba(255,255,255,0.1)',
+        minHeight: '13rem',
+      }}
+    >
+      <div
+        className="inline-flex h-12 w-12 items-center justify-center rounded-full"
+        style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}
+      >
+        <Compass size={20} />
+      </div>
+      <div>
+        <p className="text-sm font-semibold">Discover more drops</p>
+        <p className="mt-1 text-[11px] text-[#a3adc3]">Find new gift cards on the map</p>
+      </div>
+    </button>
   );
 }
 

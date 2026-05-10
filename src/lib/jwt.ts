@@ -10,9 +10,9 @@ function getJwtSecret(): Uint8Array {
 }
 // Access tokens are now short-lived — auto-refresh in middleware swaps them
 // silently. 30 days was a security hole: a leaked token gave attackers a
-// month-long window. 30min keeps the leak window small without forcing the
-// user to relogin (refresh runs transparently).
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30m';
+// month-long window. 7d balances UX (less refresh churn) with leak-window
+// containment; refresh still runs transparently when the token expires.
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const REFRESH_EXPIRES_IN = '90d';
 
 export interface TokenPayload {
