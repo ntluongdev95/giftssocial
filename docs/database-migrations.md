@@ -69,14 +69,46 @@ do by hand is exactly what it does — no extra client.
 
 ## Auto-update on deploy
 
-`predeploy:cf:dev` is wired so `npm run deploy:cf:dev` applies pending
-migrations to the dev database **before** the worker is published. Add an
-equivalent `deploy:cf:prod` script (or CI step) the same way for prod.
+There are two paths to keep `app-dev.gao.social` in sync:
 
-CI workflows can call `npm run db:migrate:prod` as the step before
-`wrangler deploy --env=production`. D1 does not safely expose DDL through
-the runtime API, so keep migrations strictly as a build/CI step rather
-than running them from the worker on cold start.
+1. **GitHub Actions auto-deploy (canonical).**
+   `.github/workflows/dev-cicd.yml` deploys on every push to `develop`.
+   The deploy job now installs deps and runs `npm run db:migrate:dev`
+   *before* `wrangler@4 deploy --env dev`. Migration is idempotent: if
+   the `_migrations` ledger is already current, the step is a no-op.
+   If migration fails the deploy is skipped (fail-fast). The required
+   secrets are `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` on the
+   `development` GitHub Environment — the same secrets used for the
+   `wrangler deploy` step, so no extra config is required.
+2. **Manual / local deploy.** `npm run deploy:cf:dev` chains
+   `db:migrate:dev` and `cf:deploy:dev` for ad-hoc deploys from a
+   developer machine.
+
+For production, mirror the dev workflow: run `npm run db:migrate:prod`
+as the step before `wrangler deploy --env production`. D1 does not
+safely expose DDL through the runtime API, so keep migrations strictly
+as a build/CI step rather than running them from the worker on cold
+start.
+
+## Smoke testing app-dev after deploy
+
+`npm run smoke:app-dev` (or `node scripts/smoke-app-dev.mjs`) exercises
+the public + auth-required surface of every newly wired feature:
+
+* `GET /` (page-render liveness)
+* `GET /api/v1/search?q=…` (search)
+* `GET /api/v1/gift-cards/claim/<seeded-token>` (gift cards public lookup)
+* `GET /g/<seeded-token>` (gift card claim page render)
+* `GET /api/v1/capsules` (time capsules — expects 401 when unauthed,
+  not 500)
+* `GET /api/v1/gift-cards/templates` (merchant gift cards)
+* `GET /api/v1/gift-cards/mine` (customer wallet)
+* `GET /api/v1/auth/session` (auth bootstrap)
+* `GET /api/v1/users/<seeded-user>` (profile, exercises the formerly
+  broken `users.photos` / `b.avatar_url` columns)
+
+`5xx` from any of these means a schema gap; the script fails
+non-destructively. Override the base URL with `--base=<url>`.
 
 ## Adding a new migration
 
