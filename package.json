@@ -12,8 +12,20 @@
     "cf:preview:dev": "wrangler dev --env dev",
     "cf:deploy:dev": "wrangler deploy --env dev",
     "db:init:local": "wrangler d1 execute gao-social-dev --local --file=schema-d1.sql",
-    "db:seed:local": "wrangler d1 execute gao-social-dev --local --file=src/db/seed-local.sql && wrangler d1 execute gao-social-dev --local --file=src/db/seed-users-vn.sql && wrangler d1 execute gao-social-dev --local --file=src/db/seed-biz-events-vn.sql",
-    "db:reset:local": "npm run db:init:local && npm run db:seed:local"
+    "db:seed:local": "wrangler d1 execute gao-social-dev --local --file=src/db/seed-local.sql && wrangler d1 execute gao-social-dev --local --file=src/db/seed-users-vn.sql && wrangler d1 execute gao-social-dev --local --file=src/db/seed-biz-events-vn.sql && wrangler d1 execute gao-social-dev --local --file=src/db/seed-gift-cards.sql",
+    "db:reset:local": "npm run db:init:local && npm run db:migrate:local && npm run db:seed:local",
+    "db:migrate:local": "node scripts/migrate.mjs --target=local",
+    "db:migrate:dev": "node scripts/migrate.mjs --target=dev",
+    "db:migrate:prod": "node scripts/migrate.mjs --target=production",
+    "db:migrate:mark:local": "node scripts/migrate.mjs --target=local --mark",
+    "db:migrate:mark:dev": "node scripts/migrate.mjs --target=dev --mark",
+    "db:migrate:mark:prod": "node scripts/migrate.mjs --target=production --mark",
+    "db:check": "node scripts/migrate.mjs --target=local --dry-run",
+    "db:auto-update:local": "npm run db:migrate:local",
+    "db:auto-update:dev": "npm run db:migrate:dev",
+    "db:auto-update:prod": "npm run db:migrate:prod",
+    "predeploy:cf:dev": "npm run db:migrate:dev",
+    "deploy:cf:dev": "npm run predeploy:cf:dev && npm run cf:deploy:dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

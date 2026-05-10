@@ -266,6 +266,7 @@ CREATE TABLE IF NOT EXISTS circles (
   slug              TEXT UNIQUE,
   category          TEXT DEFAULT 'general',
   description       TEXT DEFAULT '',
+  avatar_url        TEXT,
   cover_image       TEXT,
   rules             TEXT DEFAULT '',
 
@@ -738,6 +739,84 @@ CREATE TABLE IF NOT EXISTS gift_card_redemptions (
 
 CREATE INDEX IF NOT EXISTS idx_gcr_card ON gift_card_redemptions(card_id);
 CREATE INDEX IF NOT EXISTS idx_gcr_business ON gift_card_redemptions(business_id, redeemed_at DESC);
+
+-- ============================================================================
+-- 19. TIME CAPSULES — bury memories at locations, unlock by time + GPS
+--     (canonicalised from migration-003-time-capsules.sql)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS time_capsules (
+  id              TEXT PRIMARY KEY,
+  creator_id      TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  message         TEXT NOT NULL,
+  photos          TEXT DEFAULT '[]',
+  location_lat    REAL NOT NULL,
+  location_lng    REAL NOT NULL,
+  location_name   TEXT,
+  unlock_radius   INTEGER DEFAULT 100,
+  buried_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  unlock_at       TEXT NOT NULL,
+  capsule_type    TEXT DEFAULT 'private',
+  recipient_ids   TEXT DEFAULT '[]',
+  is_public       INTEGER DEFAULT 0,
+  status          TEXT DEFAULT 'buried',
+  opened_at       TEXT,
+  opened_by       TEXT,
+  reply_message   TEXT,
+  reply_at        TEXT,
+  theme           TEXT DEFAULT 'classic'
+);
+
+CREATE INDEX IF NOT EXISTS idx_capsules_creator  ON time_capsules(creator_id);
+CREATE INDEX IF NOT EXISTS idx_capsules_unlock   ON time_capsules(unlock_at);
+CREATE INDEX IF NOT EXISTS idx_capsules_location ON time_capsules(location_lat, location_lng);
+CREATE INDEX IF NOT EXISTS idx_capsules_public   ON time_capsules(is_public);
+
+-- 20. CAPSULE_OPENS — per-recipient reveal state (one row per opener)
+CREATE TABLE IF NOT EXISTS capsule_opens (
+  capsule_id  TEXT NOT NULL,
+  user_id     TEXT NOT NULL,
+  opened_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (capsule_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_capsule_opens_user    ON capsule_opens(user_id, opened_at DESC);
+CREATE INDEX IF NOT EXISTS idx_capsule_opens_capsule ON capsule_opens(capsule_id);
+
+-- ============================================================================
+-- 21. GAO_ID_LINKS — local link cache between social-web bootstrap users and
+--     canonical Gao identities issued by gao-id-worker. gao-id-worker is the
+--     SOLE source of truth for `rootId`; this table only records the local
+--     association so the social-web UX can hydrate a normal bootstrap session
+--     after a SIWE sign-in.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS gao_id_links (
+  id                 TEXT PRIMARY KEY,
+  bootstrap_user_id  TEXT NOT NULL,
+  gao_root_id        TEXT NOT NULL,
+  wallet_address     TEXT,
+  chain_id           INTEGER,
+  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (bootstrap_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gao_id_links_root ON gao_id_links(gao_root_id);
+CREATE INDEX IF NOT EXISTS idx_gao_id_links_user        ON gao_id_links(bootstrap_user_id);
+
+-- ============================================================================
+-- _migrations — applied-migrations ledger consumed by scripts/migrate.mjs.
+-- Tracks every D1 migration file already applied so the runner can apply
+-- only what is new on each environment.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS _migrations (
+  name        TEXT PRIMARY KEY,
+  hash        TEXT NOT NULL,
+  applied_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 -- ============================================================================
 -- NOTE: Stored procedures removed — replaced with app logic in Phase 2
