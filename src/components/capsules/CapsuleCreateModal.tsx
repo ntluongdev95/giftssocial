@@ -108,7 +108,26 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
           { },
         );
         const data = await res.json();
-        const people = (data?.data?.people || []) as RecipientUser[];
+        // /api/v1/search returns each person as the generic search-result
+        // shape { id, title, subtitle, image }. Map it to the RecipientUser
+        // shape (display_name, username, avatar_url) the chip renderer
+        // expects — otherwise every match shows as "User" with no avatar.
+        type SearchPerson = {
+          id: string;
+          title?: string;
+          subtitle?: string;
+          image?: string;
+        };
+        const raw: SearchPerson[] = data?.data?.people || [];
+        const people: RecipientUser[] = raw.map((p) => ({
+          id: p.id,
+          display_name: p.title,
+          // subtitle is "@username" if username exists, else a bio snippet.
+          username: typeof p.subtitle === 'string' && p.subtitle.startsWith('@')
+            ? p.subtitle.slice(1)
+            : undefined,
+          avatar_url: p.image,
+        }));
         setRecipientResults(people);
       } catch { setRecipientResults([]); }
       setSearchingUsers(false);
