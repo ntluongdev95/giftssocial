@@ -514,7 +514,7 @@ export default function ClaimCelebration({
               textTransform: 'uppercase',
             }}
           >
-            You've claimed your voucher
+            You&apos;ve claimed your voucher
           </motion.text>
           <motion.text
             initial={{ opacity: 0, y: 8 }}
@@ -924,17 +924,25 @@ function SubtitleDrone({
 // ─── Backdrop sub-components ──────────────────────────────────────────────
 
 function Starfield() {
-  // Static stars, generated once on mount via deterministic RNG so SSR matches.
+  // Pure / deterministic positions — each star derived from its index using
+  // `pseudoRand`. Same visual variety as Math.random() but render-time-pure
+  // (satisfies the react-hooks/purity rule and matches across SSR/CSR).
   const stars = useMemo(() => {
     const arr: { x: number; y: number; r: number; o: number; dur: number; delay: number }[] = [];
     for (let i = 0; i < 90; i++) {
+      const r1 = pseudoRand(i * 1 + 1);
+      const r2 = pseudoRand(i * 2 + 7);
+      const r3 = pseudoRand(i * 3 + 13);
+      const r4 = pseudoRand(i * 4 + 23);
+      const r5 = pseudoRand(i * 5 + 31);
+      const r6 = pseudoRand(i * 6 + 41);
       arr.push({
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        r: Math.random() < 0.85 ? 0.7 : 1.4,
-        o: 0.3 + Math.random() * 0.5,
-        dur: 2 + Math.random() * 4,
-        delay: Math.random() * 3,
+        x: r1 * 100,
+        y: r2 * 100,
+        r: r3 < 0.85 ? 0.7 : 1.4,
+        o: 0.3 + r4 * 0.5,
+        dur: 2 + r5 * 4,
+        delay: r6 * 3,
       });
     }
     return arr;
@@ -962,17 +970,25 @@ function Starfield() {
 }
 
 function ShootingStars() {
-  // Six shooting stars from random edges, each on its own loop.
+  // Six shooting stars from deterministic positions / timings (purity rule).
   const shots = useMemo(
     () =>
-      Array.from({ length: 6 }, (_, i) => ({
-        startX: 5 + Math.random() * 90,
-        startY: -5,
-        dx: 30 + Math.random() * 30,
-        dy: 110,
-        delay: i * 1.4 + Math.random() * 0.8,
-        dur: 1.4 + Math.random() * 0.8,
-      })),
+      Array.from({ length: 6 }, (_, i) => {
+        const r1 = pseudoRand(i * 7 + 3);
+        const r2 = pseudoRand(i * 11 + 17);
+        const r3 = pseudoRand(i * 13 + 29);
+        const r4 = pseudoRand(i * 17 + 47);
+        const r5 = pseudoRand(i * 19 + 61);
+        return {
+          startX: 5 + r1 * 90,
+          startY: -5,
+          dx: 30 + r2 * 30,
+          dy: 110,
+          delay: i * 1.4 + r3 * 0.8,
+          dur: 1.4 + r4 * 0.8,
+          repeatDelay: 6 + r5 * 4,
+        };
+      }),
     [],
   );
   return (
@@ -995,7 +1011,7 @@ function ShootingStars() {
             duration: s.dur,
             delay: s.delay,
             repeat: Infinity,
-            repeatDelay: 6 + Math.random() * 4,
+            repeatDelay: s.repeatDelay,
             ease: 'easeOut',
           }}
         />

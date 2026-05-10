@@ -610,7 +610,7 @@ function EmptyWallet({ onDiscover }: { onDiscover: () => void }) {
       </div>
       <h3 className="text-lg font-bold lg:text-xl">No cards in your wallet yet</h3>
       <p className="mx-auto mt-1.5 max-w-md text-sm text-[#a3adc3] lg:text-[13px]">
-        Scan a merchant's QR or tap a shared link to claim a gift card. They'll appear here, ready to use in-store.
+        Scan a merchant&apos;s QR or tap a shared link to claim a gift card. They&apos;ll appear here, ready to use in-store.
       </p>
       <button
         onClick={onDiscover}

@@ -286,12 +286,12 @@ function TemplateCard({
 // ─── QR share modal ────────────────────────────────────────────────────────
 function QrShareModal({ row, onClose }: { row: TemplateRow; onClose: () => void }) {
   const [dataUrl, setDataUrl] = useState<string>('');
-  const [origin, setOrigin] = useState<string>('');
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setOrigin(window.location.origin);
-  }, []);
+  // useState initializer runs once on mount; safe with `typeof window` guard
+  // and avoids the set-state-in-effect lint that fires when we setOrigin
+  // synchronously inside an effect.
+  const [origin] = useState<string>(() =>
+    typeof window !== 'undefined' ? window.location.origin : ''
+  );
 
   const claimUrl = origin ? `${origin}/g/${row.claim_token}` : '';
 
@@ -500,7 +500,7 @@ function ConfirmDelete({
         <h3 className="text-base font-bold">Delete this drop?</h3>
         <p className="mt-1 text-xs text-[#a3adc3]">
           “{row.name}” will be removed. If anyone has already claimed this card,
-          we'll archive it instead so existing claims keep working.
+          we&apos;ll archive it instead so existing claims keep working.
         </p>
         <div className="mt-5 flex items-center gap-2">
           <button

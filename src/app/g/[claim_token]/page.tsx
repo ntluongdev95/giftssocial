@@ -253,7 +253,7 @@ export default function GiftCardClaimPage() {
                   <Gift size={11} /> A gift from {t.business_name || 'this business'}
                 </span>
                 <h1 className="mt-3 text-2xl font-black leading-tight lg:text-[2.25rem] lg:leading-[1.1] lg:mt-4">
-                  You've received a{' '}
+                  You&apos;ve received a{' '}
                   <span
                     className="bg-clip-text text-transparent"
                     style={{ backgroundImage: `linear-gradient(135deg, ${t.gradient_from}, ${t.gradient_to})` }}

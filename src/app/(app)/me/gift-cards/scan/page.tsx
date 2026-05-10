@@ -360,7 +360,7 @@ export default function GiftCardScannerPage() {
                 ) : (
                   <div className="flex items-center justify-center gap-2 text-xs text-[#a3adc3]">
                     <ScanLine size={14} className="text-[#00d4ff]" />
-                    Point camera at the customer's QR
+                    Point camera at the customer&apos;s QR
                   </div>
                 )}
 
