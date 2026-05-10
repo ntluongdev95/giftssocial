@@ -3,11 +3,10 @@
 import { useAccountStore } from '@/stores/account-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { X, ShieldCheck } from 'lucide-react';
-import { motion } from 'framer-motion';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import GaoIdConnectButton from '@/components/auth/GaoIdConnectButton';
 
 interface AuthPopupProps {
   open: boolean;
@@ -72,7 +71,13 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
     sessionStorage.setItem('gao_google_state', state);
 
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}&prompt=select_account&access_type=offline`;
+    // No `access_type=offline`: social-web exchanges the auth code once
+    // server-side (`/api/v1/auth/google`) to fetch profile data, then
+    // mints its own bootstrap JWT. We never persist Google's refresh
+    // token. Requesting offline access on a freshly-created OAuth
+    // client also raises Google's risk score, which surfaces extra
+    // passkey / password challenges to legitimate users.
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}&prompt=select_account`;
 
     // Open popup
     const w = 500, h = 600;
@@ -264,6 +269,12 @@ export default function AuthPopup({ open, onClose }: AuthPopupProps) {
             </div>
 
         </>
+            {/* Gao ID wallet entry — renders null when NEXT_PUBLIC_GAO_ID_ENABLED !== 'true'.
+                Bootstrap (Google / Apple) flow above is unaffected; this is a third,
+                additive option that mints a canonical Gao identity via SIWE.
+                `onAuthSuccess` fires AFTER the local bootstrap session is bridged so
+                this modal closes the same way it does after Google login. */}
+            <GaoIdConnectButton variant="modal" onAuthSuccess={onClose} />
 
         {/* Security badge */}
         <div className="flex flex-col items-center mt-6">

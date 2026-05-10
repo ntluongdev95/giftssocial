@@ -3,6 +3,7 @@ import { Inter, Caveat } from 'next/font/google';
 import SplashWrapper from '@/components/ui/SplashWrapper';
 import GoogleRedirectHandler from '@/components/ui/GoogleRedirectHandler';
 import { Toaster } from 'sonner';
+import Web3Provider from '@/providers/Web3Provider';
 import './globals.css';
 
 const inter = Inter({
@@ -104,6 +105,7 @@ export default function RootLayout({
             },
           }}
         />
+        <Web3Provider>{children}</Web3Provider>
       </body>
     </html>
   );

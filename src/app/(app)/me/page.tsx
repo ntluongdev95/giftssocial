@@ -6,6 +6,7 @@ import useSWR, { mutate as globalMutate } from 'swr';
 import { useAuthStore } from '@/stores/auth-store';
 import { secureFetch } from '@/lib/fetch';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
+import GaoIdAccountSection from '@/components/auth/GaoIdAccountSection';
 import {
   MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
@@ -330,6 +331,12 @@ export default function MePage() {
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
           <ActivityRow icon={<Gift size={16} />} label="My Wallet" value="Claimed gift cards" href="/me/wallet" onClick={() => router.push('/me/wallet')} last />
         </div>
+
+        {/* Gao ID — additive canonical identity layer. Renders null when
+            NEXT_PUBLIC_GAO_ID_ENABLED !== 'true' so bootstrap-only users
+            see no change. Bootstrap (Google / Apple) login above is
+            untouched. */}
+        <GaoIdAccountSection />
 
         {/* Manage */}
         <SectionTitle>Manage</SectionTitle>
