@@ -4,11 +4,13 @@
 // Companion to /me/gift-cards (merchant dashboard). Each card opens a sheet
 // with a per-claim QR the merchant scans to redeem.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { ArrowLeft, Wallet, Loader2, Clock, Sparkles, X, QrCode } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
+import { toast } from 'sonner';
+import QRCodeLib from 'qrcode';
 import { GiftCardPreview, formatValue } from '@/components/gift-cards/GiftCardPreview';
 import { useAuthStore } from '@/stores/auth-store';
 
@@ -50,14 +52,24 @@ export default function CustomerWalletPage() {
   const { data, error, isLoading } = useSWR<MyCard[]>(
     isAuthed ? '/api/v1/gift-cards/mine' : null,
     fetcher,
-    { revalidateOnFocus: false }
+    {
+      // Refetch on tab focus so a card redeemed on the merchant device
+      // updates here automatically. Light poll every 8s while open so the
+      // status flips quickly without needing a refresh.
+      revalidateOnFocus: true,
+      refreshInterval: 8000,
+    }
   );
 
-  const [openCard, setOpenCard] = useState<MyCard | null>(null);
+  // Track the OPEN CARD BY ID — re-derive the live row from the latest SWR
+  // data on every render so the detail sheet reflects status updates (e.g.
+  // when the merchant just redeemed it).
+  const [openCardId, setOpenCardId] = useState<string | null>(null);
 
   const cards = data || [];
   const activeCards = cards.filter((c) => c.status === 'active');
   const inactiveCards = cards.filter((c) => c.status !== 'active');
+  const openCard = openCardId ? cards.find((c) => c.id === openCardId) || null : null;
 
   return (
     <div className="h-full overflow-y-auto relative" style={{ background: '#0a0b0f', color: '#f0f4ff' }}>
@@ -123,7 +135,7 @@ export default function CustomerWalletPage() {
           <Section title="Active" count={activeCards.length}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {activeCards.map((c) => (
-                <WalletCard key={c.id} card={c} onClick={() => setOpenCard(c)} />
+                <WalletCard key={c.id} card={c} onClick={() => setOpenCardId(c.id)} />
               ))}
             </div>
           </Section>
@@ -134,7 +146,7 @@ export default function CustomerWalletPage() {
           <Section title="Past" count={inactiveCards.length} muted>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 opacity-70">
               {inactiveCards.map((c) => (
-                <WalletCard key={c.id} card={c} onClick={() => setOpenCard(c)} />
+                <WalletCard key={c.id} card={c} onClick={() => setOpenCardId(c.id)} />
               ))}
             </div>
           </Section>
@@ -142,7 +154,7 @@ export default function CustomerWalletPage() {
       </div>
 
       {/* Detail sheet — placeholder until the redeem QR API is built */}
-      {openCard && <CardDetailSheet card={openCard} onClose={() => setOpenCard(null)} />}
+      {openCard && <CardDetailSheet card={openCard} onClose={() => setOpenCardId(null)} />}
     </div>
   );
 }
@@ -188,12 +200,27 @@ function WalletCard({ card: c, onClick }: { card: MyCard; onClick: () => void })
           </span>
         }
       />
-      <div
-        className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold"
-        style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
-      >
-        <QrCode size={12} /> Show QR
-      </div>
+      {/* Bottom action — Show QR only for active cards. Redeemed/expired
+          cards get a status label instead. */}
+      {c.status === 'active' ? (
+        <div
+          className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold"
+          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
+        >
+          <QrCode size={12} /> Show QR
+        </div>
+      ) : (
+        <div
+          className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold uppercase tracking-wider"
+          style={{
+            background: `${statusColor}14`,
+            border: `1px solid ${statusColor}30`,
+            color: statusColor,
+          }}
+        >
+          {c.status === 'redeemed' ? 'Used' : c.status === 'expired' ? 'Expired' : 'Unavailable'}
+        </div>
+      )}
     </button>
   );
 }
@@ -210,16 +237,18 @@ function CardDetailSheet({ card: c, onClose }: { card: MyCard; onClose: () => vo
       style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
     >
       <div
-        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl"
+        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl lg:max-w-3xl"
         style={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.06)' }}
       >
         <div
-          className="flex items-center justify-between px-5 py-4"
+          className="flex items-center justify-between px-5 py-4 lg:px-7 lg:py-5"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
         >
           <div className="min-w-0">
-            <h3 className="text-base font-bold truncate">{c.name}</h3>
-            <p className="mt-0.5 text-[11px] text-[#a3adc3] truncate">{c.business_name || 'Gao Social'}</p>
+            <h3 className="text-base font-bold truncate lg:text-lg">{c.name}</h3>
+            <p className="mt-0.5 text-[11px] text-[#a3adc3] truncate lg:text-xs">
+              {c.business_name || 'Gao Social'}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -230,45 +259,57 @@ function CardDetailSheet({ card: c, onClose }: { card: MyCard; onClose: () => vo
           </button>
         </div>
 
-        <div className="px-5 py-5 space-y-5">
-          <GiftCardPreview
-            type={c.type}
-            name={c.name}
-            businessName={c.business_name}
-            value={formatValue(c)}
-            gradientFrom={c.gradient_from || '#00d4ff'}
-            gradientTo={c.gradient_to || '#a78bfa'}
-            description={c.description}
-            footerLeft={c.expires_at ? `Expires in ${expiresLabel}` : `Valid ${c.expires_in_days}d`}
-            footerRight={c.status === 'active' ? 'Yours' : c.status}
-          />
+        {/* Mobile: stacked. Desktop: 2-col with card on the left, QR + meta on the right. */}
+        <div className="px-5 py-5 space-y-5 lg:px-7 lg:py-7 lg:space-y-0 lg:grid lg:grid-cols-[1fr_320px] lg:gap-7">
+          {/* Left column — card showcase */}
+          <div className="lg:flex lg:flex-col lg:gap-5">
+            <GiftCardPreview
+              type={c.type}
+              name={c.name}
+              businessName={c.business_name}
+              value={formatValue(c)}
+              gradientFrom={c.gradient_from || '#00d4ff'}
+              gradientTo={c.gradient_to || '#a78bfa'}
+              description={c.description}
+              footerLeft={c.expires_at ? `Expires in ${expiresLabel}` : `Valid ${c.expires_in_days}d`}
+              footerRight={c.status === 'active' ? 'Yours' : c.status}
+            />
 
-          {/* Redeem instruction */}
-          {c.status === 'active' ? (
-            <div
-              className="rounded-2xl p-4 text-center"
-              style={{ background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.18)' }}
-            >
-              <QrCode size={28} className="mx-auto mb-2 text-[#00d4ff]" />
-              <p className="text-sm font-semibold">Show this card at the shop</p>
-              <p className="mt-1 text-[11px] text-[#a3adc3]">
-                The merchant scans your card's QR (coming soon) to redeem. For now, show this screen.
-              </p>
+            {/* Meta strip — desktop only here, lives below the card */}
+            <div className="hidden lg:grid grid-cols-3 gap-2 text-center">
+              <Meta icon={<Sparkles size={12} />} label="Type" value={c.type.replace('_', ' ')} />
+              <Meta icon={<Clock size={12} />} label="Status" value={c.status} />
+              <Meta
+                icon={<Wallet size={12} />}
+                label={c.type === 'stored_value' ? 'Remaining' : 'Uses left'}
+                value={
+                  c.type === 'stored_value'
+                    ? formatValue({ ...c, face_value: c.value_remaining })
+                    : `${c.uses_remaining}`
+                }
+              />
             </div>
-          ) : (
-            <div
-              className="rounded-2xl p-4 text-center"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
-            >
-              <p className="text-sm font-semibold capitalize">{c.status}</p>
-              <p className="mt-1 text-[11px] text-[#a3adc3]">
-                This card can no longer be used.
-              </p>
-            </div>
-          )}
+          </div>
 
-          {/* Meta strip */}
-          <div className="grid grid-cols-3 gap-2 text-center">
+          {/* Right column — redeem QR */}
+          <div className="lg:flex lg:flex-col lg:justify-center">
+            {c.status === 'active' ? (
+              <RedeemQr cardId={c.id} gradientFrom={c.gradient_from || '#00d4ff'} />
+            ) : (
+              <div
+                className="rounded-2xl p-4 text-center"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <p className="text-sm font-semibold capitalize">{c.status}</p>
+                <p className="mt-1 text-[11px] text-[#a3adc3]">
+                  This card can no longer be used.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Meta strip — mobile only (desktop renders inside left column) */}
+          <div className="grid grid-cols-3 gap-2 text-center lg:hidden">
             <Meta icon={<Sparkles size={12} />} label="Type" value={c.type.replace('_', ' ')} />
             <Meta icon={<Clock size={12} />} label="Status" value={c.status} />
             <Meta
@@ -288,6 +329,87 @@ function CardDetailSheet({ card: c, onClose }: { card: MyCard; onClose: () => vo
 }
 
 // ─── Tiny helpers ─────────────────────────────────────────────────────────
+
+// ─── Redeem QR — the per-claim QR the merchant scans in-store ────────────
+function RedeemQr({ cardId, gradientFrom }: { cardId: string; gradientFrom: string }) {
+  const [dataUrl, setDataUrl] = useState<string>('');
+
+  useEffect(() => {
+    QRCodeLib.toDataURL(cardId, {
+      width: 720,
+      margin: 2,
+      color: { dark: '#0a0b0f', light: '#ffffff' },
+      errorCorrectionLevel: 'H',
+    })
+      .then(setDataUrl)
+      .catch((e) => {
+        console.error('[Wallet QR generate]', e);
+        toast.error('Failed to render QR');
+      });
+  }, [cardId]);
+
+  const copyId = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(cardId);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = cardId;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      toast.success('Card ID copied');
+    } catch {
+      toast.error('Long-press the ID to copy');
+    }
+  };
+
+  return (
+    <div
+      className="rounded-2xl p-4"
+      style={{
+        background: 'rgba(0,212,255,0.04)',
+        border: '1px solid rgba(0,212,255,0.18)',
+      }}
+    >
+      {/* Big QR centred on a white card with gradient-tinted glow */}
+      <div
+        className="mx-auto flex aspect-square w-full max-w-64 items-center justify-center rounded-2xl p-3"
+        style={{
+          background: 'linear-gradient(135deg, #ffffff 0%, #f4f5f7 100%)',
+          boxShadow: `0 18px 48px -20px ${gradientFrom}88, inset 0 0 0 1px rgba(255,255,255,0.6)`,
+        }}
+      >
+        {dataUrl ? (
+          <img src={dataUrl} alt="Redeem QR" className="h-full w-full object-contain" />
+        ) : (
+          <Loader2 size={24} className="animate-spin text-[#4a5068]" />
+        )}
+      </div>
+      <p className="mt-3 text-center text-sm font-semibold">Show this QR at the shop</p>
+      <p className="mt-1 text-center text-[11px] text-[#a3adc3]">
+        The merchant scans this to redeem your card.
+      </p>
+      {/* Manual fallback — card ID for the merchant to paste if scan fails */}
+      <button
+        onClick={copyId}
+        className="mt-3 w-full rounded-lg py-2 text-[11px] font-mono cursor-pointer truncate"
+        style={{
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          color: '#a3adc3',
+        }}
+        title="Tap to copy"
+      >
+        {cardId}
+      </button>
+    </div>
+  );
+}
 
 function Section({
   title,

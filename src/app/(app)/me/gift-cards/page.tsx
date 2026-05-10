@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR, { mutate } from 'swr';
-import { ArrowLeft, Plus, Gift, Loader2, Store, Pencil, Trash2, X, QrCode, Copy, Download } from 'lucide-react';
+import { ArrowLeft, Plus, Gift, Loader2, Store, Pencil, Trash2, X, QrCode, Copy, Download, ScanLine } from 'lucide-react';
 import { toast } from 'sonner';
 import QRCodeLib from 'qrcode';
 import { GiftCardPreview, TYPE_LABEL, formatValue } from '@/components/gift-cards/GiftCardPreview';
@@ -123,13 +123,26 @@ export default function GiftCardsAdminPage() {
                 </p>
               </div>
 
-              <button
-                onClick={() => setPanel({ mode: 'create' })}
-                className="w-full shrink-0 inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold cursor-pointer sm:w-auto"
-                style={{ background: '#00d4ff', color: '#0a0b0f' }}
-              >
-                <Plus size={14} /> Create new drop
-              </button>
+              {/* Action buttons — Scan + Create grouped together. Stack
+                  full-width on mobile, side-by-side on sm+. */}
+              <div className="flex flex-col gap-2 shrink-0 sm:flex-row sm:items-center sm:gap-2">
+                {templates.length > 0 && (
+                  <button
+                    onClick={() => router.push('/me/gift-cards/scan')}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold cursor-pointer sm:w-auto"
+                    style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', color: '#22C55E' }}
+                  >
+                    <ScanLine size={14} /> Scan to redeem
+                  </button>
+                )}
+                <button
+                  onClick={() => setPanel({ mode: 'create' })}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold cursor-pointer sm:w-auto"
+                  style={{ background: '#00d4ff', color: '#0a0b0f' }}
+                >
+                  <Plus size={14} /> Create new drop
+                </button>
+              </div>
             </div>
 
             {/* Inline panel — opens on Create or Edit */}

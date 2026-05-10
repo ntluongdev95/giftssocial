@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Gift, Loader2, ShieldCheck, Clock, Users, Sparkles, AlertTriangle } from 'lucide-react';
@@ -65,37 +65,9 @@ const ELIGIBILITY_COPY: Record<Exclude<Eligibility, 'ok'>, { title: string; sub:
   already_claimed: { title: 'You already have this', sub: 'Open it from your wallet — it\'s ready to use.' },
 };
 
-// Mock template used by ?preview=1 so devs/merchants can review the
-// celebration UI without burning a real claim slot.
-const PREVIEW_TEMPLATE: TemplateRow = {
-  id: 'preview',
-  name: 'Birthday treat',
-  description: 'A little gift to brighten your special day — show this card on your next visit and the treat is on us. Happy birthday!',
-  type: 'voucher',
-  face_value: 0,
-  percent_off: 20,
-  amount_off: 0,
-  service_name: null,
-  currency: 'USD',
-  gradient_from: '#00d4ff',
-  gradient_to: '#a78bfa',
-  claim_token: 'preview',
-  max_claims: 0,
-  current_claims: 0,
-  one_per_user: 1,
-  starts_at: null,
-  ends_at: null,
-  expires_in_days: 30,
-  status: 'active',
-  business_name: 'Nails And Head Spa',
-  business_cover: null,
-};
-
 export default function GiftCardClaimPage() {
   const params = useParams<{ claim_token: string }>();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const previewMode = searchParams?.get('preview') === '1';
   const token = params?.claim_token;
   const isAuthed = useAuthStore((s) => s.isAuthed);
   // First name (with sane fallbacks) — used by the drone show formation.
@@ -106,10 +78,8 @@ export default function GiftCardClaimPage() {
     'You'
   );
 
-  // Skip the API fetch when previewing — we want to render the celebration
-  // immediately with mock data, no eligibility checks involved.
   const { data, error, isLoading, mutate: refresh } = useSWR<ClaimLookup>(
-    token && !previewMode ? `/api/v1/gift-cards/claim/${token}` : null,
+    token ? `/api/v1/gift-cards/claim/${token}` : null,
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -117,11 +87,6 @@ export default function GiftCardClaimPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [success, setSuccess] = useState<{ card_id: string } | null>(null);
-
-  // Auto-trigger the celebration overlay in preview mode.
-  useEffect(() => {
-    if (previewMode) setSuccess({ card_id: 'preview' });
-  }, [previewMode]);
 
   // After login, refresh the lookup so eligibility updates with the user.
   useEffect(() => {
@@ -144,7 +109,7 @@ export default function GiftCardClaimPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthed, authOpen]);
 
-  const t = previewMode ? PREVIEW_TEMPLATE : data?.template;
+  const t = data?.template;
   const eligibility = data?.eligibility ?? 'ok';
 
   const claim = async () => {

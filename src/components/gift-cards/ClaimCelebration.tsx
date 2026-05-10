@@ -323,8 +323,8 @@ export default function ClaimCelebration({
   // shrinking the CONGRATS+name above and scaling the card outline up.
   const layout = isMobile
     ? {
-        vb: '-220 -260 440 600',
-        formationCenterY: -185,    // CONGRATS+name up high
+        vb: '-220 -240 440 600',
+        formationCenterY: -150,    // CONGRATS+name up top, with breathing room above
         cardCy: 95,                 // bigger card sits low-centre
         cardScale: 1.55,            // ~1.55× bigger card outline + content
         launchYBase: 320,
@@ -469,7 +469,7 @@ export default function ClaimCelebration({
           {/* Subtle preamble above the formation */}
           <text
             x="0"
-            y={formation.topY - 22}
+            y={formation.topY - (isMobile ? 12 : 22)}
             textAnchor="middle"
             className="fill-white"
             style={{
