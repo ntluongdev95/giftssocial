@@ -62,9 +62,22 @@ All pre-existing (already referenced in wrangler.toml):
 API token scope (least privilege):
 - `Account: Workers Scripts: Edit`
 - `Account: Workers R2 Storage: Edit`
-- `Account: D1: Edit`
+- `Account: D1: Edit`     ← required for the auto-migration step
 - `Account: Workers KV Storage: Edit`
 - `User: Memberships: Read`
+
+> **Important.** The deploy job's *Apply D1 migrations* step will probe
+> the D1 API before running. If `CLOUDFLARE_API_TOKEN` is missing the
+> `D1: Edit` scope, the migration step is **skipped with a high-visibility
+> `::warning::`** and the worker still deploys against the existing
+> schema. New schema changes will then NOT be applied automatically until
+> the token is rotated to include D1.
+>
+> If you see `[code: 7403] account is not authorized` in the run logs,
+> regenerate `CLOUDFLARE_API_TOKEN` in Cloudflare → My Profile → API
+> Tokens with the scopes listed above, then update the
+> `development` GitHub Environment secret. After rotation the next push
+> to `develop` will auto-apply pending migrations again.
 
 ## Required GitHub manual settings
 

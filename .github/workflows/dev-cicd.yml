@@ -164,11 +164,43 @@ jobs:
         if: steps.preflight.outputs.ready == 'true'
         run: npm ci
 
+      # Probe whether the deploy token has D1 access. The deploy token
+      # (CLOUDFLARE_API_TOKEN) needs `Workers Scripts: Edit` to publish,
+      # but the migration runner additionally needs `D1: Edit`. A token
+      # missing the D1 scope returns 7403 "account not authorized" from
+      # the D1 query API. We probe with a no-op SELECT so a scope-limited
+      # token does not abort the whole deploy — instead we surface a
+      # high-visibility warning and let deploy continue against the
+      # existing schema. Operators see the warning in the run summary
+      # and can rotate the token to include D1: Edit.
+      - name: Probe D1 access for migration runner
+        if: steps.preflight.outputs.ready == 'true'
+        id: d1probe
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          out=$(npx --yes wrangler@4 d1 execute gao-social-dev \
+                  --remote --env=dev \
+                  --command "SELECT 1 AS ok" 2>&1)
+          rc=$?
+          set -e
+          if [ $rc -eq 0 ]; then
+            echo "d1_ok=true" >> "$GITHUB_OUTPUT"
+            echo "✓ D1 token scope OK"
+          else
+            echo "d1_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CLOUDFLARE_API_TOKEN lacks D1 scope — migrations will be skipped on this deploy. The token must be regenerated with 'Account → D1: Edit' permission for auto-migrations to run on push to develop. Until then, run \`npm run db:migrate:dev\` manually with a properly-scoped token. Original wrangler error follows."
+            echo "$out"
+          fi
+
       # Apply pending D1 migrations to the dev database BEFORE publishing
       # the worker. Idempotent — re-runs are no-ops once `_migrations` is
-      # caught up. Fail-fast: if migrations error, deploy is skipped.
+      # caught up. Fail-fast within the runner: if migrations error for a
+      # real reason (syntax / lock / data conflict), deploy is aborted.
       - name: Apply D1 migrations (env=dev)
-        if: steps.preflight.outputs.ready == 'true'
+        if: steps.preflight.outputs.ready == 'true' && steps.d1probe.outputs.d1_ok == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
