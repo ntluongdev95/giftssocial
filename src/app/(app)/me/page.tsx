@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { useAuthStore } from '@/stores/auth-store';
+import { useGaoIdStore } from '@/stores/gao-id-store';
 import { secureFetch } from '@/lib/fetch';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import GaoIdAccountSection from '@/components/auth/GaoIdAccountSection';
@@ -35,11 +36,18 @@ export default function MePage() {
       ]);
     } catch { /* proceed with local cleanup */ }
 
-    // Client-side cleanup
+    // Client-side cleanup — cookies, tokens, AND any in-memory auth
+    // sub-state. Without resetting `gao_last_user` + the Gao ID store,
+    // a re-open of AuthPopup keeps showing "Welcome back, …" with the
+    // old Gao ID button, and clicking it does nothing because the store
+    // still thinks the user is authenticated. Required: full refresh
+    // resets these otherwise.
     document.cookie = 'gao_logged_in=; Max-Age=0; path=/';
     document.cookie = 'gao_csrf=; Max-Age=0; path=/';
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('gao_last_user');
+    try { useGaoIdStore.getState().clear(); } catch { /* store may not be init'd */ }
     logout();
     router.push('/world');
   };
