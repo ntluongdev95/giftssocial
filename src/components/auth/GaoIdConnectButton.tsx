@@ -53,6 +53,7 @@ import { Loader2, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { isGaoIdEnabled } from '@/lib/gao-id/config';
+import { loadWeb3Inner } from '@/providers/Web3Provider';
 import { gaoIdClient, GaoIdRequestError } from '@/lib/gao-id/client';
 import { buildSiweMessage } from '@/lib/gao-id/siwe';
 import { useGaoIdStore } from '@/stores/gao-id-store';
@@ -261,7 +262,21 @@ interface Props {
 }
 
 export default function GaoIdConnectButton({ variant = 'modal', onAuthSuccess }: Props) {
-  if (!isGaoIdEnabled()) return null;
+  // Gate inner mount on the same dynamic-import promise that Web3Provider
+  // awaits. Otherwise the inner's `useAccount` / `useSignMessage` fire
+  // before `WagmiProvider` is in the tree and React throws
+  // "useConfig must be used within WagmiProvider".
+  const [web3Ready, setWeb3Ready] = useState(false);
+  useEffect(() => {
+    if (!isGaoIdEnabled()) return;
+    let cancelled = false;
+    void loadWeb3Inner().then(() => {
+      if (!cancelled) setWeb3Ready(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!isGaoIdEnabled() || !web3Ready) return null;
   return <GaoIdConnectButtonInner variant={variant} onAuthSuccess={onAuthSuccess} />;
 }
 

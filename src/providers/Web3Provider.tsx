@@ -21,13 +21,25 @@ import { isGaoIdEnabled } from '@/lib/gao-id/config';
 
 type InnerProvider = ComponentType<PropsWithChildren>;
 
+// Singleton promise for the Web3 inner module. Both `Web3Provider` and any
+// component that depends on the wagmi context (e.g. `GaoIdConnectButton`)
+// await this promise so they all transition to "ready" together — no race
+// where a wagmi hook fires before `WagmiProvider` has mounted.
+let _web3InnerPromise: Promise<{ default: InnerProvider }> | null = null;
+export function loadWeb3Inner(): Promise<{ default: InnerProvider }> {
+  if (!_web3InnerPromise) {
+    _web3InnerPromise = import('./Web3ProviderInner') as Promise<{ default: InnerProvider }>;
+  }
+  return _web3InnerPromise;
+}
+
 export default function Web3Provider({ children }: PropsWithChildren) {
   const [Inner, setInner] = useState<InnerProvider | null>(null);
 
   useEffect(() => {
     if (!isGaoIdEnabled()) return;
     let cancelled = false;
-    void import('./Web3ProviderInner').then((mod) => {
+    void loadWeb3Inner().then((mod) => {
       if (!cancelled) setInner(() => mod.default);
     });
     return () => {
