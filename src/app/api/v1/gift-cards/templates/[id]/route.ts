@@ -15,9 +15,16 @@ const updateSchema = z.object({
   amount_off: z.number().nonnegative().optional(),
   service_name: z.string().max(120).nullable().optional(),
   currency: z.string().min(2).max(8).optional(),
-  cover_image: z.string().url().nullable().optional(),
+  // cover_image accepts URL or same-origin /upload path (see POST handler).
+  cover_image: z.string()
+    .refine((v) => v.startsWith('/') || /^https?:\/\//.test(v), 'Must be a URL or path')
+    .nullable()
+    .optional(),
   gradient_from: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).optional(),
   gradient_to: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).optional(),
+  pattern: z.enum(['none', 'dots', 'waves', 'stars', 'grid']).optional(),
+  icon_emoji: z.string().max(8).nullable().optional(),
+  tagline: z.string().max(80).nullable().optional(),
   max_claims: z.number().int().nonnegative().optional(),
   one_per_user: z.boolean().optional(),
   starts_at: z.string().nullable().optional(),

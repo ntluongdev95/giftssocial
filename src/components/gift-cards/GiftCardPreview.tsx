@@ -48,6 +48,8 @@ export function formatValue(t: TemplateLite): string {
   return '—';
 }
 
+export type GiftCardPattern = 'none' | 'dots' | 'waves' | 'stars' | 'grid';
+
 export interface GiftCardPreviewProps {
   type: TemplateLite['type'];
   name: string;
@@ -60,6 +62,17 @@ export interface GiftCardPreviewProps {
   footerRight?: string;
   statusBadge?: React.ReactNode;
   className?: string;
+  // ── Visual makeover props (migration-008) ──────────────────────────
+  // Background photo overlaid on the gradient at low opacity. Accepts
+  // any URL or same-origin /upload path.
+  coverImage?: string | null;
+  // Decorative pattern stamped on top of the gradient. 'none' keeps the
+  // card clean. SVG-based so it scales sharply on any DPR.
+  pattern?: GiftCardPattern;
+  // Single emoji rendered prominently (replaces the gold chip when set).
+  iconEmoji?: string | null;
+  // Short marketing line displayed under the value (max ~80 chars).
+  tagline?: string | null;
 }
 
 export function GiftCardPreview({
@@ -74,6 +87,10 @@ export function GiftCardPreview({
   footerRight,
   statusBadge,
   className = '',
+  coverImage,
+  pattern = 'none',
+  iconEmoji,
+  tagline,
 }: GiftCardPreviewProps) {
   return (
     <div
@@ -95,6 +112,20 @@ export function GiftCardPreview({
         }
       `}</style>
 
+      {/* Background cover image — sits ABOVE the gradient but BELOW the
+          dark/light radial overlays so the gradient still bleeds through
+          and the text-over-photo contrast stays readable. */}
+      {coverImage && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${coverImage})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: 0.55,
+          }}
+        />
+      )}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -105,6 +136,14 @@ export function GiftCardPreview({
           `,
         }}
       />
+      {/* Decorative pattern overlay — sits above the radials. Each entry is
+          a pure CSS background image so the SVG never bloats the DOM. */}
+      {pattern !== 'none' && (
+        <div
+          className="absolute inset-0 pointer-events-none mix-blend-overlay"
+          style={getPatternStyle(pattern)}
+        />
+      )}
       <div
         className="absolute -top-24 -right-24 h-56 w-56 rounded-full pointer-events-none opacity-40 mix-blend-screen"
         style={{
@@ -157,24 +196,39 @@ export function GiftCardPreview({
           )}
         </div>
 
+        {/* Chip OR emoji — emoji takes precedence so merchant can pick
+            their own brand mark. Chip stays as the default for cards
+            without an emoji. */}
         <div className="mt-3.5">
-          <div
-            className="relative h-7 w-9 rounded-md overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, #f6e6a3 0%, #d4af37 45%, #8a6e1f 100%)',
-              boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.35), 0 1px 2px rgba(0,0,0,0.35)',
-            }}
-          >
-            <div
-              className="absolute inset-1"
+          {iconEmoji ? (
+            <span
+              className="inline-flex items-center justify-center text-[34px] leading-none"
               style={{
-                background: `
-                  linear-gradient(0deg,  transparent 47%, rgba(0,0,0,0.35) 47% 53%, transparent 53%),
-                  linear-gradient(90deg, transparent 47%, rgba(0,0,0,0.35) 47% 53%, transparent 53%)
-                `,
+                filter: 'drop-shadow(0 4px 10px rgba(0,0,0,0.35))',
               }}
-            />
-          </div>
+              aria-hidden
+            >
+              {iconEmoji}
+            </span>
+          ) : (
+            <div
+              className="relative h-7 w-9 rounded-md overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, #f6e6a3 0%, #d4af37 45%, #8a6e1f 100%)',
+                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.35), 0 1px 2px rgba(0,0,0,0.35)',
+              }}
+            >
+              <div
+                className="absolute inset-1"
+                style={{
+                  background: `
+                    linear-gradient(0deg,  transparent 47%, rgba(0,0,0,0.35) 47% 53%, transparent 53%),
+                    linear-gradient(90deg, transparent 47%, rgba(0,0,0,0.35) 47% 53%, transparent 53%)
+                  `,
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="mt-auto">
@@ -187,6 +241,18 @@ export function GiftCardPreview({
           >
             {value}
           </p>
+          {tagline && (
+            <p
+              className="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white/95"
+              style={{
+                background: 'rgba(255,255,255,0.18)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                backdropFilter: 'blur(4px)',
+              }}
+            >
+              {tagline}
+            </p>
+          )}
           <h3 className="mt-1.5 text-[13px] font-semibold text-white/90 truncate">{name || 'Card name'}</h3>
           {description && (
             <p className="mt-1 text-[10.5px] text-white/65 line-clamp-1 leading-snug">{description}</p>
@@ -231,4 +297,53 @@ export function GiftCardPreview({
       </div>
     </div>
   );
+}
+
+// CSS-only pattern overlays. Each returns a style object usable on a
+// pointer-events-none absolute layer above the gradient. Kept here so
+// the preview component and the merchant Theme picker stay in sync.
+function getPatternStyle(pattern: GiftCardPattern): React.CSSProperties {
+  switch (pattern) {
+    case 'dots':
+      return {
+        backgroundImage: 'radial-gradient(rgba(255,255,255,0.5) 1.2px, transparent 1.6px)',
+        backgroundSize: '14px 14px',
+        opacity: 0.6,
+      };
+    case 'waves':
+      return {
+        backgroundImage:
+          'repeating-radial-gradient(circle at 50% 120%, rgba(255,255,255,0.18) 0 1px, transparent 1px 14px)',
+        opacity: 0.7,
+      };
+    case 'stars': {
+      // Lightweight SVG of three offset stars, tiled.
+      const svg = encodeURIComponent(
+        `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'>
+          <g fill='rgba(255,255,255,0.65)'>
+            <path d='M8 6 L9 9 L12 10 L9 11 L8 14 L7 11 L4 10 L7 9 Z'/>
+            <path d='M28 18 L29 20 L31 21 L29 22 L28 24 L27 22 L25 21 L27 20 Z'/>
+            <path d='M18 30 L19 32 L21 33 L19 34 L18 36 L17 34 L15 33 L17 32 Z'/>
+          </g>
+        </svg>`,
+      );
+      return {
+        backgroundImage: `url("data:image/svg+xml,${svg}")`,
+        backgroundSize: '60px 60px',
+        opacity: 0.85,
+      };
+    }
+    case 'grid':
+      return {
+        backgroundImage: `
+          linear-gradient(rgba(255,255,255,0.32) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.32) 1px, transparent 1px)
+        `,
+        backgroundSize: '22px 22px',
+        opacity: 0.4,
+      };
+    case 'none':
+    default:
+      return {};
+  }
 }

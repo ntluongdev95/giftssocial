@@ -42,6 +42,11 @@ interface MyCard {
   currency: string;
   gradient_from: string;
   gradient_to: string;
+  // Visual customization (migration-008)
+  cover_image: string | null;
+  pattern: 'none' | 'dots' | 'waves' | 'stars' | 'grid';
+  icon_emoji: string | null;
+  tagline: string | null;
   expires_in_days: number;
 }
 
@@ -301,6 +306,10 @@ function WalletCard({
           description={c.description}
           footerLeft={expiresInLabel}
           footerRight={c.type === 'stored_value' ? `${formatValue({ ...c, face_value: c.value_remaining })} left` : undefined}
+          coverImage={c.cover_image}
+          pattern={c.pattern}
+          iconEmoji={c.icon_emoji}
+          tagline={c.tagline}
           statusBadge={
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider backdrop-blur"
@@ -435,6 +444,10 @@ function CardDetailSheet({
               description={c.description}
               footerLeft={c.expires_at ? `Expires in ${expiresLabel}` : `Valid ${c.expires_in_days}d`}
               footerRight={c.status === 'active' ? 'Yours' : c.status}
+              coverImage={c.cover_image}
+              pattern={c.pattern}
+              iconEmoji={c.icon_emoji}
+              tagline={c.tagline}
             />
 
             {/* Meta strip — desktop only here, lives below the card */}

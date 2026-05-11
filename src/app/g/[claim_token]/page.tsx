@@ -29,6 +29,11 @@ interface TemplateRow {
   currency: string;
   gradient_from: string;
   gradient_to: string;
+  // Visual customization (migration-008)
+  cover_image: string | null;
+  pattern: 'none' | 'dots' | 'waves' | 'stars' | 'grid';
+  icon_emoji: string | null;
+  tagline: string | null;
   claim_token: string;
   max_claims: number;
   current_claims: number;
@@ -222,6 +227,10 @@ export default function GiftCardClaimPage() {
                   footerRight={
                     t.max_claims > 0 ? `${Math.max(t.max_claims - t.current_claims, 0)} left` : 'Open drop'
                   }
+                  coverImage={t.cover_image}
+                  pattern={t.pattern}
+                  iconEmoji={t.icon_emoji}
+                  tagline={t.tagline}
                 />
               </div>
 
