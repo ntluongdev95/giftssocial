@@ -140,14 +140,14 @@ export default function SendGiftModal({
   return (
     <div
       // z-60 sits above the app's BottomNav (z-50) so the modal isn't
-      // covered by the nav bar on mobile.
-      className="fixed inset-0 z-60 flex items-end sm:items-center justify-center px-3 sm:px-4"
+      // covered by the nav bar on mobile. Centred on every viewport.
+      className="fixed inset-0 z-60 flex items-center justify-center px-3 sm:px-4"
       style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden"
+        className="w-full max-w-md rounded-3xl overflow-hidden"
         style={{
           background: 'linear-gradient(180deg, #14161f 0%, #0a0b0f 100%)',
           border: '1px solid rgba(255,255,255,0.08)',

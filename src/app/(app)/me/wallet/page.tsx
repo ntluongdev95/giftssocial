@@ -7,12 +7,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR, { mutate } from 'swr';
-import { ArrowLeft, Wallet, Loader2, Clock, Sparkles, X, QrCode, Compass, TicketCheck, Send } from 'lucide-react';
+import { ArrowLeft, Wallet, Loader2, Clock, Sparkles, X, QrCode, Compass, TicketCheck, Send, Download } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { toast } from 'sonner';
 import QRCodeLib from 'qrcode';
 import { GiftCardPreview, formatValue } from '@/components/gift-cards/GiftCardPreview';
 import SendGiftModal, { type SendGiftTarget } from '@/components/gift-cards/SendGiftModal';
+import { generateVoucherImage } from '@/lib/giftcard-image';
 import { useAuthStore } from '@/stores/auth-store';
 
 interface MyCard {
@@ -380,17 +381,23 @@ function CardDetailSheet({
 
   return (
     <div
-      className="fixed inset-0 z-1000 flex items-end sm:items-center justify-center"
+      className="fixed inset-0 z-1000 flex items-center justify-center px-3 sm:px-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
     >
       <div
-        className="w-full max-w-md rounded-t-3xl sm:rounded-3xl lg:max-w-3xl"
+        // Cap height + scroll inside the sheet so the sticky header
+        // (with the close button) is always reachable on small phones.
+        className="w-full max-w-md rounded-3xl max-h-[92vh] overflow-y-auto lg:max-w-3xl"
         style={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.06)' }}
       >
         <div
-          className="flex items-center justify-between px-5 py-4 lg:px-7 lg:py-5"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+          className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 lg:px-7 lg:py-5"
+          style={{
+            background: 'rgba(15,17,23,0.92)',
+            backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+          }}
         >
           <div className="min-w-0">
             <h3 className="text-base font-bold truncate lg:text-lg">{c.name}</h3>
@@ -400,10 +407,11 @@ function CardDetailSheet({
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full cursor-pointer text-[#4a5068] hover:text-white"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full cursor-pointer text-white/70 hover:text-white"
+            style={{ background: 'rgba(255,255,255,0.06)' }}
             aria-label="Close"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
@@ -480,10 +488,16 @@ function CardDetailSheet({
             </div>
           </div>
 
-          {/* Right column — redeem QR (gifting lives on the card grid) */}
+          {/* Right column — redeem QR + offline-save CTA */}
           <div className="lg:flex lg:flex-col lg:justify-center">
             {c.status === 'active' ? (
-              <RedeemQr cardId={c.id} gradientFrom={c.gradient_from || '#00d4ff'} />
+              <>
+                <RedeemQr cardId={c.id} gradientFrom={c.gradient_from || '#00d4ff'} />
+                {/* Save-offline: renders the card + QR as a PNG users
+                    can keep in Photos. Works as a backup if the web
+                    is unreachable when redeeming in-store. */}
+                <SaveOfflineButton card={c} />
+              </>
             ) : (
               <div
                 className="rounded-2xl p-4 text-center"
@@ -520,6 +534,127 @@ function CardDetailSheet({
 // ─── Tiny helpers ─────────────────────────────────────────────────────────
 
 // ─── Redeem QR — the per-claim QR the merchant scans in-store ────────────
+// "Save offline" — renders the card + QR to a PNG so users can stash
+// it in Photos / Files and still redeem if the web is unreachable.
+// Two-step UX: tap "Save offline" → preview sheet → tap "Download".
+// The preview lets iOS users long-press the image to "Save to Photos".
+function SaveOfflineButton({ card }: { card: MyCard }) {
+  const [generating, setGenerating] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      const url = await generateVoucherImage(
+        {
+          id: card.id,
+          name: card.name,
+          description: card.description,
+          business_name: card.business_name,
+          type: card.type,
+          face_value: card.face_value,
+          percent_off: card.percent_off,
+          amount_off: card.amount_off,
+          service_name: card.service_name,
+          currency: card.currency,
+          gradient_from: card.gradient_from,
+          gradient_to: card.gradient_to,
+          cover_image: card.cover_image,
+          icon_emoji: card.icon_emoji,
+          tagline: card.tagline,
+          text_color: card.text_color,
+          expires_at: card.expires_at,
+          expires_in_days: card.expires_in_days,
+        },
+        formatValue(card),
+      );
+      setPreviewUrl(url);
+    } catch (err) {
+      console.error('[SaveOffline]', err);
+      toast.error('Could not generate image');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!previewUrl) return;
+    const a = document.createElement('a');
+    a.href = previewUrl;
+    a.download = `gao-voucher-${card.id}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleGenerate}
+        disabled={generating}
+        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold cursor-pointer transition-transform active:scale-[0.98] disabled:opacity-60"
+        style={{
+          background: 'rgba(0,212,255,0.08)',
+          border: '1px solid rgba(0,212,255,0.22)',
+          color: '#00d4ff',
+        }}
+      >
+        {generating ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+        Save offline
+      </button>
+
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-60 flex items-end sm:items-center justify-center px-3 sm:px-4"
+          style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden"
+            style={{
+              background: '#14161f',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+              <h3 className="text-base font-black text-white">Save voucher offline</h3>
+              <button
+                onClick={() => setPreviewUrl(null)}
+                className="flex h-9 w-9 items-center justify-center rounded-full cursor-pointer hover:bg-white/5"
+                aria-label="Close"
+              >
+                <X size={16} className="text-white/70" />
+              </button>
+            </div>
+            <div className="p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewUrl}
+                alt="Voucher offline preview"
+                className="w-full rounded-2xl"
+                style={{ border: '1px solid rgba(255,255,255,0.06)' }}
+              />
+              <p className="mt-3 text-center text-[11px] text-white/55">
+                💡 On iOS: long-press the image → <strong className="text-white/80">Save to Photos</strong>
+              </p>
+            </div>
+            <div className="px-4 pb-5">
+              <button
+                onClick={handleDownload}
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold cursor-pointer transition-transform active:scale-[0.98]"
+                style={{ background: '#00d4ff', color: '#0a0b0f' }}
+              >
+                <Download size={16} /> Download PNG
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function RedeemQr({ cardId, gradientFrom }: { cardId: string; gradientFrom: string }) {
   const [dataUrl, setDataUrl] = useState<string>('');
 
