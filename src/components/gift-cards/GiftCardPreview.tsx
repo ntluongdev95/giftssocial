@@ -73,13 +73,26 @@ export interface GiftCardPreviewProps {
   iconEmoji?: string | null;
   // Short marketing line displayed under the value (max ~80 chars).
   tagline?: string | null;
+  // ── Text colour (migration-009) ────────────────────────────────────
+  // Default hex colour for every text element on the card. Each tone
+  // is derived from this base. Defaults to white when null/missing.
+  textColor?: string | null;
+  // ── Per-element overrides (migration-010) ─────────────────────────
+  // Override the base text colour for individual headline elements.
+  // When null, falls back to `textColor`. Each override gets its own
+  // luminance-aware shadow so dark text on light bg still pops.
+  textColorBusiness?: string | null;
+  textColorValue?:    string | null;
+  textColorName?:     string | null;
 }
 
 export function GiftCardPreview({
   type,
-  name,
+  // Rename JSX-facing props to *Label so we can reuse the tone names
+  // `name` / `value` for the derived colour tones below.
+  name: nameLabel,
   businessName,
-  value,
+  value: valueLabel,
   gradientFrom,
   gradientTo,
   description,
@@ -91,7 +104,26 @@ export function GiftCardPreview({
   pattern = 'none',
   iconEmoji,
   tagline,
+  textColor,
+  textColorBusiness,
+  textColorValue,
+  textColorName,
 }: GiftCardPreviewProps) {
+  // Resolve per-element colour with cascade:
+  //   element override → default text_color → white
+  // Each element gets its OWN opacity tones derived from its hex so the
+  // shadows/borders match the colour. This keeps a red value text from
+  // looking weirdly tinted by a separate purple name colour.
+  const fallback = isHex(textColor) ? textColor : '#ffffff';
+  const businessHex = isHex(textColorBusiness) ? textColorBusiness : fallback;
+  const valueHex    = isHex(textColorValue)    ? textColorValue    : fallback;
+  const nameHex     = isHex(textColorName)     ? textColorName     : fallback;
+  const tx       = deriveTones(fallback);    // footer, subtitle, attribution
+  const business = deriveTones(businessHex); // business name + status badge
+  const value    = deriveTones(valueHex);    // big value + tagline pill
+  const name     = deriveTones(nameHex);     // card name + description
+  const valueShadow    = shadowFor(valueHex);
+  const businessShadow = shadowFor(businessHex);
   return (
     <div
       className={`relative overflow-hidden rounded-[20px] group ${className}`}
@@ -172,12 +204,12 @@ export function GiftCardPreview({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <span
-              className="block text-[9px] font-bold uppercase tracking-[0.28em] text-white/95 truncate"
-              style={{ textShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
+              className="block text-[9px] font-bold uppercase tracking-[0.28em] truncate"
+              style={{ color: business.strong, textShadow: businessShadow }}
             >
               {businessName || 'Your business'}
             </span>
-            <span className="mt-1 block text-[8px] uppercase tracking-[0.3em] text-white/55">
+            <span className="mt-1 block text-[8px] uppercase tracking-[0.3em]" style={{ color: business.faint }}>
               Gao · Giftcard
             </span>
           </div>
@@ -185,9 +217,9 @@ export function GiftCardPreview({
             <span
               className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider"
               style={{
-                background: 'rgba(255,255,255,0.16)',
-                color: 'white',
-                border: '1px solid rgba(255,255,255,0.22)',
+                background: business.fill,
+                color: business.primary,
+                border: `1px solid ${business.fillBorder}`,
                 backdropFilter: 'blur(6px)',
               }}
             >
@@ -233,42 +265,48 @@ export function GiftCardPreview({
 
         <div className="mt-auto">
           <p
-            className="text-[1.85rem] leading-none font-black tracking-tight text-white"
+            className="text-[1.85rem] leading-none font-black tracking-tight"
             style={{
-              textShadow: '0 2px 14px rgba(0,0,0,0.28)',
+              color: value.primary,
+              textShadow: valueShadow,
               fontFeatureSettings: '"ss01", "tnum"',
             }}
           >
-            {value}
+            {valueLabel}
           </p>
           {tagline && (
             <p
-              className="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white/95"
+              className="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em]"
               style={{
-                background: 'rgba(255,255,255,0.18)',
-                border: '1px solid rgba(255,255,255,0.22)',
+                color: value.strong,
+                background: value.fill,
+                border: `1px solid ${value.fillBorder}`,
                 backdropFilter: 'blur(4px)',
               }}
             >
               {tagline}
             </p>
           )}
-          <h3 className="mt-1.5 text-[13px] font-semibold text-white/90 truncate">{name || 'Card name'}</h3>
+          <h3 className="mt-1.5 text-[13px] font-semibold truncate" style={{ color: name.body }}>
+            {nameLabel || 'Card name'}
+          </h3>
           {description && (
-            <p className="mt-1 text-[10.5px] text-white/65 line-clamp-1 leading-snug">{description}</p>
+            <p className="mt-1 text-[10.5px] line-clamp-1 leading-snug" style={{ color: name.subtle }}>
+              {description}
+            </p>
           )}
         </div>
 
         <div
-          className="mt-3 pt-2.5 flex items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-[0.18em] text-white/75"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.22)' }}
+          className="mt-3 pt-2.5 flex items-center justify-between gap-2 text-[9px] font-bold uppercase tracking-[0.18em]"
+          style={{ color: tx.footer, borderTop: `1px solid ${tx.line}` }}
         >
           <span className="flex items-center gap-1">
             {[0, 1, 2, 3].map((i) => (
               <span
                 key={i}
                 className="inline-block h-1 w-3 rounded-full"
-                style={{ background: 'rgba(255,255,255,0.45)' }}
+                style={{ background: tx.dot }}
               />
             ))}
             <span className="ml-1.5 truncate">{footerLeft || TYPE_LABEL[type]}</span>
@@ -276,12 +314,12 @@ export function GiftCardPreview({
           {footerRight && <span className="truncate">{footerRight}</span>}
         </div>
 
-        <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[8px] font-bold uppercase tracking-[0.4em] text-white/65">
+        <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[8px] font-bold uppercase tracking-[0.4em]" style={{ color: tx.subtle }}>
           <span
             className="inline-flex items-center justify-center h-4 w-4 rounded-full"
             style={{
-              background: 'rgba(255,255,255,0.18)',
-              border: '1px solid rgba(255,255,255,0.25)',
+              background: tx.fill,
+              border: `1px solid ${tx.fillBorder}`,
               backdropFilter: 'blur(4px)',
             }}
           >
@@ -297,6 +335,62 @@ export function GiftCardPreview({
       </div>
     </div>
   );
+}
+
+// Type guard for our hex-string columns. Cheap regex, no allocs.
+function isHex(v: string | null | undefined): v is string {
+  return typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v);
+}
+
+// Returns the opacity-tone palette derived from a single hex. Every
+// text element on the card renders against one of these palettes so
+// per-element colour overrides keep their borders/shadows in sync.
+function deriveTones(hex: string) {
+  return {
+    primary:    hexToRgba(hex, 1.0),
+    strong:     hexToRgba(hex, 0.95),
+    body:       hexToRgba(hex, 0.9),
+    footer:     hexToRgba(hex, 0.75),
+    subtle:     hexToRgba(hex, 0.65),
+    faint:      hexToRgba(hex, 0.55),
+    line:       hexToRgba(hex, 0.22),
+    fill:       hexToRgba(hex, 0.16),
+    fillBorder: hexToRgba(hex, 0.22),
+    dot:        hexToRgba(hex, 0.45),
+  };
+}
+
+// Drop-shadow that flips direction based on colour luminance:
+//   light text → soft dark shadow (legibility on coloured bg)
+//   dark text  → soft white halo (legibility on light bg)
+function shadowFor(hex: string): string {
+  return isLightColor(hex)
+    ? '0 2px 14px rgba(0,0,0,0.28)'
+    : '0 0 10px rgba(255,255,255,0.35)';
+}
+
+// Convert a hex string to an `rgba()` colour. Used to derive opacity
+// tones from the single text_color the merchant picked, so we don't
+// need separate columns for every shade on the card.
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+  const r = parseInt(v.slice(0, 2), 16);
+  const g = parseInt(v.slice(2, 4), 16);
+  const b = parseInt(v.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Rough luminance check (sRGB-weighted average). Returns true for "light"
+// colours so we can flip the text-shadow direction for legibility.
+function isLightColor(hex: string): boolean {
+  const h = hex.replace('#', '');
+  const v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+  const r = parseInt(v.slice(0, 2), 16);
+  const g = parseInt(v.slice(2, 4), 16);
+  const b = parseInt(v.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.6;
 }
 
 // CSS-only pattern overlays. Each returns a style object usable on a

@@ -35,6 +35,12 @@ interface TemplateRow {
   pattern?: 'none' | 'dots' | 'waves' | 'stars' | 'grid';
   icon_emoji?: string | null;
   tagline?: string | null;
+  // Visual customization (migration-009)
+  text_color?: string | null;
+  // Visual customization (migration-010) — per-element overrides
+  text_color_business?: string | null;
+  text_color_value?: string | null;
+  text_color_name?: string | null;
   claim_token: string;
   max_claims: number;
   current_claims: number;
@@ -313,6 +319,10 @@ function TemplateCard({
         pattern={t.pattern}
         iconEmoji={t.icon_emoji}
         tagline={t.tagline}
+        textColor={t.text_color}
+        textColorBusiness={t.text_color_business}
+        textColorValue={t.text_color_value}
+        textColorName={t.text_color_name}
         statusBadge={
           <span
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider backdrop-blur"
@@ -632,6 +642,10 @@ function CreateForm({
   const [pattern, setPattern] = useState<TemplateRow['pattern']>(initial?.pattern || 'none');
   const [iconEmoji, setIconEmoji] = useState(initial?.icon_emoji || '');
   const [tagline, setTagline] = useState(initial?.tagline || '');
+  const [textColor, setTextColor] = useState(initial?.text_color || '');
+  const [textColorBusiness, setTextColorBusiness] = useState(initial?.text_color_business || '');
+  const [textColorValue, setTextColorValue] = useState(initial?.text_color_value || '');
+  const [textColorName, setTextColorName] = useState(initial?.text_color_name || '');
   const [uploadingCover, setUploadingCover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // Customize popup — keeps the main form short. Opens a sheet with all
@@ -696,6 +710,10 @@ function CreateForm({
         pattern,
         icon_emoji: iconEmoji.trim() || undefined,
         tagline: tagline.trim() || undefined,
+        text_color: textColor.trim() || undefined,
+        text_color_business: textColorBusiness.trim() || undefined,
+        text_color_value: textColorValue.trim() || undefined,
+        text_color_name: textColorName.trim() || undefined,
         max_claims: maxClaims,
         expires_in_days: expiresInDays,
         status: 'active' as const,
@@ -750,6 +768,10 @@ function CreateForm({
               pattern={pattern}
               iconEmoji={iconEmoji}
               tagline={tagline}
+              textColor={textColor}
+              textColorBusiness={textColorBusiness}
+              textColorValue={textColorValue}
+              textColorName={textColorName}
             />
             {/* Color picker tucked under the preview */}
             <div className="grid grid-cols-2 gap-2">
@@ -985,6 +1007,10 @@ function CreateForm({
             pattern,
             iconEmoji,
             tagline,
+            textColor,
+            textColorBusiness,
+            textColorValue,
+            textColorName,
           }}
           gradientFrom={gradientFrom}
           gradientTo={gradientTo}
@@ -992,6 +1018,10 @@ function CreateForm({
           pattern={pattern}
           iconEmoji={iconEmoji}
           tagline={tagline}
+          textColor={textColor}
+          textColorBusiness={textColorBusiness}
+          textColorValue={textColorValue}
+          textColorName={textColorName}
           uploadingCover={uploadingCover}
           onApplyTheme={applyTheme}
           onCoverUpload={handleCoverUpload}
@@ -1002,6 +1032,10 @@ function CreateForm({
           onTagline={setTagline}
           onGradientFrom={setGradientFrom}
           onGradientTo={setGradientTo}
+          onTextColor={setTextColor}
+          onTextColorBusiness={setTextColorBusiness}
+          onTextColorValue={setTextColorValue}
+          onTextColorName={setTextColorName}
           onClose={() => setCustomizeOpen(false)}
         />
       )}
@@ -1027,6 +1061,66 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
+// Compact per-element colour control. Shows a labelled swatch; clicking
+// opens the native colour picker. A small "×" clears the override so the
+// element inherits the default text colour again. Empty `value` reads
+// as "inherit" and renders the swatch as transparent w/ dashed border.
+function PerElementColor({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const hasValue = !!value && /^#[0-9a-fA-F]{6}$/.test(value);
+  return (
+    <div className="relative min-w-0">
+      <label
+        className="flex flex-col items-center gap-1.5 rounded-lg px-1.5 py-2 cursor-pointer"
+        style={{
+          background: hasValue ? 'rgba(0,212,255,0.06)' : 'rgba(255,255,255,0.03)',
+          border: `1px ${hasValue ? 'solid' : 'dashed'} ${hasValue ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.08)'}`,
+        }}
+      >
+        <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#a3adc3] truncate w-full text-center">
+          {label}
+        </span>
+        {/* Swatch + status. The native color picker swatch is visually
+            the whole tile target. Hex code shows up only when set, and
+            uses `truncate` so it never pushes the tile wider. */}
+        <div className="flex items-center gap-1 w-full">
+          <input
+            type="color"
+            value={hasValue ? value : '#ffffff'}
+            onChange={(e) => onChange(e.target.value)}
+            className="h-7 w-7 shrink-0 cursor-pointer rounded"
+          />
+          <span
+            className="min-w-0 flex-1 text-[9px] font-semibold truncate"
+            style={{ color: hasValue ? '#00d4ff' : '#4a5068' }}
+            title={hasValue ? value.toUpperCase() : 'inherit'}
+          >
+            {hasValue ? value.toUpperCase() : '—'}
+          </span>
+        </div>
+      </label>
+      {hasValue && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full cursor-pointer"
+          style={{ background: 'rgba(248,113,113,0.85)', color: 'white', fontSize: '9px' }}
+          aria-label={`Clear ${label} colour`}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Click the chip to open a popover with a curated emoji grid, grouped by
 // theme. There's also a free-text input at the bottom for any emoji not
 // in the curated set (and to paste pasted emoji clusters).
@@ -1038,7 +1132,13 @@ function EmojiPicker({
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Smart positioning: flip up/down based on available space when the
+  // picker opens. On a tall modal the trigger may sit at the very top
+  // or bottom, so a fixed direction would clip rows. Measured fresh on
+  // each open so scroll position / orientation changes don't break it.
+  const [direction, setDirection] = useState<'up' | 'down'>('up');
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Close on outside click / Escape.
   useEffect(() => {
@@ -1055,6 +1155,26 @@ function EmojiPicker({
     };
   }, [open]);
 
+  // Decide direction once on open. Threshold ~260px = popover height
+  // with a small buffer; falls back to whichever side has more room.
+  useEffect(() => {
+    if (!open || !wrapRef.current) return;
+    const rect = wrapRef.current.getBoundingClientRect();
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const needed = 260;
+    setDirection(
+      spaceAbove >= needed ? 'up'
+      : spaceBelow >= needed ? 'down'
+      : spaceAbove >= spaceBelow ? 'up' : 'down',
+    );
+    // Scroll the trigger into view if it sits near the modal edge so
+    // the popover never opens with its rows clipped by the scroll edge.
+    requestAnimationFrame(() => {
+      wrapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }, [open]);
+
   return (
     <div ref={wrapRef} className="relative">
       <button
@@ -1068,15 +1188,22 @@ function EmojiPicker({
         <span className="text-[10px] uppercase tracking-wider text-[#4a5068]">Pick</span>
       </button>
       {open && (
-        // Opens UPWARD because the emoji field sits at the bottom of the
-        // Customize modal — opening downward would push the grid off
-        // the visible area on most screens.
         <div
-          className="absolute left-0 bottom-full z-30 mb-1.5 w-[280px] max-h-[320px] overflow-y-auto rounded-xl p-3"
+          ref={popoverRef}
+          className={`absolute left-0 z-30 w-[280px] overflow-y-auto rounded-xl p-3 ${
+            direction === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+          }`}
           style={{
+            // Cap to half the viewport so on short phones the grid
+            // never extends past the visible area. The popover scrolls
+            // internally if content exceeds this height.
+            maxHeight: 'min(320px, 50vh)',
+            overscrollBehavior: 'contain',
             background: '#14161f',
             border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 -18px 40px -16px rgba(0,0,0,0.55)',
+            boxShadow: direction === 'up'
+              ? '0 -18px 40px -16px rgba(0,0,0,0.55)'
+              : '0 18px 40px -16px rgba(0,0,0,0.55)',
           }}
         >
           {EMOJI_GROUPS.map((group) => (
@@ -1153,6 +1280,10 @@ function CustomizeLookModal({
   pattern,
   iconEmoji,
   tagline,
+  textColor,
+  textColorBusiness,
+  textColorValue,
+  textColorName,
   uploadingCover,
   onApplyTheme,
   onCoverUpload,
@@ -1163,6 +1294,10 @@ function CustomizeLookModal({
   onTagline,
   onGradientFrom,
   onGradientTo,
+  onTextColor,
+  onTextColorBusiness,
+  onTextColorValue,
+  onTextColorName,
   onClose,
 }: {
   previewProps: React.ComponentProps<typeof GiftCardPreview>;
@@ -1172,6 +1307,10 @@ function CustomizeLookModal({
   pattern: TemplateRow['pattern'];
   iconEmoji: string;
   tagline: string;
+  textColor: string;
+  textColorBusiness: string;
+  textColorValue: string;
+  textColorName: string;
   uploadingCover: boolean;
   onApplyTheme: (theme: Theme) => void;
   onCoverUpload: (file: File | null) => void;
@@ -1182,17 +1321,23 @@ function CustomizeLookModal({
   onTagline: (v: string) => void;
   onGradientFrom: (v: string) => void;
   onGradientTo: (v: string) => void;
+  onTextColor: (v: string) => void;
+  onTextColorBusiness: (v: string) => void;
+  onTextColorValue: (v: string) => void;
+  onTextColorName: (v: string) => void;
   onClose: () => void;
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-3 sm:px-6"
+      // z-60 sits above the app's BottomNav (z-50) so on mobile the
+      // bottom of the modal isn't covered by the nav bar.
+      className="fixed inset-0 z-60 flex items-end sm:items-center justify-center px-3 sm:px-6"
       style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-4xl rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto"
+        className="w-full max-w-4xl rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-x-hidden overflow-y-auto"
         style={{
           background: 'linear-gradient(180deg, #14161f 0%, #0a0b0f 100%)',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -1219,7 +1364,7 @@ function CustomizeLookModal({
 
         <div className="grid gap-5 p-5 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-6">
           {/* ── Preview column (sticky on desktop) ──────────────────── */}
-          <div>
+          <div className="min-w-0">
             <div className="lg:sticky lg:top-20 space-y-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#4a5068]">
                 Live preview
@@ -1251,7 +1396,10 @@ function CustomizeLookModal({
           </div>
 
           {/* ── Controls column ────────────────────────────────────── */}
-          <div className="space-y-4">
+          {/* `min-w-0` lets the column shrink below its intrinsic content
+              width so the inner overflow-x-auto rows actually contain
+              their scroll instead of pushing the column past the modal. */}
+          <div className="min-w-0 space-y-4">
             {/* Theme presets */}
             <Field label="Theme" hint="One-tap apply">
               <div className="flex gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
@@ -1360,6 +1508,93 @@ function CustomizeLookModal({
                     {p}
                   </button>
                 ))}
+              </div>
+            </Field>
+
+            {/* Text colour — 2 quick presets + custom picker. Empty value
+                = default (white). Useful for light-background themes.
+                Horizontal scroll on narrow viewports so chips never
+                wrap onto two rows. */}
+            <Field label="Text colour" hint="Default white, change for light backgrounds">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
+                {/* Preset: White */}
+                <button
+                  type="button"
+                  onClick={() => onTextColor('')}
+                  className="shrink-0 flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors"
+                  style={{
+                    background: !textColor ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${!textColor ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                  }}
+                >
+                  <span className="h-4 w-4 rounded-full bg-white border border-white/20" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: !textColor ? '#00d4ff' : '#a3adc3' }}
+                  >
+                    White
+                  </span>
+                </button>
+                {/* Preset: Dark */}
+                <button
+                  type="button"
+                  onClick={() => onTextColor('#1a1a2e')}
+                  className="shrink-0 flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors"
+                  style={{
+                    background: textColor === '#1a1a2e' ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${textColor === '#1a1a2e' ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                  }}
+                >
+                  <span className="h-4 w-4 rounded-full" style={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.15)' }} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: textColor === '#1a1a2e' ? '#00d4ff' : '#a3adc3' }}
+                  >
+                    Dark
+                  </span>
+                </button>
+                {/* Custom picker — clicking the swatch opens the native
+                    colour picker. Falls back to white if user opens
+                    it before picking a preset. */}
+                <label className="shrink-0 flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer"
+                  style={{
+                    background: textColor && textColor !== '#1a1a2e' ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${textColor && textColor !== '#1a1a2e' ? 'rgba(0,212,255,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                  }}
+                >
+                  <input
+                    type="color"
+                    value={textColor && /^#[0-9a-fA-F]{6}$/.test(textColor) ? textColor : '#ffffff'}
+                    onChange={(e) => onTextColor(e.target.value)}
+                    className="h-4 w-4 cursor-pointer rounded"
+                  />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#a3adc3]">
+                    Custom
+                  </span>
+                </label>
+              </div>
+            </Field>
+
+            {/* Per-element overrides — design each headline independently.
+                Empty value = inherit from the default text colour above.
+                3-col grid that shrinks; tile content collapses to just
+                the swatch + initial on very narrow viewports so all
+                three stay visible at once. */}
+            <Field label="Per-element overrides" hint="Optional — leave blank to inherit">
+              <div className="grid grid-cols-3 gap-2">
+                <PerElementColor
+                  label="Business"
+                  value={textColorBusiness}
+                  onChange={onTextColorBusiness}
+                />
+                <PerElementColor
+                  label="Value"
+                  value={textColorValue}
+                  onChange={onTextColorValue}
+                />
+                <PerElementColor
+                  label="Card name"
+                  value={textColorName}
+                  onChange={onTextColorName}
+                />
               </div>
             </Field>
 

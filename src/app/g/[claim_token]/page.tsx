@@ -34,6 +34,12 @@ interface TemplateRow {
   pattern: 'none' | 'dots' | 'waves' | 'stars' | 'grid';
   icon_emoji: string | null;
   tagline: string | null;
+  // Visual customization (migration-009)
+  text_color: string | null;
+  // Visual customization (migration-010) — per-element overrides
+  text_color_business: string | null;
+  text_color_value: string | null;
+  text_color_name: string | null;
   claim_token: string;
   max_claims: number;
   current_claims: number;
@@ -231,6 +237,10 @@ export default function GiftCardClaimPage() {
                   pattern={t.pattern}
                   iconEmoji={t.icon_emoji}
                   tagline={t.tagline}
+                  textColor={t.text_color}
+                  textColorBusiness={t.text_color_business}
+                  textColorValue={t.text_color_value}
+                  textColorName={t.text_color_name}
                 />
               </div>
 

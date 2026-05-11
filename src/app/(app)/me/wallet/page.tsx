@@ -47,6 +47,12 @@ interface MyCard {
   pattern: 'none' | 'dots' | 'waves' | 'stars' | 'grid';
   icon_emoji: string | null;
   tagline: string | null;
+  // Visual customization (migration-009)
+  text_color: string | null;
+  // Visual customization (migration-010) — per-element overrides
+  text_color_business: string | null;
+  text_color_value: string | null;
+  text_color_name: string | null;
   expires_in_days: number;
 }
 
@@ -310,6 +316,10 @@ function WalletCard({
           pattern={c.pattern}
           iconEmoji={c.icon_emoji}
           tagline={c.tagline}
+          textColor={c.text_color}
+          textColorBusiness={c.text_color_business}
+          textColorValue={c.text_color_value}
+          textColorName={c.text_color_name}
           statusBadge={
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider backdrop-blur"
@@ -448,6 +458,10 @@ function CardDetailSheet({
               pattern={c.pattern}
               iconEmoji={c.icon_emoji}
               tagline={c.tagline}
+              textColor={c.text_color}
+              textColorBusiness={c.text_color_business}
+              textColorValue={c.text_color_value}
+              textColorName={c.text_color_name}
             />
 
             {/* Meta strip — desktop only here, lives below the card */}

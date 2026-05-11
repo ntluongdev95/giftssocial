@@ -56,6 +56,10 @@ const createSchema = z.object({
     .optional(),
   gradient_from: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).default('#00d4ff'),
   gradient_to: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).default('#a78bfa'),
+  text_color: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).optional(),
+  text_color_business: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).optional(),
+  text_color_value: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).optional(),
+  text_color_name: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).optional(),
   pattern: z.enum(['none', 'dots', 'waves', 'stars', 'grid']).default('none'),
   // Single emoji or short cluster — max 8 chars to permit ZWJ sequences.
   icon_emoji: z.string().max(8).optional(),
@@ -125,8 +129,9 @@ export async function POST(req: NextRequest) {
          (id, business_id, owner_user_id, name, description, type, face_value, percent_off, amount_off,
           service_name, currency, cover_image, gradient_from, gradient_to, claim_token,
           max_claims, one_per_user, starts_at, ends_at, expires_in_days, status,
-          pattern, icon_emoji, tagline)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          pattern, icon_emoji, tagline,
+          text_color, text_color_business, text_color_value, text_color_name)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .bind(
         id, d.business_id, userId, d.name, d.description, d.type,
@@ -136,7 +141,11 @@ export async function POST(req: NextRequest) {
         d.max_claims, d.one_per_user ? 1 : 0,
         d.starts_at ?? null, d.ends_at ?? null,
         d.expires_in_days, d.status,
-        d.pattern, d.icon_emoji ?? null, d.tagline ?? null
+        d.pattern, d.icon_emoji ?? null, d.tagline ?? null,
+        d.text_color ?? null,
+        d.text_color_business ?? null,
+        d.text_color_value ?? null,
+        d.text_color_name ?? null
       )
       .run();
 
