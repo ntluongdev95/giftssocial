@@ -71,6 +71,14 @@ export default function NotificationsPage() {
       return;
     }
 
+    // Gift-card notification — sender/transfer endpoints set ref_type='gift_card'
+    // and ref_id=card.id. Drop the user into their wallet (with the card
+    // id as a query so the wallet can auto-open the detail sheet later).
+    if (refType === 'gift_card') {
+      router.push(refId ? `/me/wallet?card=${refId}` : '/me/wallet');
+      return;
+    }
+
     // Kiss notification
     if (refType === 'kiss' && refId) {
       const body = (n.body as string) || '';

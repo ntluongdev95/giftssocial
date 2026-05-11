@@ -5,13 +5,14 @@
 // with a per-claim QR the merchant scans to redeem.
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import useSWR from 'swr';
-import { ArrowLeft, Wallet, Loader2, Clock, Sparkles, X, QrCode, Compass, TicketCheck } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import useSWR, { mutate } from 'swr';
+import { ArrowLeft, Wallet, Loader2, Clock, Sparkles, X, QrCode, Compass, TicketCheck, Send } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { toast } from 'sonner';
 import QRCodeLib from 'qrcode';
 import { GiftCardPreview, formatValue } from '@/components/gift-cards/GiftCardPreview';
+import SendGiftModal, { type SendGiftTarget } from '@/components/gift-cards/SendGiftModal';
 import { useAuthStore } from '@/stores/auth-store';
 
 interface MyCard {
@@ -24,6 +25,12 @@ interface MyCard {
   value_remaining: number;
   uses_remaining: number;
   status: 'active' | 'redeemed' | 'expired' | 'revoked';
+  // Gift sender — present iff this card was sent to me by another user.
+  gifter_user_id: string | null;
+  gift_message: string | null;
+  gifter_display_name: string | null;
+  gifter_username: string | null;
+  gifter_avatar_url: string | null;
   // Template fields (joined)
   name: string;
   description: string;
@@ -47,6 +54,11 @@ const fetcher = (url: string) =>
 
 export default function CustomerWalletPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Deep-link target from notifications: /me/wallet?card=gc_xxx. The
+  // effect below picks this up once SWR has loaded the user's cards and
+  // opens the detail sheet for that card automatically.
+  const focusCardId = searchParams?.get('card') || null;
   const isAuthed = useAuthStore((s) => s.isAuthed);
 
   const { data, error, isLoading } = useSWR<MyCard[]>(
@@ -65,11 +77,24 @@ export default function CustomerWalletPage() {
   // data on every render so the detail sheet reflects status updates (e.g.
   // when the merchant just redeemed it).
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+  // Target for the re-gift modal; null when closed.
+  const [giftTarget, setGiftTarget] = useState<SendGiftTarget | null>(null);
+
+  // Auto-open the detail sheet when the page is opened from a notification
+  // deep-link (?card=gc_xxx). Waits until SWR has the card in its dataset
+  // so the sheet doesn't flash empty. Only runs once per focusCardId to
+  // avoid re-opening if the user closes the sheet.
+  const cards = data || [];
+  useEffect(() => {
+    if (!focusCardId) return;
+    const exists = cards.some((c) => c.id === focusCardId);
+    if (exists) setOpenCardId(focusCardId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusCardId, data]);
 
   // Tab filter — click to scope which cards are visible.
   const [filter, setFilter] = useState<'all' | 'active' | 'used' | 'expired'>('all');
 
-  const cards = data || [];
   const activeCards = cards.filter((c) => c.status === 'active');
   const usedCards = cards.filter((c) => c.status === 'redeemed');
   const expiredCards = cards.filter((c) => c.status === 'expired' || c.status === 'revoked');
@@ -166,7 +191,17 @@ export default function CustomerWalletPage() {
                 }`}
               >
                 {visibleCards.map((c) => (
-                  <WalletCard key={c.id} card={c} onClick={() => setOpenCardId(c.id)} />
+                  <WalletCard
+                    key={c.id}
+                    card={c}
+                    onClick={() => setOpenCardId(c.id)}
+                    onGift={() => setGiftTarget({
+                      mode: 'card',
+                      id: c.id,
+                      template_name: c.name,
+                      business_name: c.business_name || undefined,
+                    })}
+                  />
                 ))}
                 {/* Discover-more CTA only on Active or All when there's space */}
                 {(filter === 'all' || filter === 'active') && activeCards.length < 3 && (
@@ -178,15 +213,45 @@ export default function CustomerWalletPage() {
         )}
       </div>
 
-      {/* Detail sheet — placeholder until the redeem QR API is built */}
-      {openCard && <CardDetailSheet card={openCard} onClose={() => setOpenCardId(null)} />}
+      {/* Detail sheet — opens when a card is tapped. "Send as gift" lives
+          on the grid card itself, so the detail sheet stays focused on
+          the redeem QR. */}
+      {openCard && (
+        <CardDetailSheet
+          card={openCard}
+          onClose={() => setOpenCardId(null)}
+        />
+      )}
+
+      {/* Re-gift modal — fires when the user taps "Send as gift" in the
+          detail sheet. On success the card moves out of this wallet, so
+          we close the detail sheet and refetch /mine. */}
+      {giftTarget && (
+        <SendGiftModal
+          target={giftTarget}
+          onClose={() => setGiftTarget(null)}
+          onSent={() => {
+            setGiftTarget(null);
+            setOpenCardId(null);
+            mutate('/api/v1/gift-cards/mine');
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ─── Small wallet card ───────────────────────────────────────────────────
 
-function WalletCard({ card: c, onClick }: { card: MyCard; onClick: () => void }) {
+function WalletCard({
+  card: c,
+  onClick,
+  onGift,
+}: {
+  card: MyCard;
+  onClick: () => void;
+  onGift: () => void;
+}) {
   const expiresInLabel =
     c.status === 'expired' ? 'Expired' :
     c.status === 'redeemed' ? 'Used' :
@@ -199,40 +264,73 @@ function WalletCard({ card: c, onClick }: { card: MyCard; onClick: () => void })
     c.status === 'expired' ? '#f87171' :
     '#4a5068';
 
+  const isGift = !!c.gifter_user_id;
+  const gifterLabel =
+    c.gifter_display_name
+    || (c.gifter_username ? `@${c.gifter_username}` : 'Someone');
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-left flex flex-col gap-2 h-full cursor-pointer"
-    >
-      <GiftCardPreview
-        className="flex-1"
-        type={c.type}
-        name={c.name}
-        businessName={c.business_name}
-        value={formatValue(c)}
-        gradientFrom={c.gradient_from || '#00d4ff'}
-        gradientTo={c.gradient_to || '#a78bfa'}
-        description={c.description}
-        footerLeft={expiresInLabel}
-        footerRight={c.type === 'stored_value' ? `${formatValue({ ...c, face_value: c.value_remaining })} left` : undefined}
-        statusBadge={
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider backdrop-blur"
-            style={{ background: `${statusColor}33`, color: 'white', border: `1px solid ${statusColor}55` }}
-          >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusColor }} /> {c.status}
-          </span>
-        }
-      />
-      {/* Bottom action — Show QR only for active cards. Redeemed/expired
-          cards get a status label instead. */}
-      {c.status === 'active' ? (
+    // Outer is a div (not a button) because we nest real buttons inside.
+    // The card preview itself is the primary click target; the action row
+    // below is split into two side-by-side buttons.
+    <div className="flex flex-col gap-2 h-full relative">
+      {/* Gift ribbon — only shown for gifts received from another user */}
+      {isGift && (
         <div
-          className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold"
-          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
+          className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wider backdrop-blur"
+          style={{ background: 'rgba(255,111,168,0.92)', color: 'white', boxShadow: '0 4px 10px -4px rgba(196,30,58,0.5)' }}
+          title={`Gift from ${gifterLabel}`}
         >
-          <QrCode size={12} /> Show QR
+          🎁 Gift
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-left flex-1 cursor-pointer"
+        aria-label={`Open ${c.name}`}
+      >
+        <GiftCardPreview
+          className="h-full"
+          type={c.type}
+          name={c.name}
+          businessName={c.business_name}
+          value={formatValue(c)}
+          gradientFrom={c.gradient_from || '#00d4ff'}
+          gradientTo={c.gradient_to || '#a78bfa'}
+          description={c.description}
+          footerLeft={expiresInLabel}
+          footerRight={c.type === 'stored_value' ? `${formatValue({ ...c, face_value: c.value_remaining })} left` : undefined}
+          statusBadge={
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider backdrop-blur"
+              style={{ background: `${statusColor}33`, color: 'white', border: `1px solid ${statusColor}55` }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusColor }} /> {c.status}
+            </span>
+          }
+        />
+      </button>
+      {/* Bottom action row — Show QR + Send as gift for active cards.
+          Redeemed/expired cards get a single status label instead. */}
+      {c.status === 'active' ? (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onClick}
+            className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold cursor-pointer transition-colors"
+            style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
+          >
+            <QrCode size={12} /> Show QR
+          </button>
+          <button
+            type="button"
+            onClick={onGift}
+            className="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold cursor-pointer transition-colors"
+            style={{ background: 'rgba(255,111,168,0.1)', border: '1px solid rgba(255,111,168,0.25)', color: '#ff6fa8' }}
+          >
+            <Send size={12} /> Send as gift
+          </button>
         </div>
       ) : (
         <div
@@ -246,13 +344,19 @@ function WalletCard({ card: c, onClick }: { card: MyCard; onClick: () => void })
           {c.status === 'redeemed' ? 'Used' : c.status === 'expired' ? 'Expired' : 'Unavailable'}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
 // ─── Detail sheet placeholder ─────────────────────────────────────────────
 
-function CardDetailSheet({ card: c, onClose }: { card: MyCard; onClose: () => void }) {
+function CardDetailSheet({
+  card: c,
+  onClose,
+}: {
+  card: MyCard;
+  onClose: () => void;
+}) {
   const expiresLabel = c.expires_at ? formatDistanceToNowStrict(new Date(c.expires_at)) : `${c.expires_in_days} days`;
 
   return (
@@ -288,6 +392,39 @@ function CardDetailSheet({ card: c, onClose }: { card: MyCard; onClose: () => vo
         <div className="px-5 py-5 space-y-5 lg:px-7 lg:py-7 lg:space-y-0 lg:grid lg:grid-cols-[1fr_320px] lg:gap-7">
           {/* Left column — card showcase */}
           <div className="lg:flex lg:flex-col lg:gap-5">
+            {/* Gift banner — shown when this card was sent by another user.
+                Sits above the card preview so the gifter + message are
+                the first thing the recipient reads. */}
+            {c.gifter_user_id && (
+              <div
+                className="mb-4 flex items-start gap-3 rounded-2xl px-3 py-3 lg:mb-0"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,111,168,0.12), rgba(196,30,58,0.08))',
+                  border: '1px solid rgba(255,111,168,0.25)',
+                }}
+              >
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-base"
+                  style={{ background: 'linear-gradient(135deg, #ff6fa8, #c41e3a)' }}
+                >
+                  🎁
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] uppercase tracking-wider text-[#ff6fa8]/85 font-bold">
+                    Gift from
+                  </p>
+                  <p className="mt-0.5 text-sm font-bold truncate">
+                    {c.gifter_display_name
+                      || (c.gifter_username ? `@${c.gifter_username}` : 'A Gao Social friend')}
+                  </p>
+                  {c.gift_message && (
+                    <p className="mt-1.5 text-xs text-white/80 italic leading-relaxed">
+                      &ldquo;{c.gift_message}&rdquo;
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
             <GiftCardPreview
               type={c.type}
               name={c.name}
@@ -316,7 +453,7 @@ function CardDetailSheet({ card: c, onClose }: { card: MyCard; onClose: () => vo
             </div>
           </div>
 
-          {/* Right column — redeem QR */}
+          {/* Right column — redeem QR (gifting lives on the card grid) */}
           <div className="lg:flex lg:flex-col lg:justify-center">
             {c.status === 'active' ? (
               <RedeemQr cardId={c.id} gradientFrom={c.gradient_from || '#00d4ff'} />

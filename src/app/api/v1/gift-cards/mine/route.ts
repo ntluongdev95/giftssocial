@@ -49,10 +49,14 @@ export async function GET(req: NextRequest) {
            t.gradient_to    AS gradient_to,
            t.expires_in_days AS expires_in_days,
            b.name           AS business_name,
-           b.cover_image    AS business_cover
+           b.cover_image    AS business_cover,
+           gu.display_name  AS gifter_display_name,
+           gu.username      AS gifter_username,
+           gu.avatar_url    AS gifter_avatar_url
          FROM gift_cards gc
          LEFT JOIN gift_card_templates t ON t.id = gc.template_id
          LEFT JOIN businesses b ON b.id = gc.business_id
+         LEFT JOIN users gu ON gu.id = gc.gifter_user_id
          WHERE gc.claimed_by_user_id = ?
          ORDER BY
            CASE gc.status

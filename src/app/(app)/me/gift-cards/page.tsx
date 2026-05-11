@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR, { mutate } from 'swr';
-import { ArrowLeft, Plus, Gift, Loader2, Store, Pencil, Trash2, X, QrCode, Copy, Download, ScanLine } from 'lucide-react';
+import { ArrowLeft, Plus, Gift, Loader2, Store, Pencil, Trash2, X, QrCode, Copy, Download, ScanLine, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import QRCodeLib from 'qrcode';
 import { GiftCardPreview, TYPE_LABEL, formatValue } from '@/components/gift-cards/GiftCardPreview';
+import SendGiftModal, { type SendGiftTarget } from '@/components/gift-cards/SendGiftModal';
 
 interface BusinessRow {
   id: string;
@@ -53,6 +54,7 @@ export default function GiftCardsAdminPage() {
   // Form panel: closed by default, opens for `create` or for editing a row.
   const [panel, setPanel] = useState<{ mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; row: TemplateRow }>({ mode: 'closed' });
   const [pendingDelete, setPendingDelete] = useState<TemplateRow | null>(null);
+  const [giftTarget, setGiftTarget] = useState<SendGiftTarget | null>(null);
   const [qrFor, setQrFor] = useState<TemplateRow | null>(null);
 
   const myBusiness = bizData?.data || null;
@@ -192,6 +194,12 @@ export default function GiftCardsAdminPage() {
                     onEdit={() => setPanel({ mode: 'edit', row: t })}
                     onDelete={() => setPendingDelete(t)}
                     onShowQr={() => setQrFor(t)}
+                    onGift={() => setGiftTarget({
+                      mode: 'template',
+                      id: t.id,
+                      template_name: t.name,
+                      business_name: t.business_name,
+                    })}
                   />
                 ))}
               </div>
@@ -214,6 +222,15 @@ export default function GiftCardsAdminPage() {
 
       {/* QR display */}
       {qrFor && <QrShareModal row={qrFor} onClose={() => setQrFor(null)} />}
+
+      {/* Send-as-gift modal */}
+      {giftTarget && (
+        <SendGiftModal
+          target={giftTarget}
+          onClose={() => setGiftTarget(null)}
+          onSent={() => mutate('/api/v1/gift-cards/templates')}
+        />
+      )}
     </div>
   );
 }
@@ -223,11 +240,13 @@ function TemplateCard({
   onEdit,
   onDelete,
   onShowQr,
+  onGift,
 }: {
   template: TemplateRow;
   onEdit: () => void;
   onDelete: () => void;
   onShowQr: () => void;
+  onGift: () => void;
 }) {
   const claimsLabel = t.max_claims > 0 ? `${t.current_claims}/${t.max_claims}` : `${t.current_claims} claimed`;
   const statusColor = t.status === 'active' ? '#22C55E' : t.status === 'paused' ? '#fbbf24' : '#4a5068';
@@ -261,6 +280,15 @@ function TemplateCard({
           style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: '#00d4ff' }}
         >
           <QrCode size={12} /> Share QR
+        </button>
+        <button
+          onClick={onGift}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold cursor-pointer transition-colors"
+          style={{ background: 'rgba(255,111,168,0.1)', border: '1px solid rgba(255,111,168,0.25)', color: '#ff6fa8' }}
+          aria-label="Send as gift"
+          title="Send to a user"
+        >
+          <Send size={12} />
         </button>
         <button
           onClick={onEdit}
