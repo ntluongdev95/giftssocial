@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS users (
   profile_visibility TEXT DEFAULT 'public'
                     CHECK (profile_visibility IN ('public', 'circles', 'private')),
   location_sharing  TEXT DEFAULT 'approximate'
-                    CHECK (location_sharing IN ('exact', 'approximate', 'friends', 'circles', 'off')),
+                    CHECK (location_sharing IN ('exact', 'approximate', 'friends', 'circles', 'specific', 'off')),
   location_shared_until TEXT,  -- ISO datetime; NULL = indefinite
 
   -- Wallet
@@ -682,6 +682,16 @@ CREATE TABLE IF NOT EXISTS gift_card_templates (
   cover_image       TEXT,
   gradient_from     TEXT DEFAULT '#00d4ff',   -- card design accents
   gradient_to       TEXT DEFAULT '#a78bfa',
+  -- Visual customization (mig-008): overlay pattern + foreground emoji + tagline
+  pattern           TEXT DEFAULT 'none',      -- 'none' | 'dots' | 'waves' | 'stars' | 'grid'
+  icon_emoji        TEXT,                     -- single emoji / short ZWJ cluster
+  tagline           TEXT,                     -- short marketing line under the value
+  -- Text color overrides (mig-009 + mig-010). NULL = render with the legacy
+  -- default (white). Per-element values fall back to `text_color`, then white.
+  text_color           TEXT,
+  text_color_business  TEXT,
+  text_color_value     TEXT,
+  text_color_name      TEXT,
   -- Distribution: how customers claim
   claim_token       TEXT NOT NULL UNIQUE,     -- public QR / link slug
   max_claims        INTEGER DEFAULT 0,        -- 0 = unlimited
@@ -805,6 +815,40 @@ CREATE TABLE IF NOT EXISTS gao_id_links (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gao_id_links_root ON gao_id_links(gao_root_id);
 CREATE INDEX IF NOT EXISTS idx_gao_id_links_user        ON gao_id_links(bootstrap_user_id);
+
+-- ============================================================================
+-- 22. LOCATION_SPECIFIC_SHARES — many-to-many list of recipients allowed to
+--     see a user's location when `users.location_sharing = 'specific'`.
+--     (canonicalised from migration-011-location-specific-shares.sql)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS location_specific_shares (
+  user_id           TEXT NOT NULL,   -- who is sharing their location
+  recipient_user_id TEXT NOT NULL,   -- who can see it
+  created_at        TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, recipient_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lss_recipient ON location_specific_shares(recipient_user_id);
+
+-- ============================================================================
+-- 23. WALLET_HANDOFF_TOKENS — short-lived single-use tokens used by the Gao
+--     Wallet Android app to fetch a specific gift card without sharing the
+--     user's main session cookie. 15-minute TTL, single-use.
+--     (canonicalised from migration-013-wallet-handoff-tokens.sql)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS wallet_handoff_tokens (
+  token       TEXT PRIMARY KEY,
+  card_id     TEXT NOT NULL,
+  user_id     TEXT NOT NULL,
+  created_at  TEXT DEFAULT (datetime('now')),
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_wht_expires ON wallet_handoff_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_wht_card    ON wallet_handoff_tokens(card_id);
 
 -- ============================================================================
 -- _migrations — applied-migrations ledger consumed by scripts/migrate.mjs.
