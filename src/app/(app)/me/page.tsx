@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR, { mutate as globalMutate } from 'swr';
+import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { useGaoIdStore } from '@/stores/gao-id-store';
 import { secureFetch } from '@/lib/fetch';
@@ -671,6 +672,30 @@ function LocationVisibilityPanel({
   );
 }
 
+// Maps an API error code (or message) coming back from the
+// /location-shares endpoints to a friendly toast string. Falls back to
+// a generic message so the user always gets feedback.
+function friendlyShareError(
+  payload: { error?: { code?: string; message?: string } } | undefined,
+  action: 'add' | 'remove',
+): string {
+  const code = payload?.error?.code;
+  switch (code) {
+    case 'self_share':
+      return "You can't share your location with yourself.";
+    case 'recipient_not_found':
+      return "We couldn't find that user.";
+    case 'unauthorized':
+      return 'Please sign in again.';
+    case 'invalid_request':
+      return 'Missing recipient — please pick someone from the list.';
+    default:
+      return action === 'add'
+        ? "Couldn't add that person — please try again."
+        : "Couldn't remove that person — please try again.";
+  }
+}
+
 // Specific-share manager — renders the list of users the caller has
 // hand-picked + a search picker to add more. State lives entirely here
 // because it's only needed when the "Specific people" audience is
@@ -691,7 +716,7 @@ function SpecificShareList({ disabled }: { disabled: boolean }) {
   const shares = data?.data || [];
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const removeShare = async (recipientId: string) => {
+  const removeShare = async (recipientId: string, label: string) => {
     // Optimistic — drop the chip immediately, restore on failure.
     const prev = data?.data || [];
     mutate({ data: prev.filter((s) => s.id !== recipientId) }, false);
@@ -700,10 +725,17 @@ function SpecificShareList({ disabled }: { disabled: boolean }) {
         method: 'DELETE',
         credentials: 'same-origin',
       });
-      if (!res.ok) throw new Error('Failed to remove');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        mutate({ data: prev }, false);
+        toast.error(friendlyShareError(json, 'remove'));
+        return;
+      }
+      toast.success(`Stopped sharing with ${label}`);
       mutate();
     } catch {
       mutate({ data: prev }, false);
+      toast.error("Couldn't remove — please check your connection.");
     }
   };
 
@@ -737,7 +769,7 @@ function SpecificShareList({ disabled }: { disabled: boolean }) {
                     )}
                     <span className="text-[11px] text-white truncate max-w-[120px]">{label}</span>
                     <button
-                      onClick={() => removeShare(s.id)}
+                      onClick={() => removeShare(s.id, label)}
                       disabled={disabled}
                       aria-label={`Remove ${label}`}
                       className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full cursor-pointer disabled:opacity-50"
@@ -813,7 +845,7 @@ function SpecificSharePicker({
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
 
-  const addRecipient = async (id: string) => {
+  const addRecipient = async (id: string, label: string) => {
     if (existingIds.has(id) || adding) return;
     setAdding(id);
     try {
@@ -823,10 +855,16 @@ function SpecificSharePicker({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient_user_id: id }),
       });
-      if (res.ok) {
-        onAdded();
-        onClose();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(friendlyShareError(json, 'add'));
+        return;
       }
+      toast.success(`Sharing location with ${label}`);
+      onAdded();
+      onClose();
+    } catch {
+      toast.error("Couldn't add — please check your connection.");
     } finally {
       setAdding(null);
     }
@@ -884,7 +922,7 @@ function SpecificSharePicker({
               return (
                 <button
                   key={p.id}
-                  onClick={() => addRecipient(p.id)}
+                  onClick={() => addRecipient(p.id, p.title)}
                   disabled={already || adding === p.id}
                   className="flex w-full items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >

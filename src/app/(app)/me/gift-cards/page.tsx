@@ -1155,31 +1155,35 @@ function EmojiPicker({
     };
   }, [open]);
 
-  // Decide direction once on open. Threshold ~260px = popover height
-  // with a small buffer; falls back to whichever side has more room.
-  useEffect(() => {
-    if (!open || !wrapRef.current) return;
-    const rect = wrapRef.current.getBoundingClientRect();
-    const spaceAbove = rect.top;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const needed = 260;
-    setDirection(
-      spaceAbove >= needed ? 'up'
-      : spaceBelow >= needed ? 'down'
-      : spaceAbove >= spaceBelow ? 'up' : 'down',
-    );
-    // Scroll the trigger into view if it sits near the modal edge so
-    // the popover never opens with its rows clipped by the scroll edge.
-    requestAnimationFrame(() => {
-      wrapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-  }, [open]);
+  // Measure direction + scroll trigger into view BEFORE flipping `open`
+  // to true. Doing this in the click handler (instead of a useEffect)
+  // avoids the React 19 lint rule `set-state-in-effect`, which is now
+  // promoted to an error in CI.
+  const toggleOpen = () => {
+    if (!open && wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect();
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const needed = 260;
+      setDirection(
+        spaceAbove >= needed ? 'up'
+        : spaceBelow >= needed ? 'down'
+        : spaceAbove >= spaceBelow ? 'up' : 'down',
+      );
+      // Scroll the trigger into view so the popover never opens with
+      // its rows clipped by the modal scroll edge.
+      requestAnimationFrame(() => {
+        wrapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
+    setOpen((v) => !v);
+  };
 
   return (
     <div ref={wrapRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 cursor-pointer"
         style={inputStyle}
         aria-label="Pick an emoji"

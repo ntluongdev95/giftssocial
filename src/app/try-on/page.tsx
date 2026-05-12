@@ -230,6 +230,10 @@ export default function NailTryOnPage() {
     <DiscoverView
       onOpenCamera={() => setMode('camera')}
       onOpenPhoto={() => setMode('photo')}
+      onPickDesign={(p) => {
+        setPerNailPolishes({ 0: p, 1: p, 2: p, 3: p, 4: p });
+        setMode('camera');
+      }}
       onExit={() => router.push('/')}
     />
   );
@@ -245,10 +249,12 @@ export default function NailTryOnPage() {
 function DiscoverView({
   onOpenCamera,
   onOpenPhoto,
+  onPickDesign,
   onExit,
 }: {
   onOpenCamera: () => void;
   onOpenPhoto: () => void;
+  onPickDesign: (p: Polish) => void;
   onExit: () => void;
 }) {
   // Curated 5 polishes for the mobile "splayed hand" showcase.
@@ -259,14 +265,24 @@ function DiscoverView({
       .filter((p): p is Polish => !!p);
   }, []);
 
-  // Desktop marquee — three vertical columns scrolling at different speeds
-  // (and opposite directions) so the right half of the hero feels alive
-  // without any single tile dominating. We split POLISHES across columns
-  // and duplicate so the CSS keyframe can loop seamlessly at -50%.
-  const marqueeColumns = useMemo(() => {
-    const cols: Polish[][] = [[], [], []];
-    POLISHES.forEach((p, i) => cols[i % 3].push(p));
-    return cols.map((col) => [...col, ...col]); // duplicate for seamless loop
+  // Desktop showcase — a 9-tile bento grid of curated designs floating
+  // around a "hero" centerpiece. Tiles are interactive: tap → opens the
+  // live camera with that polish already painted on every nail.
+  const featuredDesigns = useMemo(() => {
+    const picks = [
+      'classic-red',     // top-left
+      'french-classic',  // top-mid
+      'cherry-girl',     // top-right
+      'galaxy',          // mid-left
+      // centerpiece slot
+      'chrome-gold',     // mid-right
+      'coquette-bow',    // bottom-left
+      'aura-pink',       // bottom-mid
+      'leopard-tan',     // bottom-right
+    ];
+    return picks
+      .map((id) => POLISHES.find((p) => p.id === id))
+      .filter((p): p is Polish => !!p);
   }, []);
 
   return (
@@ -413,44 +429,33 @@ function DiscoverView({
             <HandHeroImage polishes={showcase} />
           </div>
 
-          {/* Desktop-only nail marquee — 3 vertical columns sliding in
-              opposite directions. Top/bottom fade masks soften the edges
-              so tiles appear to drift in and out instead of popping. */}
-          <div
-            className="relative hidden lg:flex items-stretch gap-2 overflow-hidden px-4 xl:gap-4 xl:px-8 2xl:px-12"
-            style={{
-              maskImage: 'linear-gradient(180deg, transparent 0%, #000 10%, #000 90%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(180deg, transparent 0%, #000 10%, #000 90%, transparent 100%)',
-            }}
-          >
-            {marqueeColumns.map((col, colIdx) => {
-              const reverse = colIdx % 2 === 1;
-              const duration = 32 + colIdx * 6; // 32s, 38s, 44s
-              return (
-                <div
-                  key={colIdx}
-                  className="flex flex-1 flex-col gap-7"
-                  style={{
-                    animation: `tryon-marquee${reverse ? '-rev' : ''} ${duration}s linear infinite`,
-                  }}
-                >
-                  {col.map((p, i) => (
-                    <NailMarqueeTile key={`${colIdx}-${i}-${p.id}`} polish={p} />
-                  ))}
-                </div>
-              );
-            })}
+          {/* Desktop-only floating showcase — bento grid of curated
+              designs around a centerpiece. Each tile is tap-to-try-on. */}
+          <div className="relative hidden lg:flex items-center justify-center px-8 py-10 2xl:px-12">
+            <FeaturedDesignsShowcase
+              designs={featuredDesigns}
+              showcase={showcase}
+              onPick={onPickDesign}
+            />
           </div>
 
-          {/* Marquee keyframes — duplicated arrays loop seamlessly at -50%. */}
+          {/* Tile float keyframes — staggered per-tile via inline delay. */}
           <style>{`
-            @keyframes tryon-marquee {
-              0%   { transform: translateY(0); }
-              100% { transform: translateY(-50%); }
+            @keyframes tryon-float-a {
+              0%, 100% { transform: translateY(0) rotate(-3deg); }
+              50%      { transform: translateY(-10px) rotate(-1deg); }
             }
-            @keyframes tryon-marquee-rev {
-              0%   { transform: translateY(-50%); }
-              100% { transform: translateY(0); }
+            @keyframes tryon-float-b {
+              0%, 100% { transform: translateY(0) rotate(2deg); }
+              50%      { transform: translateY(-14px) rotate(4deg); }
+            }
+            @keyframes tryon-float-c {
+              0%, 100% { transform: translateY(0) rotate(-1deg); }
+              50%      { transform: translateY(-8px) rotate(1deg); }
+            }
+            @keyframes tryon-glow {
+              0%, 100% { opacity: 0.5; transform: scale(1); }
+              50%      { opacity: 0.8; transform: scale(1.05); }
             }
           `}</style>
         </div>
@@ -813,54 +818,126 @@ function NailOnFinger({
   );
 }
 
-// ─── Marquee tile — a single nail (almond shape) used by the desktop
-// hero's sliding columns. The tile IS the nail — no surrounding pill —
-// so the column reads as a stack of realistic nails drifting past.
-function NailMarqueeTile({ polish }: { polish: Polish }) {
-  // Realistic almond nail: rounded oval tip on top, slightly flatter
-  // cuticle bottom. Tall aspect (~1:2.4) mirrors a real fingernail.
-  const nailShape = '50% 50% 22% 22% / 62% 62% 18% 18%';
+// ─── Desktop floating showcase ─────────────────────────────────────
+// Replaces the old vertical marquee with a bento-style composition:
+// a featured hand photo (or SVG fallback) in the centre + 8 nail
+// polish tiles drifting around it. Tiles are interactive — tapping
+// one opens the live camera with that polish already on every nail.
+function FeaturedDesignsShowcase({
+  designs,
+  showcase,
+  onPick,
+}: {
+  designs: Polish[];
+  showcase: Polish[];
+  onPick: (p: Polish) => void;
+}) {
+  // 8 fixed slots around the central hand. Each cell lives in an
+  // absolutely positioned wrapper with its own float animation so the
+  // composition feels alive without an explicit carousel.
+  const positions: { top: string; left?: string; right?: string; anim: string; delay: number; size: number; rotation: number }[] = [
+    { top: '4%',  left: '4%',   anim: 'a', delay: 0,    size: 110, rotation: -8 },
+    { top: '6%',  left: '40%',  anim: 'b', delay: 0.6,  size: 95,  rotation: -3 },
+    { top: '0%',  right: '6%',  anim: 'c', delay: 1.2,  size: 120, rotation: 6 },
+    { top: '38%', left: '0%',   anim: 'b', delay: 1.8,  size: 100, rotation: -10 },
+    { top: '36%', right: '0%',  anim: 'a', delay: 0.4,  size: 105, rotation: 8 },
+    { top: '70%', left: '10%',  anim: 'c', delay: 2.0,  size: 95,  rotation: -5 },
+    { top: '74%', left: '42%',  anim: 'a', delay: 1.4,  size: 110, rotation: 3 },
+    { top: '68%', right: '8%',  anim: 'b', delay: 2.6,  size: 100, rotation: -2 },
+  ];
+
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="relative h-full w-full max-h-[680px]">
+      {/* Soft pink glow behind the centerpiece for depth */}
       <div
-        className="relative aspect-[1/2.4] w-[62%] overflow-hidden"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[55%] w-[55%] -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{
-          background: polish.color,
-          borderRadius: nailShape,
+          background: 'radial-gradient(circle, rgba(255,111,168,0.35) 0%, transparent 60%)',
+          animation: 'tryon-glow 6s ease-in-out infinite',
+        }}
+      />
+
+      {/* Centerpiece — real hand photo if available, SVG hand as fallback */}
+      <div
+        className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
+        style={{ width: '52%', maxHeight: '85%' }}
+      >
+        <HandHeroImage polishes={showcase} />
+      </div>
+
+      {/* Floating design tiles */}
+      {designs.map((p, i) => {
+        const pos = positions[i] || positions[0];
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onPick(p)}
+            className="absolute group cursor-pointer"
+            style={{
+              top: pos.top,
+              left: pos.left,
+              right: pos.right,
+              width: pos.size,
+              height: pos.size * 1.25,
+              animation: `tryon-float-${pos.anim} ${5 + (i % 3)}s ease-in-out infinite`,
+              animationDelay: `${pos.delay}s`,
+              transform: `rotate(${pos.rotation}deg)`,
+            }}
+            aria-label={`Try ${p.name}`}
+            title={p.name}
+          >
+            <FloatingDesignTile polish={p} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// A single floating tile — a glossy nail-shaped chip with the design
+// rendered on it, plus a label that fades up on hover. Tappable.
+function FloatingDesignTile({ polish }: { polish: Polish }) {
+  return (
+    <div className="relative h-full w-full transition-transform group-hover:scale-110">
+      {/* Drop shadow halo (color-matched to the polish) */}
+      <div
+        className="absolute inset-x-0 -bottom-3 h-6 rounded-full blur-xl opacity-60"
+        style={{ background: polish.color }}
+      />
+      {/* Nail-shaped tile */}
+      <div
+        className="relative h-full w-full overflow-hidden"
+        style={{
+          background: `linear-gradient(160deg, ${polish.color} 0%, ${polish.accent || polish.color} 100%)`,
+          borderRadius: '50% 50% 22% 22% / 60% 60% 18% 18%',
           boxShadow: `
-            inset 0 -14px 26px rgba(0,0,0,0.22),
+            inset 0 -14px 24px rgba(0,0,0,0.22),
             inset 0 8px 16px rgba(255,255,255,0.35),
-            inset 0 0 0 1px rgba(255,255,255,0.18),
-            0 14px 32px -16px ${polish.color}cc
+            0 14px 32px -12px ${polish.color}cc,
+            0 0 0 1px rgba(255,255,255,0.45)
           `,
         }}
       >
-        {/* Glossy highlight — top-left soft sheen */}
+        {/* Top-left sheen */}
         <span
           className="pointer-events-none absolute"
           style={{
-            top: '8%', left: '14%', width: '38%', height: '34%',
+            top: '8%', left: '14%', width: '38%', height: '28%',
             background: 'radial-gradient(ellipse, rgba(255,255,255,0.55) 0%, transparent 70%)',
             filter: 'blur(2px)',
             borderRadius: '50%',
           }}
         />
-        {/* Subtle moon (lunula) at the base for extra realism */}
-        <span
-          className="pointer-events-none absolute"
-          style={{
-            bottom: '6%', left: '20%', right: '20%', height: '12%',
-            background: 'radial-gradient(ellipse at center top, rgba(255,255,255,0.22), transparent 70%)',
-            borderRadius: '50%',
-          }}
-        />
-
-        {/* Finish + design overlays — reuse SwatchDesign for parity */}
+        {/* Design overlay if any */}
+        {polish.design && (
+          <SwatchDesign design={polish.design} accent={polish.accent || '#fff'} base={polish.color} />
+        )}
         {!polish.design && polish.finish === 'chrome' && (
           <span
             className="pointer-events-none absolute inset-1"
             style={{
-              background: 'linear-gradient(135deg, rgba(255,255,255,0.6) 0%, transparent 50%, rgba(255,255,255,0.2) 100%)',
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.6) 0%, transparent 50%, rgba(255,255,255,0.18) 100%)',
               borderRadius: 'inherit',
             }}
           />
@@ -875,13 +952,19 @@ function NailMarqueeTile({ polish }: { polish: Polish }) {
             }}
           />
         )}
-        {polish.design && (
-          <SwatchDesign design={polish.design} accent={polish.accent || '#fff'} base={polish.color} />
-        )}
       </div>
-      <p className="text-[10px] font-semibold text-[#1a1a2e]/70 truncate max-w-full px-1">
+
+      {/* Label — fades in on hover */}
+      <span
+        className="pointer-events-none absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider opacity-0 transition-opacity group-hover:opacity-100"
+        style={{
+          background: 'rgba(26,26,46,0.85)',
+          color: 'white',
+          backdropFilter: 'blur(8px)',
+        }}
+      >
         {polish.name}
-      </p>
+      </span>
     </div>
   );
 }
