@@ -1,5 +1,19 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database
+
+Gao Social uses Cloudflare D1 (SQLite). See
+[`docs/database-migrations.md`](./docs/database-migrations.md) for the
+canonical schema, migration runner, seeds, and auto-update deploy hook.
+
+```bash
+npm run db:reset:local       # init + migrate + seed on local D1
+npm run db:migrate:local     # apply pending migrations only
+npm run db:migrate:dev       # apply pending migrations on remote dev DB
+npm run db:migrate:prod      # apply pending migrations on production DB
+npm run db:check             # dry-run — list pending migrations
+```
+
 ## Getting Started
 
 First, run the development server:

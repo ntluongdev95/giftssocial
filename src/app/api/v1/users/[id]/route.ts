@@ -7,7 +7,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const db = getDB();
 
     const user = await db.prepare(
-      `SELECT id, username, display_name, avatar_url, bio, photos, city, trust_level, trust_score, followers_count, following_count, location_lat, location_lng, created_at
+      `SELECT id, username, display_name, avatar_url, bio, city, trust_level, trust_score, followers_count, following_count, location_lat, location_lng, created_at
        FROM users WHERE id = ?`
     ).bind(id).first<Record<string, unknown>>();
 
@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
       db.prepare(
         `SELECT r.id, r.rating, r.title, r.body, r.created_at, r.verified_visit,
-                b.name AS business_name, b.avatar_url AS business_avatar
+                b.name AS business_name, b.cover_image AS business_avatar
          FROM reviews r LEFT JOIN businesses b ON b.id = r.business_id
          WHERE r.author_id = ? AND r.status = 'active'
          ORDER BY r.created_at DESC LIMIT 10`
