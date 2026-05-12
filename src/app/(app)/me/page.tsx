@@ -12,6 +12,7 @@ import {
   MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
   HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw, Clock, Gift,
+  Plus, X as XIcon, Search,
 } from 'lucide-react';
 
 const fetcher = (url: string) => fetch(url, {
@@ -70,9 +71,10 @@ export default function MePage() {
   const locationSharing: string = meData?.data?.location_sharing || 'off';
   const locationSharedUntil: string | null = meData?.data?.location_shared_until || null;
   const locationVisible = locationSharing !== 'off';
-  const audience: 'off' | 'everyone' | 'friends' | 'circles' =
+  const audience: 'off' | 'everyone' | 'friends' | 'circles' | 'specific' =
     locationSharing === 'friends' ? 'friends'
     : locationSharing === 'circles' ? 'circles'
+    : locationSharing === 'specific' ? 'specific'
     : locationSharing === 'off' ? 'off'
     : 'everyone';
   const [savingLocation, setSavingLocation] = useState(false);
@@ -173,10 +175,10 @@ export default function MePage() {
   }, [isAuthed, meData?.data, locationSharing]);
 
   const AUDIENCE_TO_SHARING: Record<string, string> = {
-    everyone: 'approximate', friends: 'friends', circles: 'circles', off: 'off',
+    everyone: 'approximate', friends: 'friends', circles: 'circles', specific: 'specific', off: 'off',
   };
 
-  const changeAudience = async (next: 'off' | 'everyone' | 'friends' | 'circles') => {
+  const changeAudience = async (next: 'off' | 'everyone' | 'friends' | 'circles' | 'specific') => {
     if (savingLocation) return;
     setSavingLocation(true);
     setLocationError(null);
@@ -572,7 +574,7 @@ function ManageCard({ icon, label, sub, onClick }: { icon: React.ReactNode; labe
   );
 }
 
-type Audience = 'off' | 'everyone' | 'friends' | 'circles';
+type Audience = 'off' | 'everyone' | 'friends' | 'circles' | 'specific';
 
 function LocationVisibilityPanel({
   audience, durationValue, durationOptions, saving, refreshing,
@@ -588,7 +590,11 @@ function LocationVisibilityPanel({
   onRefresh: () => void;
 }) {
   const visible = audience !== 'off';
-  const audienceLabel = audience === 'friends' ? 'Friends only' : audience === 'circles' ? 'My Circles' : 'Everyone';
+  const audienceLabel =
+    audience === 'friends' ? 'Friends only'
+    : audience === 'circles' ? 'My Circles'
+    : audience === 'specific' ? 'Specific people'
+    : 'Everyone';
   const durationLabel = durationOptions.find(d => d.value === durationValue)?.label || 'Until I turn off';
   const subtitle = saving
     ? (visible ? 'Updating…' : 'Getting your location…')
@@ -645,8 +651,12 @@ function LocationVisibilityPanel({
               { value: 'everyone', label: 'Everyone' },
               { value: 'friends', label: 'Friends only' },
               { value: 'circles', label: 'My Circles' },
+              { value: 'specific', label: 'Specific people' },
             ]}
           />
+          {/* Specific-people manager — only renders when that audience
+              is picked. Lets the user hand-pick the recipients. */}
+          {audience === 'specific' && <SpecificShareList disabled={saving || refreshing} />}
           <PanelSelectRow
             icon={<Clock size={14} />}
             label="Expires in"
@@ -657,6 +667,252 @@ function LocationVisibilityPanel({
           />
         </>
       )}
+    </div>
+  );
+}
+
+// Specific-share manager — renders the list of users the caller has
+// hand-picked + a search picker to add more. State lives entirely here
+// because it's only needed when the "Specific people" audience is
+// selected; LocationPanel still owns the audience choice.
+interface ShareRow {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+}
+
+function SpecificShareList({ disabled }: { disabled: boolean }) {
+  const { data, mutate } = useSWR<{ data: ShareRow[] }>(
+    '/api/v1/users/me/location-shares',
+    fetcher,
+    { revalidateOnFocus: true },
+  );
+  const shares = data?.data || [];
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const removeShare = async (recipientId: string) => {
+    // Optimistic — drop the chip immediately, restore on failure.
+    const prev = data?.data || [];
+    mutate({ data: prev.filter((s) => s.id !== recipientId) }, false);
+    try {
+      const res = await fetch(`/api/v1/users/me/location-shares/${encodeURIComponent(recipientId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) throw new Error('Failed to remove');
+      mutate();
+    } catch {
+      mutate({ data: prev }, false);
+    }
+  };
+
+  return (
+    <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+      <div className="flex items-start gap-3 px-4 py-3">
+        <span className="text-[#4a5068] mt-1"><Users size={14} /></span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] text-white mb-2">Shared with</p>
+          {shares.length === 0 ? (
+            <p className="text-[11px] text-[#4a5068]">No one yet — tap “Add” to pick people.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {shares.map((s) => {
+                const label = s.display_name || (s.username ? `@${s.username}` : 'User');
+                return (
+                  <span
+                    key={s.id}
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-1"
+                    style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)' }}
+                  >
+                    {s.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={s.avatar_url} alt="" className="h-4 w-4 rounded-full object-cover" />
+                    ) : (
+                      <span className="h-4 w-4 rounded-full text-[8px] flex items-center justify-center font-bold"
+                        style={{ background: '#5b8def', color: 'white' }}
+                      >
+                        {label.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-white truncate max-w-[120px]">{label}</span>
+                    <button
+                      onClick={() => removeShare(s.id)}
+                      disabled={disabled}
+                      aria-label={`Remove ${label}`}
+                      className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full cursor-pointer disabled:opacity-50"
+                      style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}
+                    >
+                      <XIcon size={9} />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={() => setPickerOpen(true)}
+          disabled={disabled}
+          className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-60"
+          style={{ background: 'rgba(0,212,255,0.12)', border: '1px solid rgba(0,212,255,0.3)', color: '#00d4ff' }}
+        >
+          <Plus size={12} /> Add
+        </button>
+      </div>
+
+      {pickerOpen && (
+        <SpecificSharePicker
+          existingIds={new Set(shares.map((s) => s.id))}
+          onClose={() => setPickerOpen(false)}
+          onAdded={() => mutate()}
+        />
+      )}
+    </div>
+  );
+}
+
+// User search modal — reuses the unified /api/v1/search?tab=people
+// endpoint with debounced typing. Tapping a result POSTs them to
+// /me/location-shares and closes the sheet.
+function SpecificSharePicker({
+  existingIds,
+  onClose,
+  onAdded,
+}: {
+  existingIds: Set<string>;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Array<{ id: string; title: string; subtitle?: string; image?: string | null }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (q.length < 1) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}&tab=people&limit=12`, { credentials: 'same-origin' });
+        const json = await res.json();
+        setResults((json?.data?.people || []) as typeof results);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 220);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
+
+  const addRecipient = async (id: string) => {
+    if (existingIds.has(id) || adding) return;
+    setAdding(id);
+    try {
+      const res = await fetch('/api/v1/users/me/location-shares', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient_user_id: id }),
+      });
+      if (res.ok) {
+        onAdded();
+        onClose();
+      }
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-60 flex items-center justify-center px-3 sm:px-4"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-3xl overflow-hidden"
+        style={{
+          background: 'linear-gradient(180deg, #14161f 0%, #0a0b0f 100%)',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="text-base font-black text-white">Share location with</h2>
+          <button
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-full cursor-pointer hover:bg-white/5"
+            aria-label="Close"
+          >
+            <XIcon size={16} className="text-white/70" />
+          </button>
+        </div>
+        <div className="px-5 pb-5">
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            <Search size={14} className="text-white/45" />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name or @username"
+              className="flex-1 bg-transparent text-sm text-white placeholder:text-white/35 outline-none"
+            />
+          </div>
+          <div className="mt-3 max-h-72 overflow-y-auto rounded-xl"
+            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}
+          >
+            {results.length === 0 && !searching && query.trim() && (
+              <p className="px-4 py-6 text-center text-xs text-white/45">No one found.</p>
+            )}
+            {results.length === 0 && !query.trim() && (
+              <p className="px-4 py-6 text-center text-xs text-white/35">Type to find a friend</p>
+            )}
+            {results.map((p) => {
+              const already = existingIds.has(p.id);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => addRecipient(p.id)}
+                  disabled={already || adding === p.id}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {p.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image} alt="" className="h-9 w-9 rounded-full object-cover" />
+                  ) : (
+                    <span className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold"
+                      style={{ background: '#5b8def', color: 'white' }}
+                    >
+                      {p.title.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <div className="flex flex-col items-start text-left min-w-0 flex-1">
+                    <span className="truncate text-sm font-semibold text-white">{p.title}</span>
+                    {p.subtitle && (
+                      <span className="truncate text-[11px] text-white/45">{p.subtitle}</span>
+                    )}
+                  </div>
+                  {already && (
+                    <span className="text-[10px] uppercase tracking-wider text-[#00d4ff]/80 shrink-0">Added</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

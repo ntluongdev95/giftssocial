@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest) {
       'location_sharing', 'location_shared_until',
     ];
 
-    if (body.location_sharing !== undefined && !['exact', 'approximate', 'friends', 'circles', 'off'].includes(body.location_sharing)) {
+    if (body.location_sharing !== undefined && !['exact', 'approximate', 'friends', 'circles', 'specific', 'off'].includes(body.location_sharing)) {
       return NextResponse.json({ error: { code: 'invalid_request', message: 'Invalid location_sharing value' } }, { status: 400 });
     }
 

@@ -14,6 +14,7 @@
  *   - location_sharing is 'exact' or 'approximate' (public)
  *   - location_sharing is 'friends' and viewer has a mutual follow
  *   - location_sharing is 'circles' and viewer shares an active circle
+ *   - location_sharing is 'specific' and viewer is in location_specific_shares
  *   - an active event_location_grant exists for an event the viewer has booked
  *
  * And the user's location_shared_until (if set) has not expired.
@@ -50,6 +51,10 @@ export function buildLocationVisibilityReasonSelects(alias: string, viewerId: st
         AND cm2.user_id = ${a}.id AND cm2.status = 'active'
       LIMIT 1
     ) ELSE NULL END) AS shared_circle_id,
+    CASE WHEN ${a}.location_sharing = 'specific' AND ? IS NOT NULL AND EXISTS (
+      SELECT 1 FROM location_specific_shares lss
+      WHERE lss.user_id = ${a}.id AND lss.recipient_user_id = ?
+    ) THEN 1 ELSE 0 END AS via_specific,
     (CASE WHEN ? IS NOT NULL THEN (
       SELECT elg.event_id FROM event_location_grants elg
       JOIN bookings b ON b.event_id = elg.event_id
@@ -63,6 +68,7 @@ export function buildLocationVisibilityReasonSelects(alias: string, viewerId: st
   const params: (string | null)[] = [
     viewerId, viewerId, viewerId, // via_friend
     viewerId, viewerId,           // shared_circle_id
+    viewerId, viewerId,           // via_specific
     viewerId, viewerId,           // shared_event_id
   ];
   return { sql, params };
@@ -71,18 +77,19 @@ export function buildLocationVisibilityReasonSelects(alias: string, viewerId: st
 /**
  * Given the reason columns returned by buildLocationVisibilityReasonSelects,
  * collapse them into a single primary reason string plus optional context IDs.
- * Priority: self > event > circle > friend > public.
+ * Priority: self > event > circle > specific > friend > public.
  */
 export function resolveVisibilityReason(
   row: Record<string, unknown>,
   userId: string,
   viewerId: string | null,
-): { reason: 'self' | 'public' | 'friend' | 'circle' | 'event'; event_id?: string; circle_id?: string } {
+): { reason: 'self' | 'public' | 'friend' | 'circle' | 'specific' | 'event'; event_id?: string; circle_id?: string } {
   if (viewerId && userId === viewerId) return { reason: 'self' };
   const sharedEventId = row.shared_event_id as string | null;
   if (sharedEventId) return { reason: 'event', event_id: sharedEventId };
   const sharedCircleId = row.shared_circle_id as string | null;
   if (sharedCircleId) return { reason: 'circle', circle_id: sharedCircleId };
+  if (row.via_specific) return { reason: 'specific' };
   if (row.via_friend) return { reason: 'friend' };
   return { reason: 'public' };
 }
@@ -108,6 +115,11 @@ export function buildLocationVisibilityClause(alias: string, viewerId: string | 
            WHERE cm1.user_id = ? AND cm1.status = 'active'
              AND cm2.user_id = ${a}.id AND cm2.status = 'active'
          ))
+      OR (${a}.location_sharing = 'specific' AND ? IS NOT NULL AND EXISTS (
+           SELECT 1 FROM location_specific_shares lss
+           WHERE lss.user_id = ${a}.id
+             AND lss.recipient_user_id = ?
+         ))
       OR (? IS NOT NULL AND EXISTS (
            SELECT 1 FROM event_location_grants elg
            JOIN bookings b ON b.event_id = elg.event_id
@@ -122,6 +134,7 @@ export function buildLocationVisibilityClause(alias: string, viewerId: string | 
     viewerId, viewerId,              // self
     viewerId, viewerId, viewerId,    // friends
     viewerId, viewerId,              // circles
+    viewerId, viewerId,              // specific
     viewerId, viewerId,              // event grants
   ];
   return { sql, params };
