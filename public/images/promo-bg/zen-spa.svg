@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 960" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bgGreen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c2418"/>
+      <stop offset="1" stop-color="#102e1f"/>
+    </linearGradient>
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6ede0"/>
+      <stop offset="1" stop-color="#ece1cf"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d4af6a"/>
+      <stop offset="1" stop-color="#8c6a32"/>
+    </linearGradient>
+    <linearGradient id="goldFlat" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e4c882"/>
+      <stop offset="1" stop-color="#a0794a"/>
+    </linearGradient>
+    <radialGradient id="leafSage" cx="0.3" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#a8c2a0"/>
+      <stop offset="1" stop-color="#6a8870"/>
+    </radialGradient>
+    <radialGradient id="leafSageDark" cx="0.3" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#7a9a7a"/>
+      <stop offset="1" stop-color="#3a5a3e"/>
+    </radialGradient>
+    <radialGradient id="stone" cx="0.4" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#4a4640"/>
+      <stop offset="1" stop-color="#0e0c0a"/>
+    </radialGradient>
+    <radialGradient id="candle" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fde6c0"/>
+      <stop offset="1" stop-color="#c8a874"/>
+    </radialGradient>
+    <radialGradient id="flame" cx="0.5" cy="0.6" r="0.5">
+      <stop offset="0" stop-color="#fff5b8"/>
+      <stop offset="0.5" stop-color="#ffc864"/>
+      <stop offset="1" stop-color="#ff8a40" stop-opacity="0.6"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Forest green base -->
+  <rect width="540" height="960" fill="url(#bgGreen)"/>
+
+  <!-- ── Cream wavy band (irregular curved edges top + bottom) ────── -->
+  <path d="M 0 220 C 100 180, 200 250, 270 230 C 340 210, 440 250, 540 220 L 540 760 C 440 790, 340 750, 270 770 C 200 790, 100 750, 0 780 Z" fill="url(#cream)"/>
+
+  <!-- Thin gold inner frame within cream band -->
+  <path d="M 14 240 C 110 200, 210 260, 270 248 C 340 232, 440 268, 526 240 L 526 740 C 440 770, 340 738, 270 752 C 210 765, 110 738, 14 760 Z" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.55"/>
+
+  <!-- ── Top-left eucalyptus branch ────────────────────────────────── -->
+  <g transform="translate(0,0)">
+    <path d="M 30 30 Q 80 80, 130 200" stroke="url(#leafSageDark)" stroke-width="1.5" fill="none" opacity="0.7"/>
+    <!-- round leaves clusters (pairs) -->
+    <ellipse cx="50"  cy="80"  rx="38" ry="32" fill="url(#leafSage)" transform="rotate(-30 50 80)"/>
+    <ellipse cx="100" cy="50"  rx="42" ry="34" fill="url(#leafSage)" transform="rotate(20 100 50)" opacity="0.92"/>
+    <ellipse cx="60"  cy="140" rx="34" ry="28" fill="url(#leafSage)" transform="rotate(-20 60 140)" opacity="0.95"/>
+    <ellipse cx="110" cy="110" rx="36" ry="30" fill="url(#leafSageDark)" transform="rotate(30 110 110)" opacity="0.85"/>
+    <ellipse cx="35"  cy="180" rx="30" ry="25" fill="url(#leafSage)" transform="rotate(-10 35 180)"/>
+    <ellipse cx="100" cy="195" rx="32" ry="26" fill="url(#leafSageDark)" transform="rotate(40 100 195)" opacity="0.85"/>
+    <!-- small accent leaves -->
+    <ellipse cx="160" cy="80"  rx="20" ry="14" fill="url(#leafSage)" transform="rotate(25 160 80)" opacity="0.7"/>
+    <ellipse cx="150" cy="170" rx="18" ry="12" fill="url(#leafSageDark)" transform="rotate(50 150 170)" opacity="0.65"/>
+  </g>
+
+  <!-- gold dust top corners -->
+  <g fill="url(#goldFlat)">
+    <circle cx="400" cy="40" r="1.5" opacity="0.6"/>
+    <circle cx="450" cy="60" r="1.8" opacity="0.7"/>
+    <circle cx="480" cy="30" r="1.2" opacity="0.5"/>
+    <circle cx="510" cy="80" r="1.5" opacity="0.6"/>
+    <circle cx="200" cy="20" r="1.2" opacity="0.5"/>
+  </g>
+
+  <!-- ── Right-side large eucalyptus branch (mid + lower) ─────────── -->
+  <g transform="translate(0,0)">
+    <path d="M 510 360 Q 480 500, 470 700" stroke="url(#leafSageDark)" stroke-width="2" fill="none" opacity="0.75"/>
+    <!-- large round leaves in pairs along branch -->
+    <ellipse cx="490" cy="380" rx="44" ry="36" fill="url(#leafSage)" transform="rotate(40 490 380)"/>
+    <ellipse cx="450" cy="420" rx="40" ry="32" fill="url(#leafSage)" transform="rotate(-20 450 420)" opacity="0.92"/>
+    <ellipse cx="510" cy="460" rx="44" ry="36" fill="url(#leafSageDark)" transform="rotate(50 510 460)" opacity="0.9"/>
+    <ellipse cx="460" cy="510" rx="46" ry="38" fill="url(#leafSage)" transform="rotate(-10 460 510)"/>
+    <ellipse cx="510" cy="570" rx="42" ry="34" fill="url(#leafSage)" transform="rotate(30 510 570)" opacity="0.92"/>
+    <ellipse cx="460" cy="620" rx="40" ry="32" fill="url(#leafSageDark)" transform="rotate(-30 460 620)" opacity="0.88"/>
+    <ellipse cx="500" cy="680" rx="38" ry="30" fill="url(#leafSage)" transform="rotate(20 500 680)"/>
+    <ellipse cx="455" cy="720" rx="34" ry="28" fill="url(#leafSage)" transform="rotate(-40 455 720)" opacity="0.9"/>
+    <!-- gold accent leaves (smaller, decorative) -->
+    <path d="M 420 580 Q 440 575, 460 580" stroke="url(#goldFlat)" stroke-width="0.8" fill="none" opacity="0.7"/>
+    <path d="M 430 600 Q 450 595, 470 600" stroke="url(#goldFlat)" stroke-width="0.8" fill="none" opacity="0.5"/>
+  </g>
+
+  <!-- ── Bottom-left zen stones + candle ──────────────────────────── -->
+  <g transform="translate(50,640)">
+    <!-- stone 3 (bottom largest) -->
+    <ellipse cx="40" cy="80" rx="48" ry="22" fill="url(#stone)"/>
+    <ellipse cx="20" cy="75" rx="18" ry="6" fill="#fff" opacity="0.18"/>
+    <!-- stone 2 (middle) -->
+    <ellipse cx="42" cy="45" rx="40" ry="18" fill="url(#stone)"/>
+    <ellipse cx="26" cy="40" rx="14" ry="5" fill="#fff" opacity="0.2"/>
+    <!-- stone 1 (top smallest) -->
+    <ellipse cx="44" cy="16" rx="32" ry="14" fill="url(#stone)"/>
+    <ellipse cx="32" cy="12" rx="10" ry="4" fill="#fff" opacity="0.22"/>
+
+    <!-- candle holder -->
+    <g transform="translate(70,80)">
+      <path d="M -22 0 L 22 0 L 18 30 L -18 30 Z" fill="url(#candle)"/>
+      <ellipse cx="0" cy="0" rx="22" ry="6" fill="#c8a874"/>
+      <ellipse cx="0" cy="0" rx="18" ry="4" fill="#fde6c0"/>
+      <!-- wick -->
+      <line x1="0" y1="-1" x2="0" y2="-6" stroke="#3a2a1a" stroke-width="1.5"/>
+      <!-- flame -->
+      <ellipse cx="0" cy="-14" rx="6" ry="12" fill="url(#flame)"/>
+      <ellipse cx="0" cy="-12" rx="3" ry="7" fill="#fff" opacity="0.6"/>
+    </g>
+
+    <!-- small leaf at base -->
+    <ellipse cx="-8" cy="100" rx="22" ry="8" fill="url(#leafSage)" transform="rotate(-15 -8 100)" opacity="0.85"/>
+    <ellipse cx="110" cy="105" rx="18" ry="6" fill="url(#leafSage)" transform="rotate(20 110 105)" opacity="0.8"/>
+  </g>
+
+  <!-- ── Gold accent leaf branches around price area ─────────────── -->
+  <g opacity="0.7">
+    <path d="M 130 730 Q 150 728, 170 735 Q 190 740, 210 738" stroke="url(#goldFlat)" stroke-width="1" fill="none"/>
+    <ellipse cx="155" cy="730" rx="6" ry="3" fill="url(#goldFlat)" transform="rotate(-20 155 730)"/>
+    <ellipse cx="180" cy="736" rx="6" ry="3" fill="url(#goldFlat)" transform="rotate(10 180 736)"/>
+    <ellipse cx="200" cy="734" rx="5" ry="2.5" fill="url(#goldFlat)" transform="rotate(-15 200 734)"/>
+
+    <path d="M 410 730 Q 390 728, 370 735 Q 350 740, 330 738" stroke="url(#goldFlat)" stroke-width="1" fill="none"/>
+    <ellipse cx="385" cy="730" rx="6" ry="3" fill="url(#goldFlat)" transform="rotate(20 385 730)"/>
+    <ellipse cx="360" cy="736" rx="6" ry="3" fill="url(#goldFlat)" transform="rotate(-10 360 736)"/>
+    <ellipse cx="340" cy="734" rx="5" ry="2.5" fill="url(#goldFlat)" transform="rotate(15 340 734)"/>
+  </g>
+
+  <!-- gold dust bottom-right corner -->
+  <g fill="url(#goldFlat)">
+    <circle cx="500" cy="900" r="1.5" opacity="0.7"/>
+    <circle cx="470" cy="920" r="1.8" opacity="0.8"/>
+    <circle cx="510" cy="940" r="1.2" opacity="0.5"/>
+    <circle cx="440" cy="930" r="1" opacity="0.5"/>
+  </g>
+</svg>

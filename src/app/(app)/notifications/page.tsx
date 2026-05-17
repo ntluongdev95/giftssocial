@@ -5,6 +5,7 @@ import { ArrowLeft, Bell, CheckCircle, Calendar, Shield, Star, Users, Wallet, Lo
 import { formatDistanceToNow } from 'date-fns';
 import { parseUTC } from '@/lib/date';
 import { useState } from 'react';
+import useSWR from 'swr';
 import { toast } from 'sonner';
 import { useNotifications } from '@/hooks/useNotifications';
 import PrivateChat from '@/components/chat/PrivateChat';
@@ -13,7 +14,25 @@ import SignalSheet from '@/components/map/SignalSheet';
 import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import EventDetailPage from '@/components/events/EventDetailPage';
 import BusinessDetailPage from '@/components/business/BusinessDetailPage';
+import PromoDetailSheet from '@/components/promo/PromoDetailSheet';
 import type { Circle, Event, Business } from '@/types';
+
+// Shape matches GET /api/v1/promo-templates/[id] response.
+interface PromoDetail {
+  id: string;
+  business_id: string;
+  business_name?: string | null;
+  business_cover?: string | null;
+  name: string;
+  description?: string;
+  background_color: string;
+  background_image?: string | null;
+  background_gradient_to?: string | null;
+  elements_json: string;
+  gift_card_template_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
 
 const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   booking_confirmed: { icon: <Calendar size={16} />, color: '#00d4ff' },
@@ -36,14 +55,21 @@ const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   system: { icon: <Bell size={16} />, color: '#4a5068' },
 };
 
+// Lightweight current-user fetch — only used to personalise the greeting
+// in PromoDetailSheet ("Dear <name>,").
+interface MeRow { fullName?: string | null; username?: string | null }
+
 export default function NotificationsPage() {
   const router = useRouter();
   const { notifications, unreadCount, markAllRead, markRead, clearAll } = useNotifications();
+  const { data: meData } = useSWR<{ data: MeRow }>('/api/v1/users/me', (url: string) => fetch(url, { credentials: 'same-origin' }).then((r) => r.json()));
+  const recipientName = meData?.data?.fullName || meData?.data?.username || null;
   const [openChat, setOpenChat] = useState<{ type: string; id: string; title: string } | null>(null);
   const [detailSignal, setDetailSignal] = useState<Record<string, unknown> | null>(null);
   const [detailCircle, setDetailCircle] = useState<Circle | null>(null);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [detailBusiness, setDetailBusiness] = useState<Business | null>(null);
+  const [detailPromo, setDetailPromo] = useState<PromoDetail | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const handleNotificationClick = async (n: Record<string, unknown>) => {
@@ -118,6 +144,10 @@ export default function NotificationsPage() {
       } else if (refType === 'business') {
         const res = await fetch(`/api/v1/businesses/${refId}`, { headers });
         if (res.ok) { const data = await res.json(); setDetailBusiness(data.data); }
+      } else if (refType === 'promo') {
+        const res = await fetch(`/api/v1/promo-templates/${refId}`, { headers, credentials: 'same-origin' });
+        if (res.ok) { const data = await res.json(); setDetailPromo(data.data as PromoDetail); }
+        else toast.error('Promo này không còn khả dụng');
       } else if (refType === 'user') {
         router.push(`/world?flyTo=${refId}`);
       }
@@ -234,6 +264,7 @@ export default function NotificationsPage() {
       {detailCircle && <CircleDetailSheet circle={detailCircle} onClose={() => setDetailCircle(null)} />}
       {detailEvent && <EventDetailPage event={detailEvent} onClose={() => setDetailEvent(null)} />}
       {detailBusiness && <BusinessDetailPage business={detailBusiness} onClose={() => setDetailBusiness(null)} />}
+      {detailPromo && <PromoDetailSheet promo={detailPromo} recipientName={recipientName} onClose={() => setDetailPromo(null)} />}
     </div>
   );
 }

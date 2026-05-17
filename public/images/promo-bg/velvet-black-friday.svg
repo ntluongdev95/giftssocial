@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 960" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.45" r="0.85">
+      <stop offset="0" stop-color="#1a120a"/>
+      <stop offset="0.55" stop-color="#080605"/>
+      <stop offset="1" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4d57a"/>
+      <stop offset="0.5" stop-color="#c89a3a"/>
+      <stop offset="1" stop-color="#8c6a1f"/>
+    </linearGradient>
+    <linearGradient id="goldFlat" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e8c875"/>
+      <stop offset="1" stop-color="#a07c44"/>
+    </linearGradient>
+    <linearGradient id="silk" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a2a2a"/>
+      <stop offset="0.4" stop-color="#3d3d3d"/>
+      <stop offset="0.7" stop-color="#0a0a0a"/>
+      <stop offset="1" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <linearGradient id="silkDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1a1a"/>
+      <stop offset="1" stop-color="#000000"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#c89a3a" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#c89a3a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="dustCloud" cx="0.5" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#c89a3a" stop-opacity="0.45"/>
+      <stop offset="0.5" stop-color="#c89a3a" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#c89a3a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="540" height="960" fill="url(#bg)"/>
+
+  <!-- soft gold halo behind headline -->
+  <ellipse cx="270" cy="430" rx="340" ry="190" fill="url(#glow)"/>
+
+  <!-- ── Top-left silk drape (large, folded) ───────────────────────── -->
+  <path d="M 0 0 L 320 0 C 280 80, 200 100, 150 160 C 100 220, 50 200, 0 240 Z" fill="url(#silk)"/>
+  <path d="M 0 0 L 240 0 C 210 60, 160 80, 110 120 C 70 150, 40 130, 0 150 Z" fill="url(#silkDark)" opacity="0.85"/>
+  <path d="M 40 30 C 90 60, 130 100, 110 160" stroke="#4a4a4a" stroke-width="1.5" fill="none" opacity="0.6"/>
+  <path d="M 90 10 C 150 40, 190 90, 170 140" stroke="#333333" stroke-width="1.2" fill="none" opacity="0.5"/>
+  <path d="M 160 0 C 200 40, 230 80, 210 120" stroke="#2a2a2a" stroke-width="1" fill="none" opacity="0.5"/>
+
+  <!-- ── Top-right geometric gold lines ────────────────────────────── -->
+  <g stroke="url(#gold)" fill="none">
+    <line x1="540" y1="0" x2="540" y2="200" stroke-width="2.5" opacity="0.85"/>
+    <line x1="540" y1="0" x2="360" y2="200" stroke-width="1.5" opacity="0.7"/>
+    <line x1="540" y1="50" x2="410" y2="200" stroke-width="1" opacity="0.55"/>
+    <line x1="540" y1="100" x2="460" y2="200" stroke-width="0.8" opacity="0.4"/>
+  </g>
+
+  <!-- thin gold inner frame -->
+  <rect x="14" y="14" width="512" height="932" fill="none" stroke="url(#gold)" stroke-width="0.8" opacity="0.28" rx="2"/>
+
+  <!-- ── Sample logo badge — top-left (overridden by uploaded logo) ── -->
+  <g transform="translate(54,68)">
+    <!-- outer gold ring -->
+    <circle cx="0" cy="0" r="30" fill="none" stroke="url(#goldFlat)" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="26" fill="#080605"/>
+    <!-- inner dotted ring -->
+    <circle cx="0" cy="0" r="22" fill="none" stroke="url(#goldFlat)" stroke-width="0.6" stroke-dasharray="1,2" opacity="0.7"/>
+    <!-- monogram V -->
+    <text x="0" y="9" font-family="Georgia, serif" font-size="28" font-weight="800" fill="url(#goldFlat)" text-anchor="middle">V</text>
+    <!-- small sparkle dot top -->
+    <circle cx="0" cy="-30" r="1.5" fill="url(#goldFlat)"/>
+  </g>
+
+  <!-- ── Black gift box with gold-edged ribbon (bottom-right) ───── -->
+  <g transform="translate(290,640)">
+    <!-- box body -->
+    <rect x="0" y="0" width="180" height="170" fill="#0a0a0a" stroke="url(#goldFlat)" stroke-width="2"/>
+    <!-- lid stripe -->
+    <rect x="0" y="0" width="180" height="56" fill="#000000"/>
+    <line x1="0" y1="56" x2="180" y2="56" stroke="url(#goldFlat)" stroke-width="1.5" opacity="0.7"/>
+    <!-- vertical ribbon -->
+    <rect x="78" y="0" width="24" height="170" fill="#000000"/>
+    <line x1="78" y1="0" x2="78" y2="170" stroke="url(#goldFlat)" stroke-width="0.8" opacity="0.6"/>
+    <line x1="102" y1="0" x2="102" y2="170" stroke="url(#goldFlat)" stroke-width="0.8" opacity="0.6"/>
+    <!-- monogram "V" framed -->
+    <rect x="62" y="80" width="56" height="56" fill="none" stroke="url(#goldFlat)" stroke-width="1.5" opacity="0.85"/>
+    <text x="90" y="122" font-family="Georgia, serif" font-size="40" font-weight="800" fill="url(#goldFlat)" text-anchor="middle">V</text>
+    <!-- bow on top: two loops + center knot + two tails -->
+    <g transform="translate(90,0)">
+      <path d="M 0 0 C -50 -30, -70 -10, -50 20 C -30 30, -10 15, 0 0 Z" fill="#0e0e0e" stroke="url(#goldFlat)" stroke-width="1"/>
+      <path d="M 0 0 C 50 -30, 70 -10, 50 20 C 30 30, 10 15, 0 0 Z" fill="#0e0e0e" stroke="url(#goldFlat)" stroke-width="1"/>
+      <rect x="-10" y="-5" width="20" height="22" fill="#1a1a1a" stroke="url(#goldFlat)" stroke-width="0.8"/>
+      <path d="M -8 16 C -20 30, -30 28, -38 18 L -28 36 C -18 32, -10 30, -2 22 Z" fill="#0a0a0a" stroke="url(#goldFlat)" stroke-width="0.6"/>
+      <path d="M 8 16 C 20 30, 30 28, 38 18 L 28 36 C 18 32, 10 30, 2 22 Z" fill="#0a0a0a" stroke="url(#goldFlat)" stroke-width="0.6"/>
+    </g>
+  </g>
+
+  <!-- ── Hanging gift tag "A GIFT FOR YOU" (right of gift box) ───── -->
+  <g transform="translate(485,720)">
+    <line x1="0" y1="-30" x2="0" y2="6" stroke="url(#goldFlat)" stroke-width="1" opacity="0.85"/>
+    <path d="M -28 6 L -10 -4 L 10 -4 L 28 6 L 28 80 L -28 80 Z" fill="#0a0a0a" stroke="url(#goldFlat)" stroke-width="1.2"/>
+    <circle cx="0" cy="2" r="3" fill="none" stroke="url(#goldFlat)" stroke-width="0.8"/>
+    <text x="0" y="32" font-family="Georgia, serif" font-size="10" font-weight="700" fill="url(#goldFlat)" text-anchor="middle">A GIFT</text>
+    <text x="0" y="48" font-family="Georgia, serif" font-size="10" font-weight="700" fill="url(#goldFlat)" text-anchor="middle">FOR YOU</text>
+    <path d="M 0 60 C -4 56, -10 56, -10 62 C -10 68, 0 74, 0 74 C 0 74, 10 68, 10 62 C 10 56, 4 56, 0 60 Z" fill="url(#goldFlat)"/>
+  </g>
+
+  <!-- ── Bottom-right gold dust cloud ─────────────────────────────── -->
+  <ellipse cx="370" cy="790" rx="180" ry="80" fill="url(#dustCloud)"/>
+  <g fill="url(#goldFlat)">
+    <circle cx="280" cy="780" r="1.4" opacity="0.8"/>
+    <circle cx="310" cy="820" r="1.2" opacity="0.7"/>
+    <circle cx="340" cy="800" r="1.6" opacity="0.9"/>
+    <circle cx="380" cy="830" r="1" opacity="0.6"/>
+    <circle cx="420" cy="800" r="1.4" opacity="0.8"/>
+    <circle cx="460" cy="820" r="1.2" opacity="0.7"/>
+    <circle cx="500" cy="800" r="1" opacity="0.5"/>
+    <circle cx="260" cy="810" r="0.9" opacity="0.5"/>
+  </g>
+
+  <!-- ── Gold dust particles, scattered ───────────────────────────── -->
+  <g fill="url(#goldFlat)">
+    <circle cx="40" cy="380" r="1.8" opacity="0.7"/>
+    <circle cx="90" cy="440" r="1.4" opacity="0.6"/>
+    <circle cx="60" cy="560" r="2" opacity="0.8"/>
+    <circle cx="40" cy="700" r="1.6" opacity="0.7"/>
+    <circle cx="80" cy="800" r="1.8" opacity="0.7"/>
+    <circle cx="500" cy="280" r="1.6" opacity="0.7"/>
+    <circle cx="470" cy="380" r="1.4" opacity="0.6"/>
+    <circle cx="510" cy="500" r="1.8" opacity="0.7"/>
+  </g>
+
+  <!-- 4-point gold sparkles -->
+  <g fill="url(#goldFlat)">
+    <path d="M 110 400 L 114 408 L 122 412 L 114 416 L 110 424 L 106 416 L 98 412 L 106 408 Z" opacity="0.9"/>
+    <path d="M 280 480 L 284 488 L 292 492 L 284 496 L 280 504 L 276 496 L 268 492 L 276 488 Z" opacity="0.85"/>
+    <path d="M 60 640 L 63 647 L 70 650 L 63 653 L 60 660 L 57 653 L 50 650 L 57 647 Z" opacity="0.75"/>
+  </g>
+</svg>

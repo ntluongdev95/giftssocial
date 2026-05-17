@@ -13,7 +13,7 @@ import {
   MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
   HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw, Clock, Gift,
-  Plus, X as XIcon, Search,
+  Plus, X as XIcon, Search, Megaphone,
 } from 'lucide-react';
 
 const fetcher = (url: string) => fetch(url, {
@@ -68,6 +68,10 @@ export default function MePage() {
   const { data: circlesData } = useSWR(isAuthed ? '/api/v1/circles/me' : null, fetcher, swrOpts);
   const { data: notifsData } = useSWR(isAuthed ? '/api/v1/notifications?unread=true' : null, fetcher, { ...swrOpts, refreshInterval: 10000 });
   const { data: meData, mutate: mutateMe } = useSWR(isAuthed ? '/api/v1/users/me' : null, fetcher, swrOpts);
+  // Whether the caller owns a business — gates the Promote Template link
+  // since promo templates require a `business_id` server-side.
+  const { data: bizData } = useSWR(isAuthed ? '/api/v1/businesses/me' : null, fetcher, swrOpts);
+  const hasBusiness = !!bizData?.data?.id;
   const userPhotos: string[] = meData?.data?.photos || [];
   const locationSharing: string = meData?.data?.location_sharing || 'off';
   const locationSharedUntil: string | null = meData?.data?.location_shared_until || null;
@@ -356,6 +360,22 @@ export default function MePage() {
           <ActivityRow icon={<Store size={16} />} label="My Business" href="/me/business" onClick={() => router.push('/me/business')} />
           <ActivityRow icon={<Gift size={16} />} label="Gift Cards" value="Drops & vouchers" href="/me/gift-cards" onClick={() => router.push('/me/gift-cards')} />
           <ActivityRow icon={<Calendar size={16} />} label="Create Event" href="/me/events" onClick={() => router.push('/me/events')} />
+          <ActivityRow
+            icon={<Megaphone size={16} />}
+            label="Promote Template"
+            value="Drag-drop builder"
+            href={hasBusiness ? '/me/business/promo' : '/me/business'}
+            onClick={() => {
+              if (!hasBusiness) {
+                toast.message('Set up your business first', {
+                  description: 'Promote Template lives on your business page. Create or claim a business, then come back.',
+                });
+                router.push('/me/business');
+                return;
+              }
+              router.push('/me/business/promo');
+            }}
+          />
           <ActivityRow icon={<Bot size={16} />} label="My Agents" href="#" onClick={() => {}} last />
         </div>
 
@@ -488,6 +508,22 @@ export default function MePage() {
                 <ManageCard icon={<Store size={20} />} label="My Business" sub="Manage your store" href="/me/business" onClick={() => router.push('/me/business')} />
                 <ManageCard icon={<Gift size={20} />} label="Gift Cards" sub="Drops & vouchers" href="/me/gift-cards" onClick={() => router.push('/me/gift-cards')} />
                 <ManageCard icon={<Calendar size={20} />} label="Create Event" sub="Host an event" href="/me/events" onClick={() => router.push('/me/events')} />
+                <ManageCard
+                  icon={<Megaphone size={20} />}
+                  label="Promote Template"
+                  sub={hasBusiness ? 'Drag-drop campaigns' : 'Needs a business'}
+                  href={hasBusiness ? '/me/business/promo' : '/me/business'}
+                  onClick={() => {
+                    if (!hasBusiness) {
+                      toast.message('Set up your business first', {
+                        description: 'Promote Template lives on your business page.',
+                      });
+                      router.push('/me/business');
+                      return;
+                    }
+                    router.push('/me/business/promo');
+                  }}
+                />
               </div>
             </div>
 

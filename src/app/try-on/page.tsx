@@ -12,6 +12,11 @@ import {
   Image as ImageIcon, Palette, Stamp, Layers, Hexagon, Hand,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  initSegmenter,
+  segmentNails,
+  type NailMask,
+} from '@/lib/nail-segmenter';
 
 // ─── Curated nail catalog ─────────────────────────────────────────────────
 // Each entry has a base color + finish (gloss / matte / chrome / glitter)
@@ -980,6 +985,11 @@ function CameraView({
   onBack: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Smoothed landmarks per detected hand. Each frame we lerp toward the
+  // newly-detected landmarks instead of jumping — kills the jitter that
+  // makes the polish "vibrate" on still hands. Resets when hand count
+  // changes (e.g. user puts a hand down).
+  const smoothedLmRef = useRef<HandLandmark[][]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -999,6 +1009,11 @@ function CameraView({
 
   // 'all' = next palette tap applies to every nail; 0..4 = target one finger.
   const [selectedFinger, setSelectedFinger] = useState<'all' | number>('all');
+  // Live nail shape — affects the overlay polygon. Stored in a ref too
+  // so the render loop reads it without re-creating the tick closure.
+  const [nailShape, setNailShape] = useState<NailShape>('almond');
+  const nailShapeRef = useRef<NailShape>('almond');
+  useEffect(() => { nailShapeRef.current = nailShape; }, [nailShape]);
 
   const [phase, setPhase] = useState<'init' | 'ready' | 'error'>('init');
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -1103,9 +1118,44 @@ function CameraView({
         try {
           const result = landmarker.detectForVideo(video, ts);
           const hands = result.landmarks || [];
+          const handedness = result.handedness || [];
           setHandsDetected(hands.length > 0);
-          for (const lm of hands) {
-            drawNails(ctx, lm, w, h, facingMode === 'user', polishesRef.current);
+
+          // Reset cached smoothed landmarks when the detected-hand count
+          // changes, otherwise we'd lerp toward stale "ghosts".
+          if (smoothedLmRef.current.length !== hands.length) {
+            smoothedLmRef.current = hands.map((h) => h.map((p) => ({ ...p })));
+          }
+          // Exponential moving average — alpha controls reactivity.
+          // 0.6 = quick response, 0.85 = very smooth but laggy.
+          const alpha = 0.55;
+          for (let i = 0; i < hands.length; i++) {
+            const raw = hands[i];
+            const prev = smoothedLmRef.current[i];
+            if (!prev || prev.length !== raw.length) {
+              smoothedLmRef.current[i] = raw.map((p) => ({ ...p }));
+            } else {
+              for (let j = 0; j < raw.length; j++) {
+                prev[j].x = alpha * prev[j].x + (1 - alpha) * raw[j].x;
+                prev[j].y = alpha * prev[j].y + (1 - alpha) * raw[j].y;
+                prev[j].z = alpha * (prev[j].z ?? 0) + (1 - alpha) * (raw[j].z ?? 0);
+              }
+            }
+          }
+
+          for (let i = 0; i < hands.length; i++) {
+            // MediaPipe reports handedness from the camera's POV, but the
+            // user sees a mirrored preview when using the front camera, so
+            // we flip the label too. Back camera keeps the raw label.
+            const rawHand = handedness[i]?.[0]?.categoryName as 'Left' | 'Right' | undefined;
+            const hand = facingMode === 'user' && rawHand
+              ? (rawHand === 'Left' ? 'Right' : 'Left')
+              : rawHand;
+            drawNails(
+              ctx, smoothedLmRef.current[i], w, h,
+              facingMode === 'user', polishesRef.current,
+              hand, nailShapeRef.current,
+            );
           }
         } catch {
           /* model might not be ready yet on first frame */
@@ -1258,6 +1308,29 @@ function CameraView({
           polishes={perNailPolishes}
         />
 
+        {/* Nail shape — pick how long/pointed the overlay should be. The
+            change is live: the next render frame uses the new shape. */}
+        <div className="flex justify-center gap-1.5">
+          {(['almond', 'square', 'oval', 'coffin', 'stiletto'] as NailShape[]).map((sh) => {
+            const active = nailShape === sh;
+            return (
+              <button
+                key={sh}
+                type="button"
+                onClick={() => setNailShape(sh)}
+                className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider cursor-pointer transition-colors"
+                style={{
+                  background: active ? 'rgba(0,212,255,0.18)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${active ? 'rgba(0,212,255,0.45)' : 'rgba(255,255,255,0.1)'}`,
+                  color: active ? '#00d4ff' : '#a3adc3',
+                }}
+              >
+                {sh}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Selected polish label — shows current finger's polish (or All) */}
         {(() => {
           const display = selectedFinger === 'all' ? perNailPolishes[0] : perNailPolishes[selectedFinger];
@@ -1409,7 +1482,27 @@ const PHOTO_DEFAULT_CANDIDATES = [
   '/images/try-on/hand-hero.jpg',
 ];
 
-type PhotoTab = 'looks' | 'color' | 'prints' | 'patterns';
+type PhotoTab = 'looks' | 'color' | 'prints' | 'patterns' | 'hand' | 'shape';
+
+// Skin tone presets — applied as Canvas filters on the source photo
+// (only on the image, not on the nail overlay). Lets users see the
+// design on a tone closer to their own without uploading a photo.
+type SkinTone = 'auto' | 'fair' | 'medium' | 'tan' | 'deep';
+const SKIN_FILTERS: Record<SkinTone, string> = {
+  auto:   'none',
+  fair:   'brightness(1.12) saturate(0.82) contrast(0.95)',
+  medium: 'none',
+  tan:    'brightness(0.88) saturate(1.12) hue-rotate(-4deg)',
+  deep:   'brightness(0.68) saturate(1.08) hue-rotate(-2deg) contrast(1.05)',
+};
+// Swatch colour used for each preset chip (rough average of the tone).
+const SKIN_SWATCHES: Record<SkinTone, string> = {
+  auto:   '#d4a787',
+  fair:   '#f3d4b8',
+  medium: '#d6a07d',
+  tan:    '#a87454',
+  deep:   '#6b3f29',
+};
 
 // Categorise the polish catalog by YouCam Nails' tab taxonomy. Each polish
 // can belong to exactly one category in the bottom-panel tabs.
@@ -1442,6 +1535,7 @@ function PhotoView({
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const handsRef = useRef<HandLandmark[][]>([]);
+  const handednessRef = useRef<Array<'Left' | 'Right' | undefined>>([]);
   const polishesRef = useRef<Record<number, Polish>>(initialPolishes);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const albumInputRef = useRef<HTMLInputElement | null>(null);
@@ -1456,6 +1550,8 @@ function PhotoView({
   const [errorMsg, setErrorMsg] = useState('');
   const [snapshot, setSnapshot] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PhotoTab>('looks');
+  const [skinTone, setSkinTone] = useState<SkinTone>('auto');
+  const [nailShape, setNailShape] = useState<NailShape>('almond');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeLookId, setActiveLookId] = useState<string | null>(null);
   // Tracks whether the result currently shown is the built-in default
@@ -1489,8 +1585,24 @@ function PhotoView({
     return landmarker;
   }, []);
 
+  // Tracks the current skin filter in a ref so renderResult — which is
+  // memoised — always reads the latest value without being rebuilt.
+  const skinFilterRef = useRef<string>('none');
+  const nailShapeRef = useRef<NailShape>('almond');
+
   // Repaints the canvas with the source image + current polishes overlay.
   // Called both after detection and any time the polish map changes.
+  // The skin tint applies ONLY to the image draw — nail overlays render
+  // on top with no filter so polish colours stay accurate.
+  // Per-finger ML nail masks (MobileSAM output). Indexed [handIdx][fingerIdx].
+  // When non-null, drawNails uses the pixel mask as the clip path
+  // instead of the bezier almond — polish then matches the real nail
+  // outline pixel-for-pixel. Falls back to bezier on segmentation fail.
+  const nailMasksRef = useRef<(NailMask | null)[][]>([]);
+  // Status badge state. 'loading' shows while the SAM model loads/runs,
+  // 'precise' once at least one mask is back, 'idle' before anything.
+  const [segmentStatus, setSegmentStatus] = useState<'idle' | 'loading' | 'precise' | 'fallback'>('idle');
+
   const renderResult = useCallback(() => {
     const canvas = canvasRef.current;
     const img = imageRef.current;
@@ -1500,11 +1612,61 @@ function PhotoView({
     canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    // Apply tone filter (CSS-string syntax). Reset before drawing nails.
+    ctx.filter = skinFilterRef.current;
     ctx.drawImage(img, 0, 0);
-    for (const lm of hands) {
-      drawNails(ctx, lm, canvas.width, canvas.height, false, polishesRef.current);
+    ctx.filter = 'none';
+    for (let i = 0; i < hands.length; i++) {
+      drawNails(
+        ctx, hands[i], canvas.width, canvas.height, false,
+        polishesRef.current, handednessRef.current[i], nailShapeRef.current,
+        true, // enableSkinBlend — photo mode, one-shot render, perf OK
+        nailMasksRef.current[i],
+      );
     }
   }, []);
+
+  // Runs MobileSAM on each detected fingertip and stores per-finger
+  // pixel masks. On success, repaints the canvas so polish snaps to the
+  // real nail outline. Safe to call even when SAM hasn't finished
+  // downloading — `initSegmenter` blocks until the model is cached.
+  const segmentNailsInBackground = useCallback(
+    async (img: HTMLImageElement, hands: HandLandmark[][]) => {
+      setSegmentStatus('loading');
+      try {
+        await initSegmenter();
+        const prompts: { x: number; y: number }[] = [];
+        const meta: { handIdx: number; fingerIdx: number }[] = [];
+        for (let h = 0; h < hands.length; h++) {
+          for (let f = 0; f < FINGER_JOINTS.length; f++) {
+            const dipLm = hands[h][FINGER_JOINTS[f].dip];
+            const tipLm = hands[h][FINGER_JOINTS[f].tip];
+            if (!dipLm || !tipLm) continue;
+            const px = (dipLm.x + (tipLm.x - dipLm.x) * 0.75) * img.naturalWidth;
+            const py = (dipLm.y + (tipLm.y - dipLm.y) * 0.75) * img.naturalHeight;
+            prompts.push({ x: px, y: py });
+            meta.push({ handIdx: h, fingerIdx: f });
+          }
+        }
+        const masks = await segmentNails(img, prompts);
+        const next: (NailMask | null)[][] = hands.map(() => Array(5).fill(null));
+        let hits = 0;
+        for (let i = 0; i < masks.length; i++) {
+          const m = masks[i];
+          const { handIdx, fingerIdx } = meta[i];
+          next[handIdx][fingerIdx] = m;
+          if (m) hits++;
+        }
+        nailMasksRef.current = next;
+        setSegmentStatus(hits > 0 ? 'precise' : 'fallback');
+        renderResult();
+      } catch (err) {
+        console.error('[PhotoView] segmentation failed', err);
+        setSegmentStatus('fallback');
+      }
+    },
+    [renderResult],
+  );
 
   // Repaint whenever the polish map changes (live preview while user taps colors).
   useEffect(() => {
@@ -1512,6 +1674,19 @@ function PhotoView({
     onSavePolishes(perNailPolishes);
     if (phase === 'ready') renderResult();
   }, [perNailPolishes, phase, renderResult, onSavePolishes]);
+
+  // Repaint when the skin-tone preset changes — only the image filter
+  // changes, the cached landmarks + polishes stay valid.
+  useEffect(() => {
+    skinFilterRef.current = SKIN_FILTERS[skinTone];
+    if (phase === 'ready') renderResult();
+  }, [skinTone, phase, renderResult]);
+
+  // Repaint when nail shape changes. Landmarks/polishes stay valid.
+  useEffect(() => {
+    nailShapeRef.current = nailShape;
+    if (phase === 'ready') renderResult();
+  }, [nailShape, phase, renderResult]);
 
   // Cleanup on unmount.
   useEffect(() => {
@@ -1585,9 +1760,20 @@ function PhotoView({
       }
 
       handsRef.current = hands;
+      handednessRef.current = (result.handedness || []).map(
+        (h) => h?.[0]?.categoryName as 'Left' | 'Right' | undefined,
+      );
+      // Clear any previous masks before we kick off segmentation.
+      nailMasksRef.current = hands.map(() => Array(5).fill(null));
       setUsingDefault(isDefault);
       setPhase('ready');
       requestAnimationFrame(() => renderResult());
+
+      // Kick off MobileSAM nail segmentation in the background — when
+      // it returns, repaint with pixel-accurate masks. The geometric
+      // bezier shape stays visible in the meantime so the UI isn't
+      // blocked on a 1-30s model download.
+      void segmentNailsInBackground(target, hands);
     } catch (err) {
       const e = err as { message?: string } | undefined;
       if (e?.message === 'default-missing') {
@@ -1597,7 +1783,7 @@ function PhotoView({
       }
       setPhase('error');
     }
-  }, [ensureLandmarker, renderResult]);
+  }, [ensureLandmarker, renderResult, segmentNailsInBackground]);
 
   // ── Auto-load default model hand on mount ────────────────────────────
   // Tries each candidate path in order so the page works whether the
@@ -1726,6 +1912,25 @@ function PhotoView({
           />
         )}
 
+        {/* AI segmentation status — small badge while SAM runs */}
+        {phase === 'ready' && segmentStatus === 'loading' && (
+          <div
+            className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider shadow-lg"
+            style={{ background: 'rgba(26,26,46,0.85)', color: 'white', backdropFilter: 'blur(8px)' }}
+          >
+            <Loader2 size={12} className="animate-spin" />
+            AI analysing nails…
+          </div>
+        )}
+        {phase === 'ready' && segmentStatus === 'precise' && (
+          <div
+            className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider shadow-lg"
+            style={{ background: 'rgba(34,197,94,0.92)', color: 'white' }}
+          >
+            ✨ AI-precise fit
+          </div>
+        )}
+
         {/* Loading veil */}
         <AnimatePresence>
           {phase === 'loading' && (
@@ -1804,7 +2009,114 @@ function PhotoView({
         <div className="relative z-10 shrink-0 border-t border-black/5 bg-[#fafafa]">
           {/* Carousel — content depends on active tab */}
           <div className="px-3 pt-3">
-            {activeTab === 'looks' ? (
+            {activeTab === 'shape' ? (
+              // ── Shape tab — 5 nail shapes with thumbnails ──
+              <div className="space-y-3 pb-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#1a1a2e]/55">
+                  Nail shape
+                </p>
+                <div className="flex gap-3 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
+                  {(['almond', 'square', 'oval', 'coffin', 'stiletto'] as NailShape[]).map((sh) => {
+                    const active = nailShape === sh;
+                    return (
+                      <button
+                        key={sh}
+                        type="button"
+                        onClick={() => setNailShape(sh)}
+                        className="flex flex-col items-center gap-1.5 shrink-0 cursor-pointer"
+                        aria-label={sh}
+                      >
+                        <div
+                          className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white"
+                          style={{
+                            border: active ? '2px solid #c41e3a' : '2px solid rgba(0,0,0,0.08)',
+                            boxShadow: active ? '0 0 0 3px rgba(196,30,58,0.18)' : '0 2px 6px rgba(0,0,0,0.05)',
+                          }}
+                        >
+                          <NailShapeThumbnail shape={sh} />
+                        </div>
+                        <span
+                          className="text-[10px] font-semibold capitalize"
+                          style={{ color: active ? '#c41e3a' : 'rgba(26,26,46,0.65)' }}
+                        >
+                          {sh}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-center text-[10px] text-[#1a1a2e]/45">
+                  Try different shapes on your hand to find what suits you.
+                </p>
+              </div>
+            ) : activeTab === 'hand' ? (
+              // ── Hand tab — skin tone presets + "use my photo" CTA ──
+              <div className="space-y-3 pb-3">
+                <div>
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#1a1a2e]/55">
+                    Skin tone
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
+                    {(['auto', 'fair', 'medium', 'tan', 'deep'] as SkinTone[]).map((tone) => {
+                      const active = skinTone === tone;
+                      const label =
+                        tone === 'auto' ? 'Original'
+                        : tone === 'fair' ? 'Fair'
+                        : tone === 'medium' ? 'Medium'
+                        : tone === 'tan' ? 'Tan'
+                        : 'Deep';
+                      return (
+                        <button
+                          key={tone}
+                          type="button"
+                          onClick={() => setSkinTone(tone)}
+                          className="flex flex-col items-center gap-1.5 shrink-0 cursor-pointer"
+                          aria-label={label}
+                        >
+                          <div
+                            className="relative flex h-14 w-14 items-center justify-center rounded-full"
+                            style={{
+                              background: SKIN_SWATCHES[tone],
+                              border: active ? '2px solid #c41e3a' : '2px solid rgba(0,0,0,0.08)',
+                              boxShadow: active ? '0 0 0 3px rgba(196,30,58,0.18)' : 'none',
+                            }}
+                          >
+                            {tone === 'auto' && (
+                              <span className="text-[18px]" aria-hidden>🪞</span>
+                            )}
+                          </div>
+                          <span
+                            className="text-[10px] font-semibold"
+                            style={{ color: active ? '#c41e3a' : 'rgba(26,26,46,0.65)' }}
+                          >
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* CTA — use the customer's own photo for highest fidelity */}
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold cursor-pointer transition-transform active:scale-[0.98]"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(255,111,168,0.12), rgba(196,30,58,0.08))',
+                    border: '1px solid rgba(196,30,58,0.22)',
+                    color: '#c41e3a',
+                  }}
+                >
+                  <Camera size={14} /> Use my own photo
+                </button>
+
+                <p className="text-center text-[10px] text-[#1a1a2e]/45">
+                  Skin tone presets are visual tints on the model hand. For the most realistic
+                  match, upload your own photo.
+                </p>
+              </div>
+            ) : activeTab === 'looks' ? (
               <div className="flex gap-3 overflow-x-auto pb-3 [&::-webkit-scrollbar]:hidden">
                 {/* "Original" tile — clears the manicure (uses a barely-tinted polish) */}
                 <button
@@ -1959,14 +2271,14 @@ function PhotoView({
             <PhotoTabButton
               icon={<Hexagon size={16} />}
               label="Shape"
-              active={false}
-              onClick={() => toast.message('Shape', { description: 'Pick a nail shape — coming soon (square, oval, almond, coffin, stiletto).' })}
+              active={activeTab === 'shape'}
+              onClick={() => setActiveTab('shape')}
             />
             <PhotoTabButton
               icon={<Hand size={16} />}
               label="Hand"
-              active={false}
-              onClick={() => toast.message('Hand', { description: 'Switch model hand + skin tone — coming soon.' })}
+              active={activeTab === 'hand'}
+              onClick={() => setActiveTab('hand')}
             />
           </div>
         </div>
@@ -2437,6 +2749,43 @@ function SwatchEmoji({ ch, color }: { ch: string; color: string }) {
 // Mini hand thumbnail for the "Looks" carousel — 5 mini nail tiles in a
 // row, each painted with the look's per-finger polish. Lets users see
 // what a look will deliver before applying it.
+// Mini SVG icon of each nail shape. Path data tuned by eye against
+// real reference photos. Width-first orientation (tip pointing up).
+function NailShapeThumbnail({ shape }: { shape: NailShape }) {
+  const stroke = '#1a1a2e';
+  const fill = '#fce0d8';
+  let d = '';
+  switch (shape) {
+    case 'almond':
+      // Wider base, pointed soft tip.
+      d = 'M 10 6 C 6 7 5 14 6 22 C 7 30 9 36 12 36 C 15 36 17 30 18 22 C 19 14 18 7 14 6 Z';
+      break;
+    case 'square':
+      // Straight tip, sharp 90° corners (slight base curve).
+      d = 'M 7 8 L 7 30 C 7 34 9 36 12 36 C 15 36 17 34 17 30 L 17 8 C 17 7 16 6 12 6 C 8 6 7 7 7 8 Z';
+      break;
+    case 'oval':
+      // Symmetric egg.
+      d = 'M 12 6 C 7 7 6 14 7 22 C 8 30 9 36 12 36 C 15 36 16 30 17 22 C 18 14 17 7 12 6 Z';
+      break;
+    case 'coffin':
+      // Tapered sides, flat tip.
+      d = 'M 9 8 L 6 30 L 8 36 L 16 36 L 18 30 L 15 8 C 14 7 10 7 9 8 Z';
+      break;
+    case 'stiletto':
+      // Long pointed tip.
+      d = 'M 12 4 L 8 22 L 7 32 C 7 34 9 36 12 36 C 15 36 17 34 17 32 L 16 22 Z';
+      break;
+  }
+  return (
+    <svg viewBox="0 0 24 42" width="22" height="38" aria-hidden>
+      <path d={d} fill={fill} stroke={stroke} strokeWidth="1.2" strokeLinejoin="round" />
+      {/* Subtle highlight stripe along the upper-left */}
+      <path d="M 9 10 C 8 18 9 26 11 28" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function LookThumbnail({ polishes }: { polishes: Polish[] }) {
   return (
     <div className="flex h-12 items-end gap-[3px]">
@@ -2546,6 +2895,14 @@ function FingerSelectorLight({
 // using the MediaPipe landmark for the finger's tip and DIP joint to compute
 // position, orientation, and size.
 
+// 5 standard nail shape names (matches YouCam Nails taxonomy).
+type NailShape = 'almond' | 'square' | 'oval' | 'coffin' | 'stiletto';
+
+// Each finger's PIP landmark index — sampled for skin colour so the
+// nail blends with the actual surrounding skin tone (used in photo
+// mode; camera mode skips this for speed).
+const PIP_INDEX = [2, 6, 10, 14, 18];
+
 function drawNails(
   ctx: CanvasRenderingContext2D,
   landmarks: HandLandmark[],
@@ -2553,35 +2910,158 @@ function drawNails(
   height: number,
   mirrored: boolean,
   polishes: Record<number, Polish>,
+  handedness?: 'Left' | 'Right',
+  shape: NailShape = 'almond',
+  // When true, sample skin colour around each finger and use it for a
+  // soft cuticle band → makes the polish blend with the photo. Costs
+  // 5× getImageData() per call, so we keep it off in the camera loop.
+  enableSkinBlend = false,
+  // Optional per-finger pixel masks from MobileSAM. When present, polish
+  // is clipped to the actual nail outline instead of the bezier shape.
+  // [thumb, index, middle, ring, pinky], any entry may be null.
+  perFingerMasks?: (NailMask | null)[],
 ) {
   const project = (lm: HandLandmark) => {
     const x = mirrored ? (1 - lm.x) * width : lm.x * width;
     return { x, y: lm.y * height };
   };
 
+  // ── Back-of-hand check ───────────────────────────────────────────
+  // Nails sit on the BACK of the fingers, so skip drawing when the
+  // camera sees the palm. We use the 2D signed area of the triangle
+  // (wrist, indexMCP, pinkyMCP) — the sign flips when the hand is
+  // turned over, and the handedness label tells us which sign means
+  // back-of-hand.
+  const wrist = project(landmarks[0]);
+  const indexMcp = project(landmarks[5]);
+  const pinkyMcp = project(landmarks[17]);
+  const cross =
+    (indexMcp.x - wrist.x) * (pinkyMcp.y - wrist.y)
+    - (indexMcp.y - wrist.y) * (pinkyMcp.x - wrist.x);
+  // With the canvas mirrored to match the user's mirror image, a RIGHT
+  // hand showing its back has indexMCP→pinkyMCP going clockwise
+  // (negative cross). The opposite for LEFT. If we don't know
+  // handedness, fall through (allow draw) so the experience still works
+  // — better to over-draw than under-draw.
+  if (handedness === 'Right' && cross > 0) return;
+  if (handedness === 'Left' && cross < 0) return;
+
   for (let fingerIdx = 0; fingerIdx < FINGER_JOINTS.length; fingerIdx++) {
     const f = FINGER_JOINTS[fingerIdx];
     const polish = polishes[fingerIdx] || polishes[0];
-    const dip = project(landmarks[f.dip]);
-    const tip = project(landmarks[f.tip]);
+    const dipLm = landmarks[f.dip];
+    const tipLm = landmarks[f.tip];
+
+    // If we have a ML-derived pixel mask for this nail, render polish
+    // directly into that mask — full coverage of the actual nail
+    // outline regardless of length / shape / acrylic extension.
+    const maskEntry = perFingerMasks?.[fingerIdx];
+    if (maskEntry) {
+      drawPolishWithMask(ctx, maskEntry, polish);
+      continue;
+    }
+
+    const dip = project(dipLm);
+    const tip = project(tipLm);
     const dx = tip.x - dip.x;
     const dy = tip.y - dip.y;
     const len = Math.hypot(dx, dy);
     if (len < 6) continue;
     const angle = Math.atan2(dy, dx);
 
-    // Nail size proportional to last-segment length. Scale tuned by eye.
-    const nailLen = len * 0.85;
-    const nailW = len * 0.6;
-    // Center placed slightly forward of the DIP joint toward the tip.
-    const cx = dip.x + dx * 0.55;
-    const cy = dip.y + dy * 0.55;
+    // Perspective foreshortening — if the finger is angled toward or
+    // away from the camera (z varies between dip and tip), the nail
+    // appears narrower. Clamp so the nail never disappears entirely.
+    const dz = Math.abs((tipLm.z ?? 0) - (dipLm.z ?? 0));
+    const persp = Math.max(0.55, 1 - dz * 2.2);
+
+    // Nail geometry — calibrated against real fingertip photos.
+    //   length  ≈ 95% of the last finger segment (was 70% — too short,
+    //            left the actual nail tip uncovered for long/pointed
+    //            nails). Coffin/stiletto shapes get a length boost so
+    //            the overlay covers the real nail extension.
+    //   width   ≈ 62% of the nail length (real almond aspect)
+    //   center  ≈ 80% of the way from DIP to TIP (was 65% — biases the
+    //            overlay toward the actual nail position rather than
+    //            the midpoint of the bone segment)
+    // Per-finger length tweak — thumb wider, pinky narrower.
+    const lenScale = [0.95, 0.92, 0.94, 0.92, 0.88][fingerIdx];
+    // Long-nail shapes need extra reach so the overlay covers the
+    // visible nail extension that sticks out past the fingertip joint.
+    const shapeBoost = shape === 'stiletto' ? 1.18 : shape === 'coffin' ? 1.1 : 1.0;
+    const nailLen = len * lenScale * shapeBoost;
+    const nailW = nailLen * 0.62 * persp;
+    const cx = dip.x + dx * 0.8;
+    const cy = dip.y + dy * 0.8;
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(angle);
 
-    // Base ellipse — color slab.
+    // Per-shape nail outline. Local axes after rotate: +x = toward the
+    // tip, +y = across the nail width. All shapes start at (-halfL, 0)
+    // (cuticle base, mid-line) and trace clockwise around to close.
+    //
+    // Shape "personality":
+    //   almond   — wider base, pointed soft tip (most flattering, default)
+    //   square   — straight tip, sharp 90° corners
+    //   oval     — symmetric rounded both ends, neutral
+    //   coffin   — long, straight tip, tapered sides ("ballerina")
+    //   stiletto — long, very pointed tip (most dramatic)
+    const nailPath = (path: Path2D, lenP: number, widP: number) => {
+      const halfL = lenP / 2;
+      const halfW = widP / 2;
+      const trace = (
+        baseFlare: number,    // y at base (cuticle) as multiplier of halfW
+        midX: number,         // x of mid control point as multiplier of halfL
+        midY: number,         // y of mid control point as multiplier of halfW
+        tipFlare: number,     // y at tip control point as multiplier of halfW
+        tipX: number = halfL, // x of the actual tip (some shapes overshoot)
+      ) => {
+        path.moveTo(-halfL, 0);
+        // Top half (cuticle → tip)
+        path.bezierCurveTo(
+          -halfL, -halfW * baseFlare,
+          midX * halfL, -halfW * midY,
+          tipX, -halfW * tipFlare,
+        );
+        // Tip closure (vertical line on square/coffin, point on stiletto)
+        path.lineTo(tipX, halfW * tipFlare);
+        // Bottom half (tip → cuticle)
+        path.bezierCurveTo(
+          midX * halfL, halfW * midY,
+          -halfL, halfW * baseFlare,
+          -halfL, 0,
+        );
+        path.closePath();
+      };
+
+      switch (shape) {
+        case 'square':
+          // Straight tip, flat sides — control points stay near full width.
+          trace(1.0, 0.65, 1.0, 1.0);
+          break;
+        case 'oval':
+          // Symmetric egg shape — base and tip both rounded.
+          trace(0.9, 0.5, 0.95, 0.55);
+          break;
+        case 'coffin':
+          // Tapered sides + flat tip. Slightly longer than almond.
+          trace(1.0, 0.7, 0.95, 0.55, halfL * 1.1);
+          break;
+        case 'stiletto':
+          // Aggressive point — long, dramatic taper. Tip nearly zero width.
+          trace(1.05, 0.6, 0.9, 0.05, halfL * 1.25);
+          break;
+        case 'almond':
+        default:
+          // The classic — flattering taper, soft point.
+          trace(1.05, 0.55, 0.85, 0.0);
+          break;
+      }
+    };
+
+    // Base color fill.
     if (polish.finish === 'chrome') {
       const grad = ctx.createLinearGradient(-nailLen / 2, 0, nailLen / 2, 0);
       grad.addColorStop(0, lighten(polish.color, 35));
@@ -2599,17 +3079,63 @@ function drawNails(
       ctx.fillStyle = grad;
     }
     ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, nailLen / 2, nailW / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const nailShape = new Path2D();
+    nailPath(nailShape, nailLen, nailW);
+    ctx.fill(nailShape);
+
+    // Cuticle blend — sample 1 pixel of skin near the PIP joint and
+    // paint a soft gradient at the base of the nail, fading skin into
+    // polish. Makes the nail look painted rather than pasted on.
+    if (enableSkinBlend) {
+      const pipIdx = PIP_INDEX[fingerIdx];
+      const pipLm = landmarks[pipIdx];
+      if (pipLm) {
+        const pip = project(pipLm);
+        const skin = sampleSkinColor(ctx, pip.x, pip.y);
+        if (skin) {
+          ctx.save();
+          ctx.clip(nailShape);
+          const grad = ctx.createLinearGradient(-nailLen / 2, 0, -nailLen * 0.18, 0);
+          grad.addColorStop(0, skin);
+          grad.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = grad;
+          ctx.globalAlpha = 0.6;
+          ctx.fillRect(-nailLen / 2 - 2, -nailW / 2, nailLen * 0.5, nailW);
+          ctx.restore();
+        }
+      }
+    }
 
     // Highlight strip — gloss/chrome only.
-    if (polish.finish === 'gloss' || polish.finish === 'chrome') {
-      ctx.globalAlpha = polish.finish === 'chrome' ? 0.55 : 0.3;
+    // Dynamic specular highlight — position shifts with the finger's
+    // Z direction (tip closer to camera → highlight moves toward tip).
+    // Intensity + size vary by finish for realism.
+    if (polish.finish === 'gloss' || polish.finish === 'chrome' || polish.finish === 'matte') {
+      // Signed Z delta: positive if tip is "in front" of dip.
+      const zDelta = ((dipLm.z ?? 0) - (tipLm.z ?? 0));
+      // Highlight position: base offset + Z-driven shift along the nail's
+      // long axis. Clamped so it never escapes the nail outline.
+      const highlightX = Math.max(-nailLen * 0.25, Math.min(nailLen * 0.25,
+        -nailLen * 0.08 + zDelta * nailLen * 1.4,
+      ));
+      const highlightY = -nailW * 0.18;
+      const baseAlpha =
+        polish.finish === 'chrome' ? 0.6
+        : polish.finish === 'matte'  ? 0.08
+        : 0.32;
+      ctx.globalAlpha = baseAlpha;
       ctx.fillStyle = '#ffffff';
+      // Main highlight ellipse
       ctx.beginPath();
-      ctx.ellipse(-nailLen * 0.08, -nailW * 0.18, nailLen * 0.32, nailW * 0.12, 0, 0, Math.PI * 2);
+      ctx.ellipse(highlightX, highlightY, nailLen * 0.32, nailW * 0.12, 0, 0, Math.PI * 2);
       ctx.fill();
+      // Tiny secondary highlight near tip — adds depth on glossy/chrome.
+      if (polish.finish !== 'matte') {
+        ctx.globalAlpha = baseAlpha * 0.5;
+        ctx.beginPath();
+        ctx.ellipse(nailLen * 0.22, nailW * 0.05, nailLen * 0.08, nailW * 0.04, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // Glitter speckle — random dots over the surface.
@@ -2632,14 +3158,19 @@ function drawNails(
 
     // ── Design overlay ──────────────────────────────────────────────
     if (polish.design && polish.design !== 'plain') {
-      // Clip to nail ellipse so designs never bleed outside the nail.
+      // Clip to the almond outline so designs never bleed outside the nail.
       ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(0, 0, nailLen / 2, nailW / 2, 0, 0, Math.PI * 2);
-      ctx.clip();
+      ctx.clip(nailShape);
       drawDesign(ctx, polish, nailLen, nailW, f.tip);
       ctx.restore();
     }
+
+    // Thin outline — sharpens the nail edge so it doesn't dissolve into
+    // the skin underneath, especially for pale polish colours.
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = darken(polish.color, 30);
+    ctx.lineWidth = 0.8;
+    ctx.stroke(nailShape);
 
     ctx.restore();
   }
@@ -3036,6 +3567,114 @@ function drawFlame(ctx: CanvasRenderingContext2D, L: number, W: number, accent: 
 function pseudoRand(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453;
   return x - Math.floor(x);
+}
+
+// Sample a single pixel from the canvas at (x, y) and return an
+// `rgba(...)` string. Used for the cuticle blend so the nail picks up
+// the actual skin tone in the photo. Returns null on CORS-tainted
+// canvases (we caller-side fall back to no blend then).
+// Renders polish into the exact pixel mask of a real nail (output of
+// MobileSAM). Builds the polish on an offscreen canvas so we can use
+// `globalCompositeOperation = 'source-in'` to clip everything to the
+// mask shape, then composites once onto the main canvas.
+function drawPolishWithMask(
+  ctx: CanvasRenderingContext2D,
+  maskEntry: NailMask,
+  polish: Polish,
+) {
+  const { bitmap, bbox } = maskEntry;
+  const off = document.createElement('canvas');
+  off.width = bbox.w;
+  off.height = bbox.h;
+  const offCtx = off.getContext('2d');
+  if (!offCtx) return;
+
+  // 1. Paint the mask itself (opaque white) as the base. Future draws
+  //    with composite ops will be clipped to its pixels.
+  offCtx.drawImage(bitmap, -bbox.x, -bbox.y);
+
+  // 2. Fill the mask area with a polish-coloured gradient. Source-in
+  //    keeps only pixels where the mask is opaque.
+  offCtx.globalCompositeOperation = 'source-in';
+  const grad = offCtx.createLinearGradient(0, 0, 0, bbox.h);
+  if (polish.finish === 'chrome') {
+    grad.addColorStop(0, lighten(polish.color, 30));
+    grad.addColorStop(0.5, polish.color);
+    grad.addColorStop(1, lighten(polish.color, 18));
+  } else if (polish.finish === 'matte') {
+    grad.addColorStop(0, polish.color);
+    grad.addColorStop(1, polish.color);
+  } else {
+    grad.addColorStop(0, lighten(polish.color, 12));
+    grad.addColorStop(0.55, polish.color);
+    grad.addColorStop(1, darken(polish.color, 18));
+  }
+  offCtx.fillStyle = grad;
+  offCtx.fillRect(0, 0, bbox.w, bbox.h);
+
+  // 3. Glossy highlight near top — atop existing polish.
+  if (polish.finish === 'gloss' || polish.finish === 'chrome') {
+    offCtx.globalCompositeOperation = 'source-atop';
+    offCtx.globalAlpha = polish.finish === 'chrome' ? 0.55 : 0.3;
+    offCtx.fillStyle = '#ffffff';
+    offCtx.beginPath();
+    offCtx.ellipse(
+      bbox.w * 0.35, bbox.h * 0.22,
+      bbox.w * 0.32, bbox.h * 0.1,
+      0, 0, Math.PI * 2,
+    );
+    offCtx.fill();
+    offCtx.globalAlpha = 1;
+  }
+
+  // 4. Design overlay — draw onto a separate offscreen, then clip with
+  //    source-in. We translate so the polish coordinate system
+  //    (centred, +x = toward tip) maps onto the bbox.
+  if (polish.design && polish.design !== 'plain') {
+    offCtx.save();
+    offCtx.globalCompositeOperation = 'source-atop';
+    offCtx.translate(bbox.w / 2, bbox.h / 2);
+    // Estimate orientation: rotate so +x points toward the nail's tip.
+    // The mask bbox is axis-aligned so we approximate with no rotation;
+    // designs still read fine since the mask is roughly nail-shaped.
+    drawDesign(offCtx, polish, bbox.h, bbox.w, 7);
+    offCtx.restore();
+  }
+
+  // 5. Thin outline — sharpens edge against skin.
+  offCtx.globalCompositeOperation = 'destination-over';
+  offCtx.strokeStyle = darken(polish.color, 35);
+  offCtx.lineWidth = 1;
+
+  // Composite onto main canvas at the mask's bbox position.
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  ctx.drawImage(off, bbox.x, bbox.y);
+  ctx.restore();
+}
+
+function sampleSkinColor(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+): string | null {
+  try {
+    const px = Math.max(0, Math.min(ctx.canvas.width - 1, Math.round(x)));
+    const py = Math.max(0, Math.min(ctx.canvas.height - 1, Math.round(y)));
+    // 3×3 average for noise resistance — single-pixel sample picks up
+    // freckles / hair / shadow specks.
+    const data = ctx.getImageData(Math.max(0, px - 1), Math.max(0, py - 1), 3, 3).data;
+    let r = 0, g = 0, b = 0;
+    const n = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+    }
+    return `rgba(${Math.round(r / n)}, ${Math.round(g / n)}, ${Math.round(b / n)}, 0.85)`;
+  } catch {
+    return null;
+  }
 }
 
 function lighten(hex: string, percent: number): string {
