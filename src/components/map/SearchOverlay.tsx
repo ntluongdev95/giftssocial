@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, X, MapPin, Store, Users, Calendar, Globe, Loader2, Star, Clock, Shield, Navigation, History, Trash2 } from 'lucide-react';
+import { Search, X, MapPin, Store, Users, Calendar, Globe, Loader2, Star, Clock, Shield, Navigation, History, Trash2, Hash } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import { useSearch } from '@/hooks/useSearch';
 
 const TABS = [
   { id: 'top', label: 'Top', Icon: Search },
+  { id: 'tags', label: 'Tags', Icon: Hash },
   { id: 'people', label: 'People', Icon: Users },
   { id: 'businesses', label: 'Businesses', Icon: Store },
   { id: 'events', label: 'Events', Icon: Calendar },
@@ -16,7 +18,7 @@ const TABS = [
 
 interface SearchResult {
   id: string;
-  type: 'people' | 'business' | 'event' | 'circle' | 'place';
+  type: 'people' | 'business' | 'event' | 'circle' | 'place' | 'tag';
   title: string;
   subtitle?: string;
   image?: string;
@@ -28,6 +30,7 @@ interface SearchResult {
   startTime?: string;
   status?: string;
   memberCount?: number;
+  slug?: string;
 }
 
 interface SearchOverlayProps {
@@ -64,6 +67,7 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
   const { query, tab, results, loading, handleInput, handleTabChange, clear } = useSearch();
   const [history, setHistory] = useState<SearchResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     if (isOpen) {
@@ -77,6 +81,12 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
 
   const handleSelect = (item: SearchResult, action: 'detail' | 'flyto') => {
     addToHistory(item);
+    // Tags bypass the map/detail dispatch and go straight to the topic page.
+    if (item.type === 'tag' && item.slug) {
+      router.push(`/t/${item.slug}`);
+      onClose();
+      return;
+    }
     onSelect(item, action);
     onClose();
   };
@@ -205,6 +215,9 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
           {/* Top tab — grouped sections */}
           {groupedTop && query && (
             <>
+              {groupedTop.tags?.length > 0 && (
+                <ResultSection title="Tags" icon={<Hash size={12} />} color="#ec4899" items={groupedTop.tags} onSelect={handleSelect} onMore={() => handleTabChange('tags')} />
+              )}
               {groupedTop.people?.length > 0 && (
                 <ResultSection title="People" icon={<Users size={12} />} color="#3b82f6" items={groupedTop.people} onSelect={handleSelect} onMore={() => handleTabChange('people')} />
               )}
@@ -264,13 +277,15 @@ function ResultSection({ title, icon, color, items, onSelect, onMore }: {
 
 /* ── Single result item ── */
 function ResultItem({ item, onSelect }: { item: SearchResult; onSelect: (r: SearchResult, action: 'detail' | 'flyto') => void }) {
-  const isEntity = item.type !== 'place';
+  // Place → flyTo, tag → topic page (handled in handleSelect), entity → detail.
+  const isEntity = item.type !== 'place' && item.type !== 'tag';
   const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
     people: { icon: <Users size={14} />, color: '#3b82f6' },
     business: { icon: <Store size={14} />, color: '#22c55e' },
     event: { icon: <Calendar size={14} />, color: '#ef4444' },
     circle: { icon: <Shield size={14} />, color: '#a855f7' },
     place: { icon: <MapPin size={14} />, color: '#f59e0b' },
+    tag: { icon: <Hash size={14} />, color: '#ec4899' },
   };
   const config = typeConfig[item.type] || typeConfig.place;
 

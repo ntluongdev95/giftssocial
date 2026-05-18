@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20'), 50);
 
   if (!q || q.length < 1) {
-    return NextResponse.json({ data: { people: [], businesses: [], events: [], circles: [], places: [] } });
+    return NextResponse.json({ data: { people: [], businesses: [], events: [], circles: [], places: [], tags: [] } });
   }
 
   // Sanitize: escape SQL LIKE wildcards in user input
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   const peopleVisibility = buildLocationVisibilityClause('users', viewerId);
 
   try {
-    const results: Record<string, unknown[]> = { people: [], businesses: [], events: [], circles: [], places: [] };
+    const results: Record<string, unknown[]> = { people: [], businesses: [], events: [], circles: [], places: [], tags: [] };
     let dbError: string | null = null;
 
     const queries: Promise<void>[] = [];
@@ -148,6 +148,31 @@ export async function GET(req: NextRequest) {
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             memberCount: r.member_count,
+          }));
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
+      );
+    }
+
+    // ── Tags (hashtags) ──
+    if (tab === 'top' || tab === 'tags') {
+      const tLimit = tab === 'top' ? 5 : limit;
+      // Match by raw query OR by leading `#tag` form, against slug or display_name.
+      const cleaned = q.replace(/^#/, '');
+      const escapedTag = cleaned.replace(/[%_]/g, '\\$&').toLowerCase();
+      const tagPattern = `%${escapedTag}%`;
+      queries.push(
+        db.prepare(
+          `SELECT id, slug, display_name, use_count
+           FROM tags
+           WHERE LOWER(slug) LIKE ? OR LOWER(display_name) LIKE ?
+           ORDER BY use_count DESC
+           LIMIT ?`
+        ).bind(tagPattern, tagPattern, tLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+          results.tags = rows.map(r => ({
+            id: r.id, type: 'tag',
+            title: `#${r.display_name}`,
+            subtitle: `${r.use_count} ${(r.use_count as number) === 1 ? 'post' : 'posts'}`,
+            slug: r.slug,
           }));
         }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
       );

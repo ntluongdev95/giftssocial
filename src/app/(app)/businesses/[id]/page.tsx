@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { format, formatDistanceToNow } from 'date-fns';
-import { ArrowLeft, Bookmark, ChevronDown, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Bookmark, ChevronDown, MessageCircle, MapPin, Star } from 'lucide-react';
 import TrustLevelPill from '@/components/trust/TrustLevelPill';
 import TrustBadgeRow from '@/components/trust/TrustBadgeRow';
 import OfferCard from '@/components/cards/OfferCard';
@@ -168,111 +168,185 @@ export default function BusinessDetailPage() {
   const catIcon = categoryIcons[business.category.toLowerCase()] || '🏢';
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto pb-24">
-      {/* Hero */}
-      <div className="relative flex h-[200px] items-center justify-center bg-gradient-to-b from-[#0a0b0f] to-[#111318]">
-        <span className="text-6xl">{catIcon}</span>
+    <div className="flex h-full flex-col overflow-y-auto pb-24 lg:pb-12">
+      {/* Mobile back button — overlays the hero on small screens. */}
+      <button
+        onClick={() => router.back()}
+        className="lg:hidden absolute left-4 top-[calc(env(safe-area-inset-top,44px)+4px)] z-30 flex h-9 w-9 items-center justify-center rounded-full bg-[#0a0b0f]/60 backdrop-blur"
+      >
+        <ArrowLeft size={16} className="text-[#f0f4ff]" />
+      </button>
 
-        {/* Back button */}
+      {/* Desktop back nav — sticky bar so it doesn't fight with the hero. */}
+      <div className="hidden lg:block lg:max-w-6xl lg:mx-auto lg:w-full lg:px-8 lg:pt-6">
         <button
           onClick={() => router.back()}
-          className="absolute left-4 top-[calc(env(safe-area-inset-top,44px)+4px)] flex h-8 w-8 items-center justify-center rounded-full bg-[#0a0b0f]/60 backdrop-blur"
+          className="flex items-center gap-2 text-sm text-[#a3adc3] hover:text-white cursor-pointer transition-colors"
         >
-          <ArrowLeft size={16} className="text-[#f0f4ff]" />
+          <ArrowLeft size={16} /> Back
         </button>
       </div>
 
-      {/* Content */}
-      <div className="space-y-4 px-4 pt-4">
-        {/* Name + status */}
-        <div>
-          <h1 className="text-2xl font-bold text-[#f0f4ff]">{business.name}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="rounded-full bg-[#111318] px-2 py-0.5 text-[10px] font-medium text-[#4a5068]">
-              {business.category}
-            </span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                business.open_now
-                  ? 'bg-[#22C55E]/15 text-[#22C55E]'
-                  : 'bg-[#EF4444]/15 text-[#EF4444]'
-              }`}
-            >
-              {business.open_now ? '🟢 Open now' : '🔴 Closed'}
-            </span>
-          </div>
-        </div>
-
-        {/* Trust row */}
-        <div className="flex flex-wrap items-center gap-2">
-          <TrustLevelPill
-            level={business.trust_level}
-            score={business.trust_score}
-          />
-          <TrustBadgeRow badges={business.badges} />
-          <span className="text-xs text-[#4a5068]">
-            {business.proof_count} proofs
-            {business.rating_avg ? ` · ★ ${business.rating_avg}` : ''}
-            {business.rating_count > 0
-              ? ` · ${Math.round(
-                  ((business.rating_count - 0) / business.rating_count) * 100
-                )}% completion`
-              : ''}
-          </span>
-        </div>
-
-        {/* Active offers */}
-        {offers.length > 0 && (
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-[#f0f4ff]">
-              Active Offers
-            </h2>
-            <div className="space-y-2">
-              {offers.map((s) => (
-                <OfferCard
-                  key={s.id}
-                  signal={s}
-                  businessName={business.name}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Hours */}
-        {business.hours && Object.keys(business.hours).length > 0 && (
-          <HoursAccordion hours={business.hours} />
-        )}
-
-        {/* Description */}
-        {business.description && (
-          <div>
-            <h2 className="mb-1 text-sm font-semibold text-[#f0f4ff]">
-              About
-            </h2>
-            <p className="text-xs leading-relaxed text-[#f0f4ff]/70">
-              {business.description}
-            </p>
-          </div>
-        )}
-
-        {/* Recent Proofs */}
-        {proofs.length > 0 && (
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-[#f0f4ff]">
-              Recent Proofs
-            </h2>
-            <div className="rounded-xl border border-[#181c24]/20 bg-[#0a0b0f] px-4">
-              {proofs.slice(0, 5).map((p) => (
-                <ProofItem key={p.id} proof={p} />
-              ))}
-            </div>
-          </div>
-        )}
+      {/* MOBILE-ONLY hero strip — keeps the existing emoji card. */}
+      <div className="lg:hidden relative flex h-[200px] items-center justify-center bg-gradient-to-b from-[#0a0b0f] to-[#111318]">
+        <span className="text-6xl">{catIcon}</span>
       </div>
 
-      {/* Sticky CTA */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-[#181c24]/20 bg-[#0a0b0f]/95 px-4 py-3 backdrop-blur-xl">
+      {/* Desktop: 2-column grid. Mobile: stacks under the hero. */}
+      <div className="lg:max-w-6xl lg:mx-auto lg:w-full lg:px-8 lg:pt-4 lg:grid lg:grid-cols-[420px_1fr] lg:gap-8">
+        {/* ─── LEFT (desktop sticky): hero card + booking sidebar ─── */}
+        <aside className="hidden lg:flex lg:flex-col lg:gap-4 lg:sticky lg:top-6 lg:self-start">
+          <div className="relative flex h-[320px] items-center justify-center rounded-3xl bg-gradient-to-b from-[#0a0b0f] to-[#111318] overflow-hidden border border-[rgba(0,212,255,0.08)]">
+            <span className="text-8xl select-none">{catIcon}</span>
+          </div>
+
+          {/* Sticky booking card */}
+          <div
+            className="rounded-2xl p-5 space-y-3"
+            style={{
+              background: 'rgba(17,19,24,0.6)',
+              border: '1px solid rgba(0,212,255,0.1)',
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-white">Book a slot</div>
+              <span
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                  business.open_now
+                    ? 'bg-[#22C55E]/15 text-[#22C55E]'
+                    : 'bg-[#EF4444]/15 text-[#EF4444]'
+                }`}
+              >
+                {business.open_now ? 'Open now' : 'Closed'}
+              </span>
+            </div>
+            <button
+              onClick={() => setShowBooking(true)}
+              className="w-full rounded-xl bg-[#00d4ff] py-3 text-sm font-bold text-[#0a0b0f] hover:bg-[#00d4ff]/90 transition-colors cursor-pointer"
+            >
+              Book Now
+            </button>
+            <div className="flex gap-2">
+              <button className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-[#181c24] py-2.5 text-sm font-medium text-[#f0f4ff] hover:bg-[#111318] transition-colors cursor-pointer">
+                <MessageCircle size={14} /> Chat
+              </button>
+              <button className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#181c24] text-[#4a5068] hover:bg-[#111318] transition-colors cursor-pointer">
+                <Bookmark size={14} />
+              </button>
+            </div>
+
+            {/* Quick facts */}
+            <div className="pt-3 mt-1 space-y-2 border-t border-white/5">
+              {business.address && (
+                <div className="flex items-start gap-2 text-xs text-[#a3adc3]">
+                  <MapPin size={12} className="text-[#4a5068] mt-0.5 shrink-0" />
+                  <span className="leading-snug">{business.address}</span>
+                </div>
+              )}
+              {business.rating_avg && (
+                <div className="flex items-center gap-2 text-xs text-[#a3adc3]">
+                  <Star size={12} className="text-[#fbbf24]" fill="#fbbf24" />
+                  <span>
+                    {business.rating_avg} · {business.proof_count} proofs
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* ─── RIGHT (main content) ─── */}
+        <div className="space-y-4 px-4 pt-4 lg:px-0 lg:pt-0">
+          {/* Name + status */}
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-[#f0f4ff]">{business.name}</h1>
+            <div className="mt-1.5 flex items-center gap-2">
+              <span className="rounded-full bg-[#111318] px-2 py-0.5 text-[10px] font-medium text-[#4a5068]">
+                {business.category}
+              </span>
+              <span
+                className={`lg:hidden rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  business.open_now
+                    ? 'bg-[#22C55E]/15 text-[#22C55E]'
+                    : 'bg-[#EF4444]/15 text-[#EF4444]'
+                }`}
+              >
+                {business.open_now ? '🟢 Open now' : '🔴 Closed'}
+              </span>
+            </div>
+          </div>
+
+          {/* Trust row */}
+          <div className="flex flex-wrap items-center gap-2">
+            <TrustLevelPill
+              level={business.trust_level}
+              score={business.trust_score}
+            />
+            <TrustBadgeRow badges={business.badges} />
+            <span className="text-xs text-[#4a5068]">
+              {business.proof_count} proofs
+              {business.rating_avg ? ` · ★ ${business.rating_avg}` : ''}
+              {business.rating_count > 0
+                ? ` · ${Math.round(
+                    ((business.rating_count - 0) / business.rating_count) * 100
+                  )}% completion`
+                : ''}
+            </span>
+          </div>
+
+          {/* Active offers */}
+          {offers.length > 0 && (
+            <div>
+              <h2 className="mb-2 text-sm font-semibold text-[#f0f4ff]">
+                Active Offers
+              </h2>
+              <div className="space-y-2">
+                {offers.map((s) => (
+                  <OfferCard
+                    key={s.id}
+                    signal={s}
+                    businessName={business.name}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Hours */}
+          {business.hours && Object.keys(business.hours).length > 0 && (
+            <HoursAccordion hours={business.hours} />
+          )}
+
+          {/* Description */}
+          {business.description && (
+            <div>
+              <h2 className="mb-1 text-sm font-semibold text-[#f0f4ff]">
+                About
+              </h2>
+              <p className="text-sm leading-relaxed text-[#f0f4ff]/70">
+                {business.description}
+              </p>
+            </div>
+          )}
+
+          {/* Recent Proofs */}
+          {proofs.length > 0 && (
+            <div>
+              <h2 className="mb-2 text-sm font-semibold text-[#f0f4ff]">
+                Recent Proofs
+              </h2>
+              <div className="rounded-xl border border-[#181c24]/20 bg-[#0a0b0f] px-4">
+                {proofs.slice(0, 5).map((p) => (
+                  <ProofItem key={p.id} proof={p} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* MOBILE-only sticky bottom CTA. Desktop uses the sidebar card. */}
+      <div className="lg:hidden fixed bottom-16 left-0 right-0 z-40 border-t border-[#181c24]/20 bg-[#0a0b0f]/95 px-4 py-3 backdrop-blur-xl">
         <div className="flex gap-2">
           <button className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#181c24] py-2.5 text-sm font-medium text-[#f0f4ff] transition-colors hover:bg-[#111318]">
             <MessageCircle size={16} />

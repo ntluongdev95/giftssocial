@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getDB, genId } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
+import { extractTagsFromText, upsertAndLinkTags } from '@/lib/tags';
 
 // ─── POST /api/v1/reviews — Create review ────────────────────────────────
 
@@ -63,7 +64,22 @@ export async function POST(req: NextRequest) {
     // Update user reviews count
     await db.prepare("UPDATE users SET reviews_count = reviews_count + 1, updated_at = datetime('now') WHERE id = ?").bind(userId).run().catch(() => {});
 
-    return NextResponse.json({ data: row }, { status: 201 });
+    // Parse #hashtags from title+body and link to this review
+    const rawTags = extractTagsFromText(`${d.title} ${d.body}`);
+    let linkedTags: string[] = [];
+    if (rawTags.length > 0) {
+      try {
+        linkedTags = await upsertAndLinkTags(db, rawTags, {
+          type: 'review',
+          id,
+          authorId: userId,
+        });
+      } catch (e) {
+        console.error('[Reviews POST] tag link failed', e);
+      }
+    }
+
+    return NextResponse.json({ data: { ...row, tags: linkedTags } }, { status: 201 });
   } catch (err) {
     console.error('[Reviews POST]', err);
     return NextResponse.json({ error: { code: 'internal_error', message: 'Failed to create review' } }, { status: 500 });

@@ -26,6 +26,9 @@ import UserSheet from '@/components/map/UserSheet';
 import KissGlobe from '@/components/map/KissGlobe';
 import KissReplayOverlay from '@/components/map/KissReplayOverlay';
 import SearchOverlay from '@/components/map/SearchOverlay';
+import { StoriesRail } from '@/components/stories/StoriesRail';
+import { StoryComposer } from '@/components/stories/StoryComposer';
+import { useAuthStore, selectUserId } from '@/stores/auth-store';
 import type { Signal, Agent, Profile, Business, Event, Circle, EntityType, MapUser } from '@/types';
 
 // Dynamic import — MapLibre needs browser
@@ -144,6 +147,8 @@ export default function WorldPage() {
   // ── Search ──────────────────────────────────────────────────────────────
   const [searchFocused, setSearchFocused] = useState(false);
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
+  const [showStoryComposer, setShowStoryComposer] = useState(false);
+  const myUserId = useAuthStore(selectUserId);
   const [desktopHistory, setDesktopHistory] = useState<Array<Record<string, unknown>>>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const desktop = useSearch();
@@ -674,6 +679,14 @@ export default function WorldPage() {
 
           {/* Layer chips */}
           {showLayers && <LayerFilterPanel />}
+
+          {/* ── Stories rail ─ left-aligned on desktop, full-width on mobile */}
+          <div className="pointer-events-auto">
+            <StoriesRail
+              onOpenComposer={() => setShowStoryComposer(true)}
+              myUserId={myUserId ?? null}
+            />
+          </div>
         </div>
 
         {/* ── Bottom Summary ─────────────────────── */}
@@ -1025,6 +1038,12 @@ export default function WorldPage() {
           onClose={() => setSelectedMarker(null)}
         />
       )}
+
+      {/* Now Story composer */}
+      <StoryComposer
+        open={showStoryComposer}
+        onClose={() => setShowStoryComposer(false)}
+      />
 
       {/* Unified Search Overlay */}
       <SearchOverlay

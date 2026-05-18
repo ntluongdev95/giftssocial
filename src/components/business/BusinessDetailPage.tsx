@@ -12,6 +12,7 @@ import {
 import type { Business } from '@/types';
 import NailBookingModal from '@/components/booking/NailBookingModal';
 import AuthPopup from '@/components/ui/AuthPopup';
+import { StoryStack } from '@/components/stories/StoryStack';
 
 interface Props {
   business: Business;
@@ -173,6 +174,9 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
           {b.proof_count > 0 && <span className="text-xs text-[#4a5068]">· {b.proof_count} proofs</span>}
         </div>
       </div>
+
+      {/* Active Now stories at this venue */}
+      <StoryStack businessId={b.id} />
 
       {/* Open status */}
       <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.04)' }}>
