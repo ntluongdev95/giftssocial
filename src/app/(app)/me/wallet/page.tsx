@@ -134,6 +134,17 @@ export default function CustomerWalletPage() {
           <ArrowLeft size={16} />
         </button>
         <h1 className="text-lg font-bold">My Wallet</h1>
+        <button
+          onClick={() => router.push('/gift-cards/market')}
+          className="ml-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors"
+          style={{
+            background: 'rgba(236,72,153,0.12)',
+            color: '#ec4899',
+            border: '1px solid rgba(236,72,153,0.25)',
+          }}
+        >
+          <Sparkles size={12} /> Market
+        </button>
       </header>
 
       <div className="mx-auto max-w-6xl px-4 py-6 lg:px-8 lg:py-10">

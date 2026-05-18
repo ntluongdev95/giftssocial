@@ -13,6 +13,8 @@ interface BusinessRow {
   id: string;
   name: string;
   cover_image?: string;
+  // 1 once admin approves the marketplace_applications row for this biz.
+  marketplace_enabled?: number;
 }
 
 interface TemplateRow {
@@ -48,6 +50,10 @@ interface TemplateRow {
   expires_in_days: number;
   status: 'draft' | 'active' | 'paused' | 'archived';
   created_at: string;
+  // Marketplace (migration-017)
+  price?: number;
+  price_currency?: string;
+  is_listed_in_market?: number;
 }
 
 // Preset themes — one-tap apply to fill gradient/pattern/emoji.
@@ -648,6 +654,11 @@ function CreateForm({
   const [textColorName, setTextColorName] = useState(initial?.text_color_name || '');
   const [uploadingCover, setUploadingCover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Marketplace (migration-017) — opt-in toggle + price. Default currency is
+  // Gao Points so the marketplace works without external payment for MVP.
+  const [isListed, setIsListed] = useState<boolean>(!!initial?.is_listed_in_market);
+  const [price, setPrice] = useState<number>(initial?.price ?? 0);
+  const [priceCurrency, setPriceCurrency] = useState<string>(initial?.price_currency || 'USDC');
   // Customize popup — keeps the main form short. Opens a sheet with all
   // visual controls + their own live preview so the user never has to
   // scroll past basic fields just to tweak the design.
@@ -717,6 +728,9 @@ function CreateForm({
         max_claims: maxClaims,
         expires_in_days: expiresInDays,
         status: 'active' as const,
+        price,
+        price_currency: priceCurrency,
+        is_listed_in_market: isListed,
       };
       const url = isEdit ? `/api/v1/gift-cards/templates/${initial!.id}` : '/api/v1/gift-cards/templates';
       const method = isEdit ? 'PATCH' : 'POST';
@@ -973,6 +987,84 @@ function CreateForm({
               />
             </Field>
           </div>
+
+          {/* ── Marketplace listing ─────────────────────────────────────── */}
+          {(() => {
+            const approved = selectedBusiness?.marketplace_enabled === 1;
+            return (
+              <div
+                className="rounded-xl p-4 space-y-3"
+                style={
+                  approved
+                    ? { background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.12)' }
+                    : { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }
+                }
+              >
+                <label
+                  className={`flex items-start gap-3 ${approved ? 'cursor-pointer' : 'opacity-60'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isListed}
+                    onChange={e => setIsListed(e.target.checked)}
+                    disabled={!approved}
+                    className="mt-0.5 h-4 w-4 cursor-pointer accent-[#00d4ff] disabled:cursor-not-allowed"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-white">List on Gift Card Market</div>
+                    <div className="text-[11px] text-[#a3adc3] mt-0.5">
+                      Card appears on <code className="text-[#00d4ff]">/gift-cards/market</code> so users can
+                      discover it. Payment isn&apos;t enabled yet — price is display-only.
+                    </div>
+                  </div>
+                </label>
+
+                {!approved && (
+                  <a
+                    href="/me/marketplace"
+                    className="flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold cursor-pointer"
+                    style={{
+                      background: 'rgba(251,191,36,0.1)',
+                      color: '#fbbf24',
+                      border: '1px solid rgba(251,191,36,0.25)',
+                    }}
+                  >
+                    Apply for marketplace access →
+                  </a>
+                )}
+
+            {isListed && (
+              <div className="grid grid-cols-[1fr_120px] gap-2 pt-1">
+                <Field label="Price" hint="0 = free claim">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={price}
+                    onChange={e => setPrice(Number(e.target.value))}
+                    className="w-full rounded-lg px-3 py-2.5 text-sm"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Currency" hint="">
+                  <select
+                    value={priceCurrency}
+                    onChange={e => setPriceCurrency(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2.5 text-sm cursor-pointer"
+                    style={inputStyle}
+                  >
+                    <option value="USDC" style={{ background: '#0a0b0f' }}>USDC</option>
+                    <option value="USDT" style={{ background: '#0a0b0f' }}>USDT</option>
+                    <option value="GAO" style={{ background: '#0a0b0f' }}>GAO</option>
+                    <option value="VND" style={{ background: '#0a0b0f' }}>VND</option>
+                    <option value="USD" style={{ background: '#0a0b0f' }}>USD</option>
+                  </select>
+                </Field>
+              </div>
+            )}
+              </div>
+            );
+          })()}
 
         </div>
       </div>

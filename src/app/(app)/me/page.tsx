@@ -13,7 +13,7 @@ import {
   MapPin, CalendarCheck, Bot, Bookmark, Shield, Settings, LogOut,
   UserCheck, Store, Calendar, Users, Star, ChevronRight, QrCode,
   HelpCircle, Globe, Bell, Wallet, Award, Signal, Eye, EyeOff, RefreshCw, Clock, Gift,
-  Plus, X as XIcon, Search, Megaphone,
+  Plus, X as XIcon, Search, Megaphone, ShoppingBag, ShieldCheck,
 } from 'lucide-react';
 
 const fetcher = (url: string) => fetch(url, {
@@ -75,6 +75,9 @@ export default function MePage() {
   const userPhotos: string[] = meData?.data?.photos || [];
   const locationSharing: string = meData?.data?.location_sharing || 'off';
   const locationSharedUntil: string | null = meData?.data?.location_shared_until || null;
+  // is_admin is server-set via migration-018; only flips when staff updates
+  // the row manually. Used to gate the Admin Console entry below.
+  const isAdmin: boolean = meData?.data?.is_admin === 1;
   const locationVisible = locationSharing !== 'off';
   const audience: 'off' | 'everyone' | 'friends' | 'circles' | 'specific' =
     locationSharing === 'friends' ? 'friends'
@@ -344,7 +347,8 @@ export default function MePage() {
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
           <ActivityRow icon={<span className="text-base">🪦</span>} label="Time Capsules" value="Bury memories" href="/me/capsules" onClick={() => router.push('/me/capsules')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
-          <ActivityRow icon={<Gift size={16} />} label="My Wallet" value="Claimed gift cards" href="/me/wallet" onClick={() => router.push('/me/wallet')} last />
+          <ActivityRow icon={<Gift size={16} />} label="My Wallet" value="Claimed gift cards" href="/me/wallet" onClick={() => router.push('/me/wallet')} />
+          <ActivityRow icon={<ShoppingBag size={16} />} label="Gift Card Market" value="Browse & claim cards" href="/gift-cards/market" onClick={() => router.push('/gift-cards/market')} last />
         </div>
 
         {/* Gao ID — additive canonical identity layer. Renders null when
@@ -359,6 +363,7 @@ export default function MePage() {
           <ActivityRow icon={<UserCheck size={16} />} label="Professional Profile" href="/me/profile" onClick={() => router.push('/me/profile')} />
           <ActivityRow icon={<Store size={16} />} label="My Business" href="/me/business" onClick={() => router.push('/me/business')} />
           <ActivityRow icon={<Gift size={16} />} label="Gift Cards" value="Drops & vouchers" href="/me/gift-cards" onClick={() => router.push('/me/gift-cards')} />
+          <ActivityRow icon={<ShieldCheck size={16} />} label="Marketplace Access" value="Apply to list on market" href="/me/marketplace" onClick={() => router.push('/me/marketplace')} />
           <ActivityRow icon={<Calendar size={16} />} label="Create Event" href="/me/events" onClick={() => router.push('/me/events')} />
           <ActivityRow
             icon={<Megaphone size={16} />}
@@ -378,6 +383,23 @@ export default function MePage() {
           />
           <ActivityRow icon={<Bot size={16} />} label="My Agents" href="#" onClick={() => {}} last />
         </div>
+
+        {/* Admin — only rendered when users.is_admin = 1 */}
+        {isAdmin && (
+          <>
+            <SectionTitle>Admin</SectionTitle>
+            <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)' }}>
+              <ActivityRow
+                icon={<ShieldCheck size={16} />}
+                label="Marketplace Applications"
+                value="Review pending merchants"
+                href="/admin/marketplace"
+                onClick={() => router.push('/admin/marketplace')}
+                last
+              />
+            </div>
+          </>
+        )}
 
         {/* Privacy */}
         {isAuthed && (
@@ -497,6 +519,7 @@ export default function MePage() {
                 <ActivityCard icon={<span className="text-lg leading-none">🪦</span>} label="Time Capsules" value="Bury memories" color="#94a3b8" onClick={() => router.push('/me/capsules')} />
                 <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" onClick={() => {}} />
                 <ActivityCard icon={<Gift size={18} />} label="My Wallet" value="Claimed gift cards" color="#00d4ff" onClick={() => router.push('/me/wallet')} />
+                <ActivityCard icon={<ShoppingBag size={18} />} label="Gift Card Market" value="Browse & claim cards" color="#ec4899" onClick={() => router.push('/gift-cards/market')} />
                 <ActivityCard icon={<Award size={18} />} label="Trust & Badges" value="Build reputation" color="#34d399" onClick={() => {}} />
               </div>
             </div>
@@ -507,6 +530,7 @@ export default function MePage() {
                 <ManageCard icon={<UserCheck size={20} />} label="Professional Profile" sub="Edit your CV" href="/me/profile" onClick={() => router.push('/me/profile')} />
                 <ManageCard icon={<Store size={20} />} label="My Business" sub="Manage your store" href="/me/business" onClick={() => router.push('/me/business')} />
                 <ManageCard icon={<Gift size={20} />} label="Gift Cards" sub="Drops & vouchers" href="/me/gift-cards" onClick={() => router.push('/me/gift-cards')} />
+                <ManageCard icon={<ShieldCheck size={20} />} label="Marketplace Access" sub="Apply to list on market" href="/me/marketplace" onClick={() => router.push('/me/marketplace')} />
                 <ManageCard icon={<Calendar size={20} />} label="Create Event" sub="Host an event" href="/me/events" onClick={() => router.push('/me/events')} />
                 <ManageCard
                   icon={<Megaphone size={20} />}
@@ -526,6 +550,21 @@ export default function MePage() {
                 />
               </div>
             </div>
+
+            {isAdmin && (
+              <div>
+                <SectionTitle>Admin</SectionTitle>
+                <div className="grid grid-cols-3 gap-3">
+                  <ManageCard
+                    icon={<ShieldCheck size={20} />}
+                    label="Marketplace Applications"
+                    sub="Review pending merchants"
+                    href="/admin/marketplace"
+                    onClick={() => router.push('/admin/marketplace')}
+                  />
+                </div>
+              </div>
+            )}
 
             {isAuthed && (
               <div>

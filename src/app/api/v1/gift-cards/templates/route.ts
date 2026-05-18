@@ -70,6 +70,12 @@ const createSchema = z.object({
   ends_at: z.string().optional(),
   expires_in_days: z.number().int().positive().max(3650).default(30),
   status: z.enum(['draft', 'active']).default('active'),
+  // Marketplace (migration-017). Price is currency-agnostic; default currency
+  // is Gao Points. is_listed_in_market controls whether this template shows
+  // on the public /gift-cards/market browse page.
+  price: z.number().nonnegative().default(0),
+  price_currency: z.string().min(2).max(8).default('GAO'),
+  is_listed_in_market: z.boolean().default(false),
 });
 
 function genClaimToken(): string {
@@ -110,14 +116,29 @@ export async function POST(req: NextRequest) {
 
     // Permission: caller must own the business.
     const biz = await db
-      .prepare('SELECT id, owner_user_id FROM businesses WHERE id = ? AND status = ?')
+      .prepare('SELECT id, owner_user_id, marketplace_enabled FROM businesses WHERE id = ? AND status = ?')
       .bind(d.business_id, 'active')
-      .first<{ id: string; owner_user_id: string }>();
+      .first<{ id: string; owner_user_id: string; marketplace_enabled: number }>();
     if (!biz) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Business not found' } }, { status: 404 });
     }
     if (biz.owner_user_id !== userId) {
       return NextResponse.json({ error: { code: 'forbidden', message: 'You do not own this business' } }, { status: 403 });
+    }
+
+    // Marketplace gate: require manual approval before listing publicly. The
+    // template itself is still created (claimable via QR/link); only the
+    // public listing flag is forced off.
+    if (d.is_listed_in_market && biz.marketplace_enabled !== 1) {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'marketplace_not_approved',
+            message: 'Apply for marketplace access first at /me/marketplace',
+          },
+        },
+        { status: 403 },
+      );
     }
 
     const id = genId('gct_');
@@ -130,8 +151,9 @@ export async function POST(req: NextRequest) {
           service_name, currency, cover_image, gradient_from, gradient_to, claim_token,
           max_claims, one_per_user, starts_at, ends_at, expires_in_days, status,
           pattern, icon_emoji, tagline,
-          text_color, text_color_business, text_color_value, text_color_name)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          text_color, text_color_business, text_color_value, text_color_name,
+          price, price_currency, is_listed_in_market)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .bind(
         id, d.business_id, userId, d.name, d.description, d.type,
@@ -145,7 +167,8 @@ export async function POST(req: NextRequest) {
         d.text_color ?? null,
         d.text_color_business ?? null,
         d.text_color_value ?? null,
-        d.text_color_name ?? null
+        d.text_color_name ?? null,
+        d.price, d.price_currency, d.is_listed_in_market ? 1 : 0
       )
       .run();
 

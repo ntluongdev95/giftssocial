@@ -3,6 +3,46 @@ import { z } from 'zod';
 import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 
+// ─── GET /api/v1/gift-cards/templates/[id] ────────────────────────────────
+// Owner: full row, any status.
+// Public: only when is_listed_in_market = 1 AND status = 'active'.
+// Otherwise 404 to avoid leaking template existence.
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const viewerId = await resolveUserId(req).catch(() => null);
+    const db = getDB();
+    const row = await db
+      .prepare(
+        `SELECT t.*, b.name AS business_name, b.cover_image AS business_cover,
+                b.city AS business_city, b.category AS business_category
+         FROM gift_card_templates t
+         LEFT JOIN businesses b ON b.id = t.business_id
+         WHERE t.id = ?`
+      )
+      .bind(id)
+      .first<Record<string, unknown>>();
+    if (!row) {
+      return NextResponse.json({ error: { code: 'not_found' } }, { status: 404 });
+    }
+    const isOwner = !!viewerId && row.owner_user_id === viewerId;
+    const isPublic = row.is_listed_in_market === 1 && row.status === 'active';
+    if (!isOwner && !isPublic) {
+      return NextResponse.json({ error: { code: 'not_found' } }, { status: 404 });
+    }
+    return NextResponse.json(
+      { data: row },
+      { headers: { 'Cache-Control': isPublic ? 'public, s-maxage=30, stale-while-revalidate=60' : 'private, no-store' } }
+    );
+  } catch (err) {
+    console.error('[GiftCard template GET]', err);
+    return NextResponse.json(
+      { error: { code: 'internal_error', message: 'Failed to fetch template' } },
+      { status: 500 }
+    );
+  }
+}
+
 // ─── PATCH /api/v1/gift-cards/templates/[id] ──────────────────────────────
 // Owner-only edit. All fields optional; only sent fields are updated.
 
@@ -35,6 +75,10 @@ const updateSchema = z.object({
   ends_at: z.string().nullable().optional(),
   expires_in_days: z.number().int().positive().max(3650).optional(),
   status: z.enum(['draft', 'active', 'paused', 'archived']).optional(),
+  // Marketplace
+  price: z.number().nonnegative().optional(),
+  price_currency: z.string().min(2).max(8).optional(),
+  is_listed_in_market: z.boolean().optional(),
 });
 
 async function assertOwner(req: NextRequest, id: string) {
@@ -68,6 +112,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       );
     }
     const d = parsed.data;
+
+    // Marketplace gate: trying to flip is_listed_in_market=true requires the
+    // owning business to be approved.
+    if (d.is_listed_in_market === true) {
+      const tpl = await db
+        .prepare('SELECT business_id FROM gift_card_templates WHERE id = ?')
+        .bind(id)
+        .first<{ business_id: string }>();
+      if (tpl) {
+        const biz = await db
+          .prepare('SELECT marketplace_enabled FROM businesses WHERE id = ?')
+          .bind(tpl.business_id)
+          .first<{ marketplace_enabled: number }>();
+        if (!biz || biz.marketplace_enabled !== 1) {
+          return NextResponse.json(
+            {
+              error: {
+                code: 'marketplace_not_approved',
+                message: 'Apply for marketplace access first at /me/marketplace',
+              },
+            },
+            { status: 403 },
+          );
+        }
+      }
+    }
+
     const fields: string[] = [];
     const values: unknown[] = [];
     for (const [k, v] of Object.entries(d)) {

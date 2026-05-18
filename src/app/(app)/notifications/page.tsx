@@ -52,6 +52,9 @@ const ICON_MAP: Record<string, { icon: React.ReactNode; color: string }> = {
   new_message: { icon: <MessageCircle size={16} />, color: '#3B82F6' },
   capsule_received: { icon: <span className="text-base leading-none">💌</span>, color: '#a855f7' },
   capsule_opened: { icon: <span className="text-base leading-none">💝</span>, color: '#ec4899' },
+  marketplace_application_pending: { icon: <Shield size={16} />, color: '#a855f7' },
+  marketplace_approved: { icon: <Shield size={16} />, color: '#34d399' },
+  marketplace_rejected: { icon: <Shield size={16} />, color: '#f87171' },
   system: { icon: <Bell size={16} />, color: '#4a5068' },
 };
 
@@ -94,6 +97,16 @@ export default function NotificationsPage() {
     // Capsule notifications — go to capsules list (server returns full capsule on PATCH open)
     if (n.type === 'capsule_received' || n.type === 'capsule_opened') {
       router.push('/me/capsules');
+      return;
+    }
+
+    // Marketplace gating notifications. Admin → review console; applicant → status page.
+    if (n.type === 'marketplace_application_pending') {
+      router.push('/admin/marketplace');
+      return;
+    }
+    if (n.type === 'marketplace_approved' || n.type === 'marketplace_rejected') {
+      router.push('/me/marketplace');
       return;
     }
 
