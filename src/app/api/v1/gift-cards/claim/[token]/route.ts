@@ -56,16 +56,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     if (!token) return NextResponse.json({ error: { code: 'invalid_token' } }, { status: 400 });
 
     const db = getDB();
+    // JOIN approved marketplace application to surface the biz's registered
+    // Gao domain — used by the wallet-payment flow to look up the recipient
+    // chain/address. A biz may have multiple applications over time; we take
+    // the most recent approved one.
     const t = await db
       .prepare(
-        `SELECT t.*, b.name AS business_name, b.cover_image AS business_cover
+        `SELECT t.*, b.name AS business_name, b.cover_image AS business_cover,
+                (
+                  SELECT a.gao_domain FROM marketplace_applications a
+                  WHERE a.business_id = t.business_id AND a.status = 'approved'
+                  ORDER BY a.reviewed_at DESC LIMIT 1
+                ) AS business_gao_domain
          FROM gift_card_templates t
          LEFT JOIN businesses b ON b.id = t.business_id
          WHERE t.claim_token = ?
          LIMIT 1`
       )
       .bind(token)
-      .first<TemplateRow>();
+      .first<TemplateRow & { business_gao_domain: string | null }>();
     if (!t) return NextResponse.json({ error: { code: 'not_found' } }, { status: 404 });
 
     let alreadyClaimed = false;

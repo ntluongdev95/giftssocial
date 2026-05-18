@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import AuthPopup from '@/components/ui/AuthPopup';
 import { GiftCardPreview, TYPE_LABEL, formatValue } from '@/components/gift-cards/GiftCardPreview';
 import ClaimCelebration from '@/components/gift-cards/ClaimCelebration';
+import { MarketplaceClaimFlow } from '@/components/gift-cards/MarketplaceClaimFlow';
 import { installCsrfInterceptor } from '@/lib/csrf-interceptor';
 import { csrfHeaders } from '@/lib/csrf-client';
 
@@ -50,6 +51,12 @@ interface TemplateRow {
   status: 'draft' | 'active' | 'paused' | 'archived';
   business_name: string | null;
   business_cover: string | null;
+  // Marketplace pricing (migration-017) + biz domain snapshot from approved
+  // marketplace application — drives the wallet-payment claim flow.
+  price?: number;
+  price_currency?: string;
+  is_listed_in_market?: number;
+  business_gao_domain?: string | null;
 }
 
 type Eligibility = 'ok' | 'not_active' | 'not_started' | 'ended' | 'sold_out' | 'already_claimed';
@@ -321,20 +328,34 @@ export default function GiftCardClaimPage() {
                 className="mt-6 lg:mt-7"
               >
                 {eligibility === 'ok' && (
-                  <button
-                    onClick={claim}
-                    disabled={claiming}
-                    className="relative w-full overflow-hidden rounded-2xl py-4 text-base font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed lg:py-4 lg:text-base"
-                    style={{ background: '#00d4ff', color: '#0a0b0f', boxShadow: '0 14px 40px -16px rgba(0,212,255,0.6)' }}
-                  >
-                    {claiming ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin" /> Claiming…
-                      </span>
-                    ) : (
-                      <>{isAuthed ? '🎁 Claim this card' : 'Sign in to claim'}</>
-                    )}
-                  </button>
+                  (t.price ?? 0) > 0 ? (
+                    // Marketplace-priced card → require wallet connect + pay
+                    // before claim. The flow component owns the connect /
+                    // resolve / pay UI; it calls back to `claim()` once paid.
+                    <MarketplaceClaimFlow
+                      price={t.price!}
+                      priceCurrency={t.price_currency || 'USDC'}
+                      businessName={t.business_name || 'Merchant'}
+                      businessGaoDomain={t.business_gao_domain ?? null}
+                      claiming={claiming}
+                      onConfirmedPaid={claim}
+                    />
+                  ) : (
+                    <button
+                      onClick={claim}
+                      disabled={claiming}
+                      className="relative w-full overflow-hidden rounded-2xl py-4 text-base font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed lg:py-4 lg:text-base"
+                      style={{ background: '#00d4ff', color: '#0a0b0f', boxShadow: '0 14px 40px -16px rgba(0,212,255,0.6)' }}
+                    >
+                      {claiming ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 size={16} className="animate-spin" /> Claiming…
+                        </span>
+                      ) : (
+                        <>{isAuthed ? '🎁 Claim this card' : 'Sign in to claim'}</>
+                      )}
+                    </button>
+                  )
                 )}
 
                 {eligibility !== 'ok' && (
