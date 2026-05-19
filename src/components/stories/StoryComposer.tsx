@@ -372,7 +372,7 @@ export function StoryComposer({ open, onClose, onCreated }: Props) {
                 })}
               </div>
               <p className="text-[10px] text-[#4a5068] -mt-2">
-                Public requires trust score ≥ 10 — if you don't qualify, the story falls back to Friends.
+                Public requires trust score ≥ 10 — if you don&apos;t qualify, the story falls back to Friends.
               </p>
 
               {/* Location status */}

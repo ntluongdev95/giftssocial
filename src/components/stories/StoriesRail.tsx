@@ -67,9 +67,14 @@ export function StoriesRail({ onOpenComposer, myUserId }: Props) {
           // "your story" reminder for the author.
           const allSeen =
             !isMine && group.length > 0 && group.every(s => s.viewed_by_me === 1);
+          // Snapshot "now" once per render — re-renders pick up freshness
+          // naturally as the SWR feed refreshes. Acceptable impurity for a
+          // visual cue that doesn't drive any state.
+          // eslint-disable-next-line react-hooks/purity
+          const nowMs = Date.now();
           const expiresSoon =
             !allSeen &&
-            new Date(head.expires_at).getTime() - Date.now() < 4 * 3600 * 1000;
+            new Date(head.expires_at).getTime() - nowMs < 4 * 3600 * 1000;
 
           // Ring: gray gradient when seen, amber when expiring, cyan otherwise.
           const ringStyle = allSeen

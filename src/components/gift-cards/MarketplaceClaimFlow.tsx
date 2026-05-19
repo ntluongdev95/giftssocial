@@ -49,7 +49,10 @@ type Props = {
   onConfirmedPaid: () => Promise<void> | void;
 };
 
-type Step = 'idle' | 'connecting' | 'resolving' | 'ready' | 'paying' | 'paid' | 'error';
+// 'resolving' is derived in render from `isConnected && !mapping && step === 'connecting'`
+// — we don't keep it as an explicit state so we don't have to setState
+// synchronously inside the resolve effect.
+type Step = 'idle' | 'connecting' | 'ready' | 'paying' | 'paid' | 'error';
 
 export function MarketplaceClaimFlow(props: Props) {
   // Gate the inner mount on the same dynamic-import promise that
@@ -115,12 +118,15 @@ function MarketplaceClaimFlowInner({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Once a wallet is connected and we have the business domain, fetch the
-  // recipient mapping. Triggered automatically — the user only sees one
-  // button at a time.
+  // recipient mapping. We don't flip to an intermediate 'resolving' state
+  // synchronously — instead, render derives the spinner from
+  // (isConnected && !mapping && step === 'connecting'). This keeps the
+  // effect free of synchronous setState calls (react-hooks/set-state-in-effect).
   useEffect(() => {
     if (!isConnected || !businessGaoDomain) return;
     if (step !== 'connecting' && step !== 'idle') return;
-    setStep('resolving');
+    if (mapping) return;
+    let cancelled = false;
     fetch(`/api/v1/marketplace/payment-mapping?gao_domain=${encodeURIComponent(businessGaoDomain)}`, {
       credentials: 'same-origin',
     })
@@ -130,14 +136,17 @@ function MarketplaceClaimFlowInner({
         return j.data as PaymentMapping;
       })
       .then(m => {
+        if (cancelled) return;
         setMapping(m);
         setStep('ready');
       })
       .catch(e => {
+        if (cancelled) return;
         setErrorMsg(e instanceof Error ? e.message : 'Failed to resolve payment address');
         setStep('error');
       });
-  }, [isConnected, businessGaoDomain, step]);
+    return () => { cancelled = true; };
+  }, [isConnected, businessGaoDomain, step, mapping]);
 
   async function connect() {
     setErrorMsg(null);
@@ -183,7 +192,9 @@ function MarketplaceClaimFlowInner({
     );
   }
 
-  if (step === 'idle' || step === 'connecting') {
+  // Pre-connect: show the Connect-wallet CTA. Once wallet connects we let
+  // the next render fall through to the `resolving` branch below.
+  if ((step === 'idle' || step === 'connecting') && !isConnected) {
     return (
       <button
         onClick={connect}
@@ -211,7 +222,9 @@ function MarketplaceClaimFlowInner({
     );
   }
 
-  if (step === 'resolving') {
+  // Derived: spinner shown while the mapping fetch is in flight.
+  const resolving = isConnected && !mapping && (step === 'connecting' || step === 'idle');
+  if (resolving) {
     return (
       <div className="rounded-2xl p-4 flex items-center gap-3"
         style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.2)' }}>
