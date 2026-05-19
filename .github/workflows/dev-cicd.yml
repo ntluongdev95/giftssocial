@@ -168,11 +168,18 @@ jobs:
       # (CLOUDFLARE_API_TOKEN) needs `Workers Scripts: Edit` to publish,
       # but the migration runner additionally needs `D1: Edit`. A token
       # missing the D1 scope returns 7403 "account not authorized" from
-      # the D1 query API. We probe with a no-op SELECT so a scope-limited
-      # token does not abort the whole deploy — instead we surface a
-      # high-visibility warning and let deploy continue against the
-      # existing schema. Operators see the warning in the run summary
-      # and can rotate the token to include D1: Edit.
+      # the D1 query API. We probe with a no-op SELECT so the failure is
+      # surfaced cleanly here rather than mid-migration.
+      #
+      # FAIL-CLOSED: if the probe fails, the job aborts before any
+      # migration apply or Worker deploy runs. The previous behaviour
+      # (skip-and-warn while still deploying the Worker) drifted the
+      # served bundle ahead of the D1 schema and broke authenticated
+      # gift-card / location-share flows — see incident 2026-05-12 where
+      # migrations 008–013 needed to be applied manually after the
+      # Worker had already been published. Operators must rotate
+      # CLOUDFLARE_API_TOKEN to include `Account → D1: Edit` before
+      # a new deploy can succeed.
       - name: Probe D1 access for migration runner
         if: steps.preflight.outputs.ready == 'true'
         id: d1probe
@@ -191,14 +198,19 @@ jobs:
             echo "✓ D1 token scope OK"
           else
             echo "d1_ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::CLOUDFLARE_API_TOKEN lacks D1 scope — migrations will be skipped on this deploy. The token must be regenerated with 'Account → D1: Edit' permission for auto-migrations to run on push to develop. Until then, run \`npm run db:migrate:dev\` manually with a properly-scoped token. Original wrangler error follows."
+            echo "::error::CLOUDFLARE_API_TOKEN lacks D1 scope. Deploy is BLOCKED to prevent Worker code from drifting ahead of the D1 schema. Rotate the token in 'Settings → Environments → development' to include 'Account → D1: Edit', then re-run this workflow. Original wrangler error follows."
             echo "$out"
+            exit 1
           fi
 
       # Apply pending D1 migrations to the dev database BEFORE publishing
       # the worker. Idempotent — re-runs are no-ops once `_migrations` is
       # caught up. Fail-fast within the runner: if migrations error for a
       # real reason (syntax / lock / data conflict), deploy is aborted.
+      #
+      # The `d1_ok == 'true'` guard is kept defensively so that, even if
+      # the probe step is ever softened back to non-fatal, this step
+      # still refuses to run without D1 scope.
       - name: Apply D1 migrations (env=dev)
         if: steps.preflight.outputs.ready == 'true' && steps.d1probe.outputs.d1_ok == 'true'
         env:
@@ -206,8 +218,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run db:migrate:dev
 
+      # Deploy is gated on d1_ok so the Worker is never published ahead
+      # of its schema. Belt-and-suspenders with the fail-closed probe.
       - name: Deploy to Cloudflare (env=dev)
-        if: steps.preflight.outputs.ready == 'true'
+        if: steps.preflight.outputs.ready == 'true' && steps.d1probe.outputs.d1_ok == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
