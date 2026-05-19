@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, X, MapPin, Store, Users, Calendar, Globe, Loader2, Star, Clock, Shield, Navigation, History, Trash2, Hash } from 'lucide-react';
+import { Search, X, MapPin, Store, Users, Calendar, Globe, Loader2, Star, Clock, Shield, Navigation, History, Trash2, Hash, Route, Map as MapIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/hooks/useSearch';
 
 const TABS = [
   { id: 'top', label: 'Top', Icon: Search },
+  { id: 'trips', label: 'Trips', Icon: MapIcon },
   { id: 'tags', label: 'Tags', Icon: Hash },
   { id: 'people', label: 'People', Icon: Users },
   { id: 'businesses', label: 'Businesses', Icon: Store },
@@ -18,7 +19,7 @@ const TABS = [
 
 interface SearchResult {
   id: string;
-  type: 'people' | 'business' | 'event' | 'circle' | 'place' | 'tag';
+  type: 'people' | 'business' | 'event' | 'circle' | 'place' | 'tag' | 'trip';
   title: string;
   subtitle?: string;
   image?: string;
@@ -31,6 +32,7 @@ interface SearchResult {
   status?: string;
   memberCount?: number;
   slug?: string;
+  stopCount?: number;
 }
 
 interface SearchOverlayProps {
@@ -84,6 +86,12 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
     // Tags bypass the map/detail dispatch and go straight to the topic page.
     if (item.type === 'tag' && item.slug) {
       router.push(`/t/${item.slug}`);
+      onClose();
+      return;
+    }
+    // Trips → detail page, not map/detail sheet.
+    if (item.type === 'trip') {
+      router.push(`/trips/${item.id}`);
       onClose();
       return;
     }
@@ -215,6 +223,9 @@ export default function SearchOverlay({ isOpen, onClose, onSelect }: SearchOverl
           {/* Top tab — grouped sections */}
           {groupedTop && query && (
             <>
+              {groupedTop.trips?.length > 0 && (
+                <ResultSection title="Trips" icon={<MapIcon size={12} />} color="#a855f7" items={groupedTop.trips} onSelect={handleSelect} onMore={() => handleTabChange('trips')} />
+              )}
               {groupedTop.tags?.length > 0 && (
                 <ResultSection title="Tags" icon={<Hash size={12} />} color="#ec4899" items={groupedTop.tags} onSelect={handleSelect} onMore={() => handleTabChange('tags')} />
               )}
@@ -277,8 +288,8 @@ function ResultSection({ title, icon, color, items, onSelect, onMore }: {
 
 /* ── Single result item ── */
 function ResultItem({ item, onSelect }: { item: SearchResult; onSelect: (r: SearchResult, action: 'detail' | 'flyto') => void }) {
-  // Place → flyTo, tag → topic page (handled in handleSelect), entity → detail.
-  const isEntity = item.type !== 'place' && item.type !== 'tag';
+  // Place → flyTo, tag/trip → dedicated page (handled in handleSelect), entity → detail.
+  const isEntity = item.type !== 'place' && item.type !== 'tag' && item.type !== 'trip';
   const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
     people: { icon: <Users size={14} />, color: '#3b82f6' },
     business: { icon: <Store size={14} />, color: '#22c55e' },
@@ -286,6 +297,7 @@ function ResultItem({ item, onSelect }: { item: SearchResult; onSelect: (r: Sear
     circle: { icon: <Shield size={14} />, color: '#a855f7' },
     place: { icon: <MapPin size={14} />, color: '#f59e0b' },
     tag: { icon: <Hash size={14} />, color: '#ec4899' },
+    trip: { icon: <MapIcon size={14} />, color: '#a855f7' },
   };
   const config = typeConfig[item.type] || typeConfig.place;
 
@@ -348,6 +360,23 @@ function ResultItem({ item, onSelect }: { item: SearchResult; onSelect: (r: Sear
         >
           <Navigation size={14} className="text-[#00d4ff]" />
         </button>
+      )}
+
+      {/* Directions — only places (and entities with coords) get this. Opens
+          Google Maps in a new tab using lat,lng so the user's current
+          location is used as origin automatically. */}
+      {item.type === 'place' && item.lat && item.lng && (
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="shrink-0 mr-2 p-2 rounded-lg cursor-pointer transition-all hover:bg-white/[0.06] active:scale-95"
+          style={{ border: '1px solid rgba(34,197,94,0.18)' }}
+          title="Get directions"
+        >
+          <Route size={14} className="text-[#22c55e]" />
+        </a>
       )}
     </div>
   );

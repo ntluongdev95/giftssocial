@@ -148,6 +148,9 @@ export default function WorldPage() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [showSearchOverlay, setShowSearchOverlay] = useState(false);
   const [showStoryComposer, setShowStoryComposer] = useState(false);
+  // After search → fly-to on a PLACE result, surface a directions pill at the
+  // bottom of the map. Cleared by the user or on next search.
+  const [flownPlace, setFlownPlace] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const myUserId = useAuthStore(selectUserId);
   const [desktopHistory, setDesktopHistory] = useState<Array<Record<string, unknown>>>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -689,6 +692,46 @@ export default function WorldPage() {
           </div>
         </div>
 
+        {/* ── Directions pill — only after fly-to a PLACE result ─── */}
+        {flownPlace && (
+          <div
+            className="fixed left-1/2 -translate-x-1/2 z-45 pointer-events-auto"
+            style={{
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 144px)',
+            }}
+          >
+            <div
+              className="flex items-center gap-2 rounded-full pl-3 pr-1 py-1 shadow-2xl"
+              style={{
+                background: 'rgba(10,11,15,0.92)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(34,197,94,0.3)',
+              }}
+            >
+              <MapPin size={14} className="text-[#22c55e] shrink-0" />
+              <span className="text-xs text-white max-w-[200px] truncate">
+                {flownPlace.label}
+              </span>
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${flownPlace.lat},${flownPlace.lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold cursor-pointer"
+                style={{ background: '#22c55e', color: '#0a0b0f' }}
+              >
+                Directions →
+              </a>
+              <button
+                onClick={() => setFlownPlace(null)}
+                className="p-1.5 cursor-pointer hover:bg-white/10 rounded-full"
+                aria-label="Dismiss"
+              >
+                <X size={12} className="text-[#4a5068]" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Bottom Summary ─────────────────────── */}
         {/* Mobile: collapsed button, tap to expand */}
         <div className="lg:hidden fixed bottom-[64px] left-0 right-0 z-40 pb-[env(safe-area-inset-bottom,0px)]">
@@ -1064,6 +1107,13 @@ export default function WorldPage() {
             window.dispatchEvent(new CustomEvent('gao-fly-to', {
               detail: { lng: result.lng, lat: result.lat, zoom, label: result.title, entityId: isEntity ? result.id : undefined, entityType: isEntity ? result.type : undefined }
             }));
+            // Surface the directions pill only for OSM/Nominatim places —
+            // entities already get a detail sheet which has its own actions.
+            if (result.type === 'place') {
+              setFlownPlace({ lat: result.lat, lng: result.lng, label: result.title });
+            } else {
+              setFlownPlace(null);
+            }
           }
 
           if (action === 'detail' && isEntity) {

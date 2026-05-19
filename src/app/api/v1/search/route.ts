@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { resolveUserId } from '@/lib/resolveUser';
 import { buildLocationVisibilityClause } from '@/lib/visibility';
+import { normalizeForSearch } from '@/lib/trips';
 
 /**
  * GET /api/v1/search?q=keyword&lat=...&lng=...&tab=top|people|businesses|events|places&limit=20
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20'), 50);
 
   if (!q || q.length < 1) {
-    return NextResponse.json({ data: { people: [], businesses: [], events: [], circles: [], places: [], tags: [] } });
+    return NextResponse.json({ data: { people: [], businesses: [], events: [], circles: [], places: [], tags: [], trips: [] } });
   }
 
   // Sanitize: escape SQL LIKE wildcards in user input
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
   const peopleVisibility = buildLocationVisibilityClause('users', viewerId);
 
   try {
-    const results: Record<string, unknown[]> = { people: [], businesses: [], events: [], circles: [], places: [], tags: [] };
+    const results: Record<string, unknown[]> = { people: [], businesses: [], events: [], circles: [], places: [], tags: [], trips: [] };
     let dbError: string | null = null;
 
     const queries: Promise<void>[] = [];
@@ -148,6 +149,42 @@ export async function GET(req: NextRequest) {
             image: r.avatar_url, lat: r.location_lat, lng: r.location_lng,
             distance: r.distance ? Math.round((r.distance as number) * 10) / 10 : null,
             memberCount: r.member_count,
+          }));
+        }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
+      );
+    }
+
+    // ── Trips ──
+    if (tab === 'top' || tab === 'trips') {
+      const tLimit = tab === 'top' ? 5 : limit;
+      // Diacritic-free match via title_normalized / city_normalized. Falls
+      // back to the original LIKE for description (rarely searched), so
+      // users typing "co to" still find "Cô Tô" through the normalized
+      // columns while exact "Cô Tô" hits both paths.
+      const normEscaped = normalizeForSearch(q).replace(/[%_]/g, '\\$&');
+      const normPat = `%${normEscaped}%`;
+      queries.push(
+        db.prepare(
+          `SELECT id, title, description, city, cover_image, stop_count,
+                  total_cost, total_currency, total_minutes, save_count, view_count
+           FROM trips
+           WHERE status = 'active' AND visibility = 'public'
+             AND (title_normalized LIKE ?
+                  OR city_normalized LIKE ?
+                  OR LOWER(description) LIKE ?)
+           ORDER BY save_count DESC, created_at DESC
+           LIMIT ?`,
+        ).bind(normPat, normPat, pattern, tLimit).all<Record<string, unknown>>().then(({ results: rows }) => {
+          results.trips = rows.map(r => ({
+            id: r.id, type: 'trip',
+            title: r.title,
+            subtitle: [r.city, `${r.stop_count} stops`].filter(Boolean).join(' · '),
+            image: r.cover_image,
+            stopCount: r.stop_count,
+            totalCost: r.total_cost,
+            totalCurrency: r.total_currency,
+            totalMinutes: r.total_minutes,
+            saveCount: r.save_count,
           }));
         }).catch((err) => { console.error('[Search]', err); dbError = String(err); })
       );

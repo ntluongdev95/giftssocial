@@ -11,9 +11,10 @@ export interface SearchResults {
   circles: Array<Record<string, unknown>>;
   places: Array<Record<string, unknown>>;
   tags: Array<Record<string, unknown>>;
+  trips: Array<Record<string, unknown>>;
 }
 
-const EMPTY_RESULTS: SearchResults = { people: [], businesses: [], events: [], circles: [], places: [], tags: [] };
+const EMPTY_RESULTS: SearchResults = { people: [], businesses: [], events: [], circles: [], places: [], tags: [], trips: [] };
 
 // Simple LRU-ish cache: key → { data, timestamp }
 const searchCache = new Map<string, { data: SearchResults; ts: number }>();

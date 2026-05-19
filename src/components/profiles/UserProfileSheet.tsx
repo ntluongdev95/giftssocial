@@ -1,11 +1,23 @@
 'use client';
 
-import { X, MessageCircle, UserMinus, UserPlus, MapPin } from 'lucide-react';
+import { X, MessageCircle, UserMinus, UserPlus, MapPin, Clock, Coins, Route as RouteIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import PrivateChat from '@/components/chat/PrivateChat';
 import { useAuthStore } from '@/stores/auth-store';
+
+type TripPreview = {
+  id: string;
+  title: string;
+  cover_image: string | null;
+  city: string | null;
+  total_cost: number;
+  total_currency: string;
+  total_minutes: number;
+  stop_count: number;
+};
 
 interface UserData {
   id: string;
@@ -29,17 +41,36 @@ interface Props {
 export default function UserProfileSheet({ user: u, isFollowing, isFriend, onFollow, onUnfollow, onClose }: Props) {
   const [showChat, setShowChat] = useState(false);
   const [fullUser, setFullUser] = useState(u);
+  const [trips, setTrips] = useState<TripPreview[]>([]);
 
   // Fetch full user data (bio, photos) if not provided
   useEffect(() => {
     if (u.bio || (u.photos && u.photos.length > 0)) return;
     fetch(`/api/v1/users/${u.id}`, {
-      
+
     })
       .then(r => r.json())
       .then(d => { if (d.data) setFullUser(prev => ({ ...prev, bio: d.data.bio, photos: d.data.photos, city: d.data.city })); })
       .catch(() => {});
   }, [u.id, u.bio, u.photos]);
+
+  // Pull this user's public trips. Filtered server-side so private/friends
+  // trips never leak to the sheet — even if the viewer follows them. We
+  // show up to 6 cards inline + a "See all" link if there are more.
+  useEffect(() => {
+    if (!u.id) return;
+    const ctrl = new AbortController();
+    fetch(`/api/v1/trips?author_id=${encodeURIComponent(u.id)}&limit=6`, {
+      credentials: 'same-origin',
+      signal: ctrl.signal,
+    })
+      .then(r => r.json())
+      .then(j => {
+        if (Array.isArray(j?.data)) setTrips(j.data as TripPreview[]);
+      })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [u.id]);
 
   const photos = fullUser.photos || [];
 
@@ -114,6 +145,69 @@ export default function UserProfileSheet({ user: u, isFollowing, isFriend, onFol
                 </div>
               </div>
             )}
+
+            {/* Trips — author's public itineraries */}
+            {trips.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] flex items-center gap-1">
+                    <MapPin size={10} className="text-[#00d4ff]" />
+                    Trips ({trips.length}{trips.length === 6 ? '+' : ''})
+                  </h3>
+                  {trips.length >= 6 && (
+                    <Link
+                      href={`/trips?author=${encodeURIComponent(u.id)}`}
+                      className="text-[10px] font-semibold text-[#00d4ff] cursor-pointer"
+                    >
+                      See all →
+                    </Link>
+                  )}
+                </div>
+                <ul className="space-y-2">
+                  {trips.map(t => (
+                    <li key={t.id}>
+                      <Link
+                        href={`/trips/${t.id}`}
+                        onClick={onClose}
+                        className="flex items-center gap-3 rounded-xl p-2 cursor-pointer hover:bg-white/4 transition-colors"
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+                      >
+                        {/* Cover thumbnail */}
+                        <div
+                          className="h-14 w-14 rounded-lg shrink-0 overflow-hidden"
+                          style={
+                            t.cover_image
+                              ? { background: `url(${t.cover_image}) center/cover` }
+                              : { background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(168,85,247,0.15))' }
+                          }
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-white truncate">{t.title}</div>
+                          <div className="flex items-center gap-2 text-[10px] text-[#a3adc3] mt-0.5">
+                            <span className="flex items-center gap-0.5">
+                              <RouteIcon size={9} className="text-[#a855f7]" /> {t.stop_count}
+                            </span>
+                            {t.total_minutes > 0 && (
+                              <span className="flex items-center gap-0.5">
+                                <Clock size={9} /> {formatTime(t.total_minutes)}
+                              </span>
+                            )}
+                            {t.total_cost > 0 && (
+                              <span className="flex items-center gap-0.5 text-[#22c55e]">
+                                <Coins size={9} /> {formatCost(t.total_cost, t.total_currency)} {t.total_currency}
+                              </span>
+                            )}
+                            {t.city && (
+                              <span className="text-[#4a5068] truncate">· {t.city}</span>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Footer */}
@@ -156,4 +250,25 @@ export default function UserProfileSheet({ user: u, isFollowing, isFriend, onFol
     )}
     </>
   );
+}
+
+// ─── Format helpers (mirror TripCard/detail page logic) ───────────────────
+
+function formatCost(amount: number, currency: string): string {
+  if (currency === 'mixed') return 'Mixed';
+  if (currency === 'VND') {
+    if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (amount >= 1000) return `${(amount / 1000).toFixed(0)}k`;
+    return amount.toFixed(0);
+  }
+  return amount.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function formatTime(minutes: number): string {
+  if (!minutes) return '';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}h${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
 }

@@ -346,6 +346,8 @@ export default function MePage() {
           <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value={`${pendingBookings} pending`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
           <ActivityRow icon={<span className="text-base">🪦</span>} label="Time Capsules" value="Bury memories" href="/me/capsules" onClick={() => router.push('/me/capsules')} />
+          <ActivityRow icon={<MapPin size={16} />} label="My Trips" value="Share itineraries" href="/me/trips" onClick={() => router.push('/me/trips')} />
+          <ActivityRow icon={<MapPin size={16} />} label="Discover Trips" value="Browse what others did" href="/trips" onClick={() => router.push('/trips')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
           <ActivityRow icon={<Gift size={16} />} label="My Wallet" value="Claimed gift cards" href="/me/wallet" onClick={() => router.push('/me/wallet')} />
           <ActivityRow icon={<ShoppingBag size={16} />} label="Gift Card Market" value="Browse & claim cards" href="/gift-cards/market" onClick={() => router.push('/gift-cards/market')} last />
@@ -517,6 +519,8 @@ export default function MePage() {
                 <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value={`${pendingBookings} pending`} color="#00d4ff" onClick={() => router.push('/me/bookings')} />
                 <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" onClick={() => router.push('/me/signals')} />
                 <ActivityCard icon={<span className="text-lg leading-none">🪦</span>} label="Time Capsules" value="Bury memories" color="#94a3b8" onClick={() => router.push('/me/capsules')} />
+                <ActivityCard icon={<MapPin size={18} />} label="My Trips" value="Share itineraries" color="#a855f7" onClick={() => router.push('/me/trips')} />
+                <ActivityCard icon={<MapPin size={18} />} label="Discover Trips" value="Browse what others did" color="#a855f7" onClick={() => router.push('/trips')} />
                 <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" onClick={() => {}} />
                 <ActivityCard icon={<Gift size={18} />} label="My Wallet" value="Claimed gift cards" color="#00d4ff" onClick={() => router.push('/me/wallet')} />
                 <ActivityCard icon={<ShoppingBag size={18} />} label="Gift Card Market" value="Browse & claim cards" color="#ec4899" onClick={() => router.push('/gift-cards/market')} />
