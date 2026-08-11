@@ -57,5 +57,46 @@ export const revalidate = 600;
 
 export default async function KissSharePage({ params }: Props) {
   const { id } = await params;
+
+  // Check the kiss's open-limit status server-side. If it's exhausted
+  // (open_count >= max_opens), render a friendly "gift used up" page
+  // instead of redirecting to the map animation. QR scanners get a
+  // clear explanation instead of a broken silent redirect.
+  let exhausted = false;
+  let senderName = '';
+  let emoji = '💝';
+  try {
+    const db = getDB();
+    const row = await db.prepare(
+      `SELECT k.emoji, k.open_count, k.max_opens, s.display_name AS sender_name
+       FROM kisses k
+       LEFT JOIN users s ON s.id = k.sender_id
+       WHERE k.id = ?`
+    ).bind(id).first<{ emoji: string; open_count: number; max_opens: number; sender_name: string }>();
+    if (row) {
+      exhausted = (row.open_count ?? 0) >= (row.max_opens ?? 5);
+      senderName = row.sender_name || '';
+      emoji = row.emoji || '💝';
+    }
+  } catch {}
+
+  if (exhausted) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', background: 'radial-gradient(ellipse at center, #1a0b18 0%, #0a0b0f 60%)', color: '#fff', fontFamily: 'system-ui, -apple-system, sans-serif', textAlign: 'center' }}>
+        <div style={{ maxWidth: 400 }}>
+          <div style={{ fontSize: 80, marginBottom: 20 }}>{emoji}</div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 10 }}>This gift is all used up</h1>
+          <p style={{ fontSize: 14, color: '#a3adc3', lineHeight: 1.6, marginBottom: 24 }}>
+            {senderName ? <><b style={{ color: '#f472b6' }}>{senderName}</b> sent a special gift,<br /></> : null}
+            but it has already been opened 5 times 💝
+          </p>
+          <a href="/world" style={{ display: 'inline-block', padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg, #f472b6, #ec4899)', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>
+            Back to home
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   redirect(`/world?kiss=${id}`);
 }

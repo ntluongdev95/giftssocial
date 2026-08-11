@@ -113,6 +113,14 @@ const nextConfig: NextConfig = {
       { source: '/splash-screen.png',     headers: noCache },
     ];
   },
+  async redirects() {
+    return [
+      // Renamed commercial feature: Time Capsules → Gao Gifts. Old links
+      // in wild (push notifications, shares, bookmarks) still resolve.
+      { source: '/me/capsules',          destination: '/me/gifts',         permanent: true },
+      { source: '/me/capsules/:path*',   destination: '/me/gifts/:path*',  permanent: true },
+    ];
+  },
 };
 
 export default withPWA(nextConfig);

@@ -160,8 +160,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       notify(
         capsule.creator_id as string,
         'capsule_opened',
-        `${openerLabel} opened your capsule`,
-        `"${capsule.title}" was just unsealed`,
+        `${openerLabel} unwrapped your Gao Gift`,
+        `"${capsule.title}" was just opened`,
         'capsule',
         id,
       );

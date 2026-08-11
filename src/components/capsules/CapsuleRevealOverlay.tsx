@@ -123,9 +123,9 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
   );
 
   const handleShare = async () => {
-    const text = `I dug up a time capsule I buried ${yearsBurried} years ago at ${capsule.location_name || 'a special place'} 🪦✨`;
+    const text = `I just unwrapped a Gao Gift sealed ${yearsBurried} years ago at ${capsule.location_name || 'a special place'} 🎁✨`;
     if (navigator.share) {
-      try { await navigator.share({ title: 'Time Capsule', text }); } catch {}
+      try { await navigator.share({ title: 'Gao Gift', text }); } catch {}
     } else {
       navigator.clipboard.writeText(text);
       toast.success('Copied!');
@@ -269,17 +269,17 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
               animate={{ y: [0, -8, 0] }}
               transition={{ duration: 2, repeat: Infinity }}
               className="text-7xl mb-4"
-            >🪦</motion.div>
+            >🎁</motion.div>
 
             <p className="text-[10px] uppercase tracking-[0.3em] text-[#a855f7] mb-2">
-              {capsule.role === 'recipient' ? `From ${capsule.sender_name || capsule.sender_username || 'Someone'}` : 'Time Capsule'}
+              {capsule.role === 'recipient' ? `From ${capsule.sender_name || capsule.sender_username || 'Someone'}` : 'Gao Gift'}
             </p>
             <h2 className="text-xl font-bold text-white mb-2">{capsule.title}</h2>
 
             <div className="flex items-center justify-center gap-3 text-[11px] text-[#4a5068] mt-4 mb-6">
               <span className="flex items-center gap-1"><MapPin size={11} />{capsule.location_name || 'Hidden location'}</span>
               <span className="opacity-50">•</span>
-              <span className="flex items-center gap-1"><Calendar size={11} />Buried {burial.getFullYear()}</span>
+              <span className="flex items-center gap-1"><Calendar size={11} />Sealed {burial.getFullYear()}</span>
             </div>
 
             <motion.button
@@ -294,7 +294,7 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
                 boxShadow: '0 0 40px rgba(168,85,247,0.4)',
               }}
             >
-              {opening ? <><Loader2 size={16} className="inline animate-spin mr-2" /> Opening...</> : '⚒️ Dig Up Capsule'}
+              {opening ? <><Loader2 size={16} className="inline animate-spin mr-2" /> Unwrapping...</> : '🎁 Unwrap Gift'}
             </motion.button>
           </motion.div>
         )}
@@ -303,11 +303,11 @@ export default function CapsuleRevealOverlay({ capsule: initialCapsule, onClose,
         {phase === 'digging' && (
           <motion.div className="text-center">
             <motion.div
-              animate={{ rotate: [0, -15, 15, -15, 15, 0], y: [0, 5, 0, 5, 0] }}
+              animate={{ rotate: [0, -8, 8, -6, 6, 0], scale: [1, 1.08, 0.98, 1.06, 1] }}
               transition={{ duration: 1, repeat: Infinity }}
               className="text-8xl mb-6"
-            >⚒️</motion.div>
-            <p className="text-sm text-white">Digging...</p>
+            >🎁</motion.div>
+            <p className="text-sm text-white">Unwrapping...</p>
           </motion.div>
         )}
 

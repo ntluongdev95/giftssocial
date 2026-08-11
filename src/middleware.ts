@@ -38,7 +38,15 @@ if (typeof globalThis !== 'undefined') {
   }, 300_000);
 }
 
-const PUBLIC_PATHS = ['/api/v1/auth/'];
+const PUBLIC_PATHS = [
+  '/api/v1/auth/',
+  // Public Gao Gift cards — anyone can publish AND anyone can view.
+  // The endpoint itself attaches the user id if the caller happens to
+  // be authed, but auth is not required (viral guest publish).
+  '/api/v1/gifts/cards',
+  // Particle-heart 3D template — same viral-share rules as gift cards.
+  '/api/v1/gifts/hearts',
+];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));

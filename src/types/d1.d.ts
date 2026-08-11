@@ -144,6 +144,13 @@ export interface KissRow {
   opened: number;
   opened_at: string | null;
   created_at: string;
+  // Occasion enrichments (migration 030)
+  photos: string | null;
+  music_url: string | null;
+  music_title: string | null;
+  // 5-open limit (migration 031)
+  open_count: number;
+  max_opens: number;
 }
 
 export interface BookingRow {

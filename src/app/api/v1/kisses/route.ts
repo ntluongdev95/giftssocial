@@ -11,12 +11,25 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
     const mine = searchParams.get('mine') === 'true';
+    const sent = searchParams.get('sent') === 'true'; // sent-only (no 24h filter)
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const userId = await resolveUserId(req).catch(() => null);
 
     const db = getDB();
 
-    if (mine && userId) {
+    if (sent && userId) {
+      // ONLY sent kisses — full history so user can revisit QR codes.
+      // No 24h/opened filter here; QR sharing is a long-lived flow.
+      const result = await db.prepare(
+        `SELECT k.*,
+          r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
+         FROM kisses k
+         LEFT JOIN users r ON r.id = k.receiver_id
+         WHERE k.sender_id = ?
+         ORDER BY k.created_at DESC LIMIT ?`
+      ).bind(userId, limit).all<Record<string, unknown>>();
+      return NextResponse.json({ data: result.results });
+    } else if (mine && userId) {
       // My kisses (sent + received) — only within 24h or already opened
       const result = await db.prepare(
         `SELECT k.*,
@@ -71,12 +84,18 @@ export async function GET(req: NextRequest) {
 
 const kissSchema = z.object({
   receiver_id: z.string().min(1),
-  message: z.string().max(200).default(''),
+  message: z.string().max(500).default(''),
   emoji: z.string().max(10).default('💋'),
   visibility: z.enum(['public', 'private']).default('public'),
   kiss_type: z.enum(['kiss', 'declaration']).default('kiss'),
   receiver_lat: z.number().optional(),
   receiver_lng: z.number().optional(),
+  // Occasion enrichments (optional): up to 3 photo URLs + 1 music track.
+  // Accepts absolute URLs (R2 uploads) or relative paths (bundled audio
+  // like /audio/*.mp3) — hence plain `.string()` with a length cap.
+  photos: z.array(z.string().max(500)).max(3).default([]),
+  music_url: z.string().max(500).optional(),
+  music_title: z.string().max(120).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -112,10 +131,11 @@ export async function POST(req: NextRequest) {
 
     const id = genId('kiss_');
     const row = await db.prepare(
-      `INSERT INTO kisses (id, sender_id, receiver_id, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
+      `INSERT INTO kisses (id, sender_id, receiver_id, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
     ).bind(id, userId, d.receiver_id, d.message, d.emoji, d.visibility, d.kiss_type,
-      sender.location_lat, sender.location_lng, recLat, recLng).first<Record<string, unknown>>();
+      sender.location_lat, sender.location_lng, recLat, recLng,
+      JSON.stringify(d.photos), d.music_url ?? null, d.music_title ?? null).first<Record<string, unknown>>();
 
     // Notify receiver
     const senderName = sender.display_name || 'Someone';
@@ -137,6 +157,10 @@ export async function POST(req: NextRequest) {
 }
 
 // ─── PATCH /api/v1/kisses — Open a kiss ─────────────────────────────────
+// Any authenticated user with the kiss ID (from QR scan or notification)
+// can open the kiss. Each open increments `open_count`; once it hits
+// `max_opens` (default 5), further opens are rejected with 429.
+// Sender is notified each open + a special notification when exhausted.
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -148,35 +172,68 @@ export async function PATCH(req: NextRequest) {
 
     const db = getDB();
 
-    // Check kiss exists and belongs to receiver
+    // Look up the kiss (anyone with the ID can open — this is a QR-shareable gift).
     const kiss = await db.prepare(
-      'SELECT * FROM kisses WHERE id = ? AND receiver_id = ?'
-    ).bind(id, userId).first<Record<string, unknown>>();
+      'SELECT * FROM kisses WHERE id = ?'
+    ).bind(id).first<Record<string, unknown>>();
 
     if (!kiss) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found' } }, { status: 404 });
     }
 
-    // Check 24h expiry
+    const openCount = Number(kiss.open_count ?? 0);
+    const maxOpens = Number(kiss.max_opens ?? 5);
+    const isReceiver = kiss.receiver_id === userId;
+
+    // Check open cap FIRST — exhausted gifts never trigger side effects.
+    if (openCount >= maxOpens) {
+      return NextResponse.json({
+        error: { code: 'exhausted', message: `This gift has already been opened ${maxOpens} times 💝` },
+        data: { open_count: openCount, max_opens: maxOpens },
+      }, { status: 429 });
+    }
+
+    // Check 24h expiry (existing rule)
     const createdAt = new Date(kiss.created_at as string).getTime();
     const hoursElapsed = (Date.now() - createdAt) / (1000 * 60 * 60);
     if (hoursElapsed > 24) {
       return NextResponse.json({ error: { code: 'expired', message: 'This kiss has expired (24h limit)' } }, { status: 410 });
     }
 
-    // Update: set opened + optionally update receiver coords
-    const updates: string[] = ['opened = 1', "opened_at = datetime('now')"];
+    // Update: increment open_count, set opened=1, stamp opened_at on first open.
+    // Only the RECEIVER can update receiver coords (privacy safeguard).
+    const updates: string[] = [
+      'open_count = open_count + 1',
+      'opened = 1',
+      "opened_at = COALESCE(opened_at, datetime('now'))",
+    ];
     const values: unknown[] = [];
 
-    if (receiver_lat && receiver_lng) {
+    if (isReceiver && receiver_lat && receiver_lng) {
       updates.push(`receiver_lat = ?`, `receiver_lng = ?`);
       values.push(receiver_lat, receiver_lng);
     }
 
-    values.push(id, userId);
+    values.push(id);
     const row = await db.prepare(
-      `UPDATE kisses SET ${updates.join(', ')} WHERE id = ? AND receiver_id = ? RETURNING *`
+      `UPDATE kisses SET ${updates.join(', ')} WHERE id = ? AND open_count < max_opens RETURNING *`
     ).bind(...values).first<KissRow>();
+
+    // Notify sender of this open — including remaining count / exhausted state.
+    if (row) {
+      const senderId = row.sender_id as string;
+      const emoji = row.emoji as string;
+      const newCount = Number(row.open_count ?? 0);
+      const remaining = maxOpens - newCount;
+      // Only notify if a different user opened it — avoid self-notifications.
+      if (senderId && senderId !== userId) {
+        if (remaining <= 0) {
+          notify(senderId, 'system', `${emoji} Your gift has reached ${maxOpens} opens!`, 'Thanks for sharing 💝', 'kiss', id as string);
+        } else {
+          notify(senderId, 'system', `${emoji} Someone just opened your gift!`, `${remaining}/${maxOpens} opens remaining.`, 'kiss', id as string);
+        }
+      }
+    }
 
     return NextResponse.json({ data: row });
   } catch (err) {

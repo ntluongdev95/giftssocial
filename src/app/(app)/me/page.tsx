@@ -345,7 +345,8 @@ export default function MePage() {
           <ActivityRow icon={<Calendar size={16} />} label="Upcoming Events" value={`${upcomingEvents}`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<CalendarCheck size={16} />} label="My Bookings" value={`${pendingBookings} pending`} href="/me/bookings" onClick={() => router.push('/me/bookings')} />
           <ActivityRow icon={<Signal size={16} />} label="My Signals" value={`${signalsCount}`} href="#" onClick={() => router.push('/me/signals')} />
-          <ActivityRow icon={<span className="text-base">🪦</span>} label="Time Capsules" value="Bury memories" href="/me/capsules" onClick={() => router.push('/me/capsules')} />
+          <ActivityRow icon={<span className="text-base">🎁</span>} label="Gao Gifts" value="Send a gift through time" href="/me/gifts" onClick={() => router.push('/me/gifts')} />
+          <ActivityRow icon={<span className="text-base">💝</span>} label="Sent Kisses" value="View QR codes + opens remaining" href="/me/sent-kisses" onClick={() => router.push('/me/sent-kisses')} />
           <ActivityRow icon={<MapPin size={16} />} label="My Trips" value="Share itineraries" href="/me/trips" onClick={() => router.push('/me/trips')} />
           <ActivityRow icon={<MapPin size={16} />} label="Discover Trips" value="Browse what others did" href="/trips" onClick={() => router.push('/trips')} />
           <ActivityRow icon={<Star size={16} />} label="Reviews & Proofs" value="0" href="#" onClick={() => {}} />
@@ -443,11 +444,11 @@ export default function MePage() {
       </div>
 
       {/* ══ DESKTOP ═══════════════════════════════════════ */}
-      <div className="hidden lg:block relative max-w-5xl mx-auto px-8 pt-6 pb-24">
-        <div className="flex gap-8 mt-2">
+      <div className="hidden lg:block relative max-w-7xl 2xl:max-w-375 mx-auto px-8 xl:px-12 pt-8 xl:pt-10 pb-24">
+        <div className="flex gap-8 xl:gap-12 mt-2">
 
           {/* Left: Profile card */}
-          <div className="w-[320px] shrink-0 space-y-4">
+          <div className="w-80 xl:w-90 shrink-0 space-y-4 xl:space-y-5">
             <div className="rounded-2xl p-6" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
               <div className="flex flex-col items-center text-center mb-5">
                 <div className="h-20 w-20 rounded-full flex items-center justify-center overflow-hidden mb-3" style={{ background: '#111318', border: '2.5px solid rgba(0,212,255,0.25)' }}>
@@ -511,14 +512,15 @@ export default function MePage() {
           </div>
 
           {/* Right: Activities + Manage */}
-          <div className="flex-1 min-w-0 space-y-5">
+          <div className="flex-1 min-w-0 space-y-6 xl:space-y-8">
             <div>
               <SectionTitle>My Activities</SectionTitle>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 xl:gap-4">
                 <ActivityCard icon={<Calendar size={18} />} label="Upcoming Events" value={`${upcomingEvents} upcoming`} color="#f87171" onClick={() => router.push('/me/bookings')} />
                 <ActivityCard icon={<CalendarCheck size={18} />} label="My Bookings" value={`${pendingBookings} pending`} color="#00d4ff" onClick={() => router.push('/me/bookings')} />
                 <ActivityCard icon={<Signal size={18} />} label="My Signals" value={`${signalsCount} active`} color="#3B82F6" onClick={() => router.push('/me/signals')} />
-                <ActivityCard icon={<span className="text-lg leading-none">🪦</span>} label="Time Capsules" value="Bury memories" color="#94a3b8" onClick={() => router.push('/me/capsules')} />
+                <ActivityCard icon={<span className="text-lg leading-none">🎁</span>} label="Gao Gifts" value="Send a gift through time" color="#ec4899" onClick={() => router.push('/me/gifts')} />
+                <ActivityCard icon={<span className="text-lg leading-none">💝</span>} label="Sent Kisses" value="QR + opens" color="#f472b6" onClick={() => router.push('/me/sent-kisses')} />
                 <ActivityCard icon={<MapPin size={18} />} label="My Trips" value="Share itineraries" color="#a855f7" onClick={() => router.push('/me/trips')} />
                 <ActivityCard icon={<MapPin size={18} />} label="Discover Trips" value="Browse what others did" color="#a855f7" onClick={() => router.push('/trips')} />
                 <ActivityCard icon={<Star size={18} />} label="Reviews & Proofs" value="0" color="#fbbf24" onClick={() => {}} />
@@ -530,7 +532,7 @@ export default function MePage() {
 
             <div>
               <SectionTitle>Manage</SectionTitle>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 xl:gap-4">
                 <ManageCard icon={<UserCheck size={20} />} label="Professional Profile" sub="Edit your CV" href="/me/profile" onClick={() => router.push('/me/profile')} />
                 <ManageCard icon={<Store size={20} />} label="My Business" sub="Manage your store" href="/me/business" onClick={() => router.push('/me/business')} />
                 <ManageCard icon={<Gift size={20} />} label="Gift Cards" sub="Drops & vouchers" href="/me/gift-cards" onClick={() => router.push('/me/gift-cards')} />
@@ -634,10 +636,10 @@ function ActivityRow({ icon, label, value, last, onClick }: { icon: React.ReactN
 
 function ActivityCard({ icon, label, value, color, onClick }: { icon: React.ReactNode; label: string; value: string; color: string; onClick?: () => void }) {
   return (
-    <div onClick={onClick} className="rounded-xl p-4 cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+    <div onClick={onClick} className="rounded-xl p-4 xl:p-5 cursor-pointer transition-colors hover:bg-white/2" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
       <div className="flex items-center gap-3 mb-2">
-        <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ background: `${color}12`, color }}>{icon}</div>
-        <p className="text-sm font-semibold text-white">{label}</p>
+        <div className="h-9 w-9 xl:h-10 xl:w-10 rounded-lg flex items-center justify-center" style={{ background: `${color}12`, color }}>{icon}</div>
+        <p className="text-sm xl:text-[15px] font-semibold text-white">{label}</p>
       </div>
       <p className="text-xs text-[#4a5068]">{value}</p>
     </div>
@@ -646,10 +648,10 @@ function ActivityCard({ icon, label, value, color, onClick }: { icon: React.Reac
 
 function ManageCard({ icon, label, sub, onClick }: { icon: React.ReactNode; label: string; sub: string; href: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 rounded-xl p-5 text-center cursor-pointer transition-colors hover:bg-white/[0.02]" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
-      <div className="h-11 w-11 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>{icon}</div>
-      <p className="text-xs font-semibold text-white">{label}</p>
-      <p className="text-[10px] text-[#4a5068]">{sub}</p>
+    <button onClick={onClick} className="flex flex-col items-center gap-2 rounded-xl p-5 xl:p-6 text-center cursor-pointer transition-colors hover:bg-white/2" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
+      <div className="h-11 w-11 xl:h-12 xl:w-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>{icon}</div>
+      <p className="text-xs xl:text-sm font-semibold text-white">{label}</p>
+      <p className="text-[10px] xl:text-[11px] text-[#4a5068]">{sub}</p>
     </button>
   );
 }

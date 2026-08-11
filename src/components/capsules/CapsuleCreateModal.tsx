@@ -18,6 +18,9 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onCreated?: (capsule: Record<string, unknown>) => void;
+  /** Optional preset theme (from Templates tab). Used as the initial
+   *  themeId when the modal opens; user can still change it. */
+  initialThemeId?: string;
 }
 
 const PRESETS = [
@@ -28,7 +31,7 @@ const PRESETS = [
   { label: '10 years', months: 120 },
 ];
 
-export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) {
+export default function CapsuleCreateModal({ open, onClose, onCreated, initialThemeId }: Props) {
   const { lat: userLat, lng: userLng } = useLocationStore();
   const [step, setStep] = useState<'compose' | 'recipients' | 'location' | 'time' | 'review'>('compose');
   const [title, setTitle] = useState('');
@@ -40,7 +43,7 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
   const [locationName, setLocationName] = useState('Current location');
   const [unlockMonths, setUnlockMonths] = useState(12);
   const [customDate, setCustomDate] = useState('');
-  const [themeId, setThemeId] = useState('classic');
+  const [themeId, setThemeId] = useState(initialThemeId ?? 'classic');
   const [recipients, setRecipients] = useState<RecipientUser[]>([]);
   const [recipientQuery, setRecipientQuery] = useState('');
   const [recipientResults, setRecipientResults] = useState<RecipientUser[]>([]);
@@ -62,9 +65,16 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
     setStep('compose');
     setTitle(''); setMessage(''); setPhotos([]);
     setUnlockMonths(12); setCustomDate('');
-    setThemeId('classic');
+    setThemeId(initialThemeId ?? 'classic');
     setRecipients([]); setRecipientQuery(''); setRecipientResults([]);
   };
+
+  // When the parent flips `open` to true with a fresh initialThemeId
+  // (e.g. user picked a different template between opens), sync it in.
+  useEffect(() => {
+    if (open && initialThemeId) setThemeId(initialThemeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialThemeId]);
 
   // Fetch following list once when modal opens — used as default suggestions
   useEffect(() => {
@@ -210,12 +220,12 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
       });
       if (res.ok) {
         const data = await res.json();
-        toast.success('🪦 Capsule buried! See you in the future...');
+        toast.success('🎁 Gift sealed! See you in the future...');
         onCreated?.(data.data);
         close();
       } else {
         const err = await res.json();
-        toast.error(err.error?.message || 'Failed to bury capsule');
+        toast.error(err.error?.message || 'Failed to seal gift');
       }
     } catch { toast.error('Network error'); }
     setSubmitting(false);
@@ -246,9 +256,9 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
           {/* Header */}
           <div className="shrink-0 flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <div className="flex items-center gap-2">
-              <span className="text-xl">🪦</span>
+              <span className="text-xl">🎁</span>
               <div>
-                <h2 className="text-base font-bold text-white">Bury a Time Capsule</h2>
+                <h2 className="text-base font-bold text-white">Wrap a Gao Gift</h2>
                 <p className="text-[10px] text-[#4a5068]">Step {['compose','recipients','location','time','review'].indexOf(step) + 1} of 5</p>
               </div>
             </div>
@@ -465,7 +475,7 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
                   <div className="h-16 w-16 mx-auto rounded-2xl flex items-center justify-center mb-3" style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.2)' }}>
                     <MapPin size={28} className="text-[#a855f7]" />
                   </div>
-                  <h3 className="text-base font-bold text-white">Where to bury it?</h3>
+                  <h3 className="text-base font-bold text-white">Where to leave it?</h3>
                   <p className="text-xs text-[#4a5068] mt-1">Tagged with this spot as a memory of where it was made</p>
                 </div>
 
@@ -545,8 +555,8 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
                   <div className="h-16 w-16 mx-auto rounded-2xl flex items-center justify-center mb-3" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.1), rgba(236,72,153,0.1))', border: '1px solid rgba(168,85,247,0.2)' }}>
                     <Sparkles size={28} className="text-[#a855f7]" />
                   </div>
-                  <h3 className="text-base font-bold text-white">Ready to bury?</h3>
-                  <p className="text-xs text-[#4a5068] mt-1">Once buried, you can&apos;t open it until the date</p>
+                  <h3 className="text-base font-bold text-white">Ready to seal?</h3>
+                  <p className="text-xs text-[#4a5068] mt-1">Once sealed, it can&apos;t be opened until the date</p>
                 </div>
 
                 <div className="space-y-2 rounded-xl px-4 py-3" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}>
@@ -599,7 +609,7 @@ export default function CapsuleCreateModal({ open, onClose, onCreated }: Props) 
                 className="flex-1 rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #a855f7, #ec4899)', color: 'white' }}
               >
-                {submitting ? 'Burying...' : '🪦 Bury Capsule'}
+                {submitting ? 'Wrapping...' : '🎁 Seal Gift'}
               </button>
             )}
           </div>

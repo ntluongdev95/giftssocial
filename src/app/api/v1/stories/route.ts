@@ -28,6 +28,10 @@ const createSchema = z.object({
   caption: z.string().max(280).default(''),
   visibility: z.enum(['public', 'friends', 'circles']).default('friends'),
   circle_ids: z.array(z.string()).max(10).default([]),
+  // Optional CTA — story viewer shows a tappable button when set. Used by
+  // the Gao Gift card share flow (label "Khám phá now" → card viewer URL).
+  link_url: z.string().url().max(500).optional(),
+  link_label: z.string().max(40).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -150,8 +154,9 @@ export async function POST(req: NextRequest) {
         `INSERT INTO stories
            (id, author_id, business_id, event_id, location_lat, location_lng,
             place_name, media_url, media_type, thumbnail_url, caption,
-            visibility, circle_ids, posted_at, expires_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            visibility, circle_ids, posted_at, expires_at,
+            link_url, link_label)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .bind(
         id,
@@ -169,6 +174,8 @@ export async function POST(req: NextRequest) {
         JSON.stringify(d.circle_ids),
         postedAt,
         expiresAt,
+        d.link_url || null,
+        d.link_label || null,
       )
       .run();
 

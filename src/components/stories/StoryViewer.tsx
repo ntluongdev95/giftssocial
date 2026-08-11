@@ -228,6 +228,28 @@ export function StoryViewer({ groups, startGroupIdx, myUserId, onClose }: Props)
                 />
               </div>
             )}
+
+            {/* CTA button — appears when the story carries an external
+                link (Gao Gift card shares, etc). Gold gradient so it
+                pops off the story media without competing with the
+                pink hashtag colour used above. */}
+            {story.link_url && (
+              <a
+                href={story.link_url}
+                target={/^https?:\/\//.test(story.link_url) && !story.link_url.startsWith(typeof window !== 'undefined' ? window.location.origin : '') ? '_blank' : undefined}
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 rounded-2xl py-3 px-4 text-sm font-bold no-underline transition-transform active:scale-[0.98]"
+                style={{
+                  background: 'linear-gradient(135deg, #d4af37 0%, #f2d97a 50%, #d4af37 100%)',
+                  color: '#0a0a0a',
+                  boxShadow: '0 12px 30px -8px rgba(212,175,55,0.55)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span>{story.link_label || 'Khám phá now'}</span>
+                <span aria-hidden>→</span>
+              </a>
+            )}
             {story.business_id && story.business_display_name && (
               <Link
                 href={`/businesses/${story.business_id}`}

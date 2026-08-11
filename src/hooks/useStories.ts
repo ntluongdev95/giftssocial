@@ -28,6 +28,10 @@ export type StoryDTO = {
   // Per-viewer flag — 1 if the current viewer has already seen this story.
   // Returned by /stories?scope=rail and /stories/business/[id].
   viewed_by_me?: 0 | 1;
+  // Optional CTA — story viewer renders as a tappable button when set.
+  // Introduced for the Gao Gift card share flow.
+  link_url?: string | null;
+  link_label?: string | null;
 };
 
 export type ViewerDTO = {

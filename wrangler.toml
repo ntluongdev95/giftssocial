@@ -42,6 +42,19 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID = "499445244143-pa0de62qhs87qbaorpsfno4sgcv0vq4i.ap
 NEXT_PUBLIC_APP_URL = "https://app-dev.gao.social"
 NEXT_PUBLIC_GOOGLE_CLIENT_ID = "804965667901-cda2uc7kdatpsf35gm5ek54fktcr9vva.apps.googleusercontent.com"
 
+# ─── Streak reminders cron (every 15 min) ──────────────────────────────────
+# Calls /api/v1/cron/streak-reminders. Secrets (CRON_SECRET, VAPID_PUBLIC_KEY,
+# VAPID_PRIVATE_KEY, VAPID_SUBJECT, NEXT_PUBLIC_VAPID_PUBLIC_KEY) are set via
+# `wrangler secret put <NAME>` — they're not committed here.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[env.dev.triggers]
+crons = ["*/15 * * * *"]
+
+[env.production.triggers]
+crons = ["*/15 * * * *"]
+
 # ─── Production ──────────────────────────────────────────────────────────────
 [env.production]
 name = "gao-social"

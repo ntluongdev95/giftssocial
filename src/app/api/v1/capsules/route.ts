@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
         notify(
           rid,
           'capsule_received',
-          `${senderLabel} buried a capsule for you`,
+          `${senderLabel} sent you a Gao Gift`,
           `Opens on ${unlockLabel}`,
           'capsule',
           id,

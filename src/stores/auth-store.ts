@@ -8,12 +8,19 @@ export interface AuthState {
   isGuest: boolean;
   accessToken: string | null;
   refreshToken: string | null;
+  /** True once the client has finished its first session check on page
+   *  load — success OR failure. Auth-gated layouts must wait for this
+   *  before deciding whether to redirect, or a hard refresh on an
+   *  authenticated page briefly reads `isAuthed=false` and bounces the
+   *  user to /world before AuthHydrator has responded. */
+  hasHydrated: boolean;
 
   // Actions
   setUser: (user: UserInfo | null) => void;
   setTokens: (accessToken: string, refreshToken?: string) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   hydrateFromMe: (raw: any) => void;
+  markHydrated: () => void;
   logout: () => void;
 }
 
@@ -28,6 +35,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
   isGuest: true,
   accessToken: null,
   refreshToken: null,
+  hasHydrated: false,
 
   setUser: (user) => set({ user, isAuthed: !!user, isGuest: !user }),
 
@@ -69,8 +77,10 @@ export const useAuthStore = create<AuthState>()((set) => ({
       trust_score: src.trust_score ?? 0,
       display_name: src.display_name ?? undefined,
     };
-    set({ user, isAuthed: true, isGuest: false });
+    set({ user, isAuthed: true, isGuest: false, hasHydrated: true });
   },
+
+  markHydrated: () => set({ hasHydrated: true }),
 
   logout: () => {
     set({

@@ -1,42 +1,40 @@
 'use client';
 
 import { useMapStore } from '@/stores/mapStore';
-import { useLandmarkStore } from '@/stores/landmarkStore';
 import { useFriendStore } from '@/stores/friendStore';
-import { useDeveloperStore } from '@/stores/developerStore';
+import { useGiftsPopupStore } from '@/stores/giftsPopupStore';
 import { ENTITY_MARKER_CONFIG } from '@/styles/tokens';
 import type { EntityType } from '@/types';
 
+// Only three chips remain on the map's top filter bar per product
+// decision: People, Friends, Gifts. Other layers stay implemented in
+// the stores / renderers but are no longer surfaced as chips here.
 const ENTITY_LAYERS: { key: EntityType; icon: string }[] = [
   { key: 'people', icon: '●' },
-  { key: 'business', icon: '■' },
-  { key: 'event', icon: '▲' },
-  { key: 'offer', icon: '◆' },
-  { key: 'profile', icon: '👤' },
-  { key: 'agent', icon: '⬡' },
-  { key: 'circle', icon: '⦿' },
 ];
 
 const SPECIAL_LAYERS = [
-  { key: 'hotels', icon: '🏨', label: 'Book Hotel', color: '#f59e0b' },
-  // { key: 'landmarks', icon: '🏛', label: 'Landmarks', color: '#fbbf24' }, // TODO: re-enable later
   { key: 'friends', icon: '👥', label: 'Friends', color: '#00d4ff' },
   { key: 'gifts', icon: '🎁', label: 'Gifts', color: '#ec4899' },
-  { key: 'developers', icon: '💻', label: 'Developers', color: '#34d399' },
 ];
 
 export default function LayerFilterPanel() {
-  const { activeLayers, toggleLayer, viewMode } = useMapStore();
-  const { showOnMap: showLandmarks, toggleShowOnMap: toggleLandmarks } = useLandmarkStore();
+  const { activeLayers, toggleLayer } = useMapStore();
   const { showOnMap: showFriends, toggleShowOnMap: toggleFriends } = useFriendStore();
-  const { showOnMap: showDevs, toggleShowOnMap: toggleDevs } = useDeveloperStore();
+  const openGiftsPopup = useGiftsPopupStore((s) => s.openPopup);
 
   const specialState: Record<string, { active: boolean; toggle: () => void }> = {
-    landmarks: { active: showLandmarks, toggle: toggleLandmarks },
     friends: { active: showFriends, toggle: toggleFriends },
-    gifts: { active: activeLayers.has('gift'), toggle: () => toggleLayer('gift') },
-    developers: { active: showDevs, toggle: toggleDevs },
-    hotels: { active: activeLayers.has('hotel'), toggle: () => toggleLayer('hotel') },
+    // Gifts chip opens the unified GiftsPopup (Kiss form + Templates
+    // in tabs). Also ensures the gift map layer is on so existing
+    // kiss markers show behind the popup.
+    gifts: {
+      active: activeLayers.has('gift'),
+      toggle: () => {
+        if (!activeLayers.has('gift')) toggleLayer('gift');
+        openGiftsPopup('kiss');
+      },
+    },
   };
 
   return (
@@ -68,38 +66,12 @@ export default function LayerFilterPanel() {
         );
       })}
 
-      {/* Landmarks — 3D only */}
-      {viewMode === '3d' && (() => {
-        const active = activeLayers.has('landmark');
-        return (
-          <button
-            onClick={() => toggleLayer('landmark')}
-            className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium transition-all duration-200 cursor-pointer"
-            style={active ? {
-              background: 'rgba(255,255,255,0.95)',
-              border: '1px solid #fbbf24',
-              color: '#0a0b0f',
-              boxShadow: '0 0 12px rgba(251,191,36,0.5), 0 2px 8px rgba(0,0,0,0.3)',
-            } : {
-              background: 'rgba(10,11,15,0.6)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: 'rgba(255,255,255,0.4)',
-            }}
-          >
-            <span style={{ fontSize: '10px' }}>🏛</span>
-            <span style={{ fontWeight: active ? 700 : 500 }}>Landmarks</span>
-          </button>
-        );
-      })()}
-
-      {/* Separator */}
+      {/* Separator between People (entity) and Friends/Gifts (special) */}
       <div className="shrink-0 w-px my-0.5" style={{ background: 'rgba(255,255,255,0.08)' }} />
 
-      {/* Special layers (landmarks, friends, developers) */}
+      {/* Special layers — Friends + Gifts only */}
       {SPECIAL_LAYERS.map(({ key, icon, label, color }) => {
         const { active, toggle } = specialState[key];
-        // Only show landmarks toggle in 3D mode
-        if (key === 'landmarks' && viewMode !== '3d') return null;
         return (
           <button
             key={key}

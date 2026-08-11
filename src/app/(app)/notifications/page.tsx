@@ -94,9 +94,9 @@ export default function NotificationsPage() {
       return;
     }
 
-    // Capsule notifications — go to capsules list (server returns full capsule on PATCH open)
+    // Gift notifications — go to gifts list (server returns full capsule on PATCH open)
     if (n.type === 'capsule_received' || n.type === 'capsule_opened') {
-      router.push('/me/capsules');
+      router.push('/me/gifts');
       return;
     }
 
@@ -115,6 +115,20 @@ export default function NotificationsPage() {
     // id as a query so the wallet can auto-open the detail sheet later).
     if (refType === 'gift_card') {
       router.push(refId ? `/me/wallet?card=${refId}` : '/me/wallet');
+      return;
+    }
+
+    // Streak notification — verification asks go to /verify; everything
+    // else (tick celebration, invite accept/decline, etc.) opens the
+    // streak detail page.
+    if (refType === 'streak' && refId) {
+      const title = (n.title as string) || '';
+      const body = (n.body as string) || '';
+      const isVerifyAsk =
+        /needs your help verifying/i.test(title) ||
+        /needs your vote/i.test(title) ||
+        /can you confirm/i.test(body);
+      router.push(isVerifyAsk ? `/streaks/${refId}/verify` : `/streaks/${refId}`);
       return;
     }
 
@@ -183,18 +197,35 @@ export default function NotificationsPage() {
         </div>
       </div>
 
-      <div className="max-w-lg lg:max-w-4xl mx-auto px-4 lg:px-8 py-4 pb-24">
-        {/* Unread count summary */}
+      <div className="max-w-lg lg:max-w-7xl 2xl:max-w-375 mx-auto px-4 lg:px-8 xl:px-12 py-4 lg:pt-8 xl:pt-10 pb-24">
+        {/* Unread count summary — gradient accent on desktop so it doesn't
+            look like a plain banner */}
         {unreadCount > 0 && (
-          <div className="flex items-center gap-3 mb-4 rounded-2xl px-5 py-3" style={{ background: 'rgba(0,212,255,0.04)', border: '1px solid rgba(0,212,255,0.1)' }}>
-            <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0,212,255,0.1)' }}>
+          <div
+            className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6 rounded-2xl px-5 lg:px-6 py-3 lg:py-4"
+            style={{
+              background:
+                'linear-gradient(135deg, rgba(0,212,255,0.08), rgba(168,85,247,0.05))',
+              border: '1px solid rgba(0,212,255,0.2)',
+            }}
+          >
+            <div
+              className="h-10 w-10 lg:h-12 lg:w-12 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'rgba(0,212,255,0.15)', border: '1px solid rgba(0,212,255,0.3)' }}
+            >
               <Bell size={18} className="text-[#00d4ff]" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-white">{unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}</p>
-              <p className="text-[10px] text-[#4a5068]">Tap to view details</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm lg:text-base font-semibold text-white">
+                {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+              </p>
+              <p className="text-[10px] lg:text-xs text-[#a3adc3]">Tap any card to view details</p>
             </div>
-            <button onClick={markAllRead} className="rounded-lg px-3 py-1.5 text-[10px] font-semibold cursor-pointer" style={{ background: 'rgba(0,212,255,0.1)', color: '#00d4ff' }}>
+            <button
+              onClick={markAllRead}
+              className="rounded-lg px-3 lg:px-4 py-1.5 lg:py-2 text-[10px] lg:text-xs font-semibold cursor-pointer transition-colors"
+              style={{ background: 'rgba(0,212,255,0.12)', color: '#00d4ff', border: '1px solid rgba(0,212,255,0.25)' }}
+            >
               Read all
             </button>
           </div>
@@ -209,34 +240,59 @@ export default function NotificationsPage() {
             <p className="text-xs text-[#4a5068]">When someone messages, follows, or interacts with you, it will show here</p>
           </div>
         ) : (
-          <div className="lg:grid lg:grid-cols-2 gap-3 space-y-3 lg:space-y-0">
+          // Mobile: stack. md+: 2 col. xl+: 3 col so odd counts read better.
+          <div className="lg:grid lg:grid-cols-2 xl:grid-cols-3 gap-3 xl:gap-4 space-y-3 lg:space-y-0">
             {notifications.map((n) => {
               const cfg = ICON_MAP[n.type as string] || ICON_MAP.system;
               const isUnread = !n.read;
               return (
                 <div
                   key={n.id as string}
-                  className="flex items-start gap-3.5 rounded-2xl px-5 py-4 cursor-pointer transition-all hover:scale-[1.01]"
+                  className="relative flex items-start gap-3.5 lg:gap-4 rounded-2xl px-5 lg:px-6 py-4 lg:py-5 cursor-pointer transition-colors hover:bg-white/2"
                   style={{
-                    background: isUnread ? 'rgba(0,212,255,0.03)' : 'rgba(17,19,24,0.5)',
-                    border: isUnread ? '1px solid rgba(0,212,255,0.12)' : '1px solid rgba(255,255,255,0.04)',
+                    background: isUnread ? 'rgba(0,212,255,0.04)' : 'rgba(17,19,24,0.5)',
+                    border: isUnread ? '1px solid rgba(0,212,255,0.18)' : '1px solid rgba(255,255,255,0.04)',
                   }}
                   onClick={() => handleNotificationClick(n)}
                 >
-                  <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cfg.color}12`, color: cfg.color }}>
+                  {/* Subtle left-edge accent stripe for unread state — more
+                      visible than the small dot at a glance */}
+                  {isUnread && (
+                    <div
+                      className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full"
+                      style={{ background: 'linear-gradient(180deg, #00d4ff, #a855f7)' }}
+                    />
+                  )}
+                  <div
+                    className="h-10 w-10 lg:h-11 lg:w-11 rounded-xl flex items-center justify-center shrink-0"
+                    style={{
+                      background: `${cfg.color}14`,
+                      color: cfg.color,
+                      border: `1px solid ${cfg.color}26`,
+                    }}
+                  >
                     {cfg.icon}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className={`text-sm ${isUnread ? 'font-bold text-white' : 'font-medium text-[#a3adc3]'}`}>{n.title as string}</p>
-                      {isUnread && <div className="h-2 w-2 rounded-full bg-[#00d4ff] shrink-0 animate-pulse" />}
+                    <div className="flex items-start gap-2">
+                      <p className={`text-sm lg:text-[15px] leading-snug ${isUnread ? 'font-bold text-white' : 'font-medium text-[#a3adc3]'}`}>
+                        {n.title as string}
+                      </p>
+                      {isUnread && <div className="h-2 w-2 rounded-full bg-[#00d4ff] shrink-0 mt-1.5 animate-pulse" />}
                     </div>
-                    {n.body ? <p className="text-xs text-[#4a5068] mt-1 line-clamp-2">{String(n.body)}</p> : null}
-                    <div className="flex items-center gap-2 mt-1.5">
+                    {n.body ? <p className="text-xs text-[#4a5068] mt-1.5 line-clamp-2">{String(n.body)}</p> : null}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <p className="text-[10px] text-[#2d3548]">
                         {n.created_at ? formatDistanceToNow(parseUTC(n.created_at as string)!, { addSuffix: true }) : ''}
                       </p>
-                      {!!n.ref_type && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,212,255,0.06)', color: '#4a5068' }}>Tap for details</span>}
+                      {!!n.ref_type && (
+                        <span
+                          className="text-[9px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ background: 'rgba(0,212,255,0.08)', color: '#00d4ff' }}
+                        >
+                          Tap for details
+                        </span>
+                      )}
                     </div>
                   </div>
                   {loadingId === n.id && <Loader2 size={14} className="text-[#00d4ff] animate-spin shrink-0" />}

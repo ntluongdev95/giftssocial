@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   Plus, Bot, MapPin, Tag, FileText, AlertTriangle,
   Store, Calendar, Users, Sparkles, Shield, ChevronRight,
-  Bookmark, Map, FileEdit, QrCode, Zap, TrendingUp,
+  Bookmark, Map, FileEdit, QrCode, Zap, TrendingUp, Flame,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 const ScanCheckin = dynamic(() => import('@/components/checkin/ScanCheckin'), { ssr: false });
@@ -29,11 +29,12 @@ const QUICK_CREATE = [
 ];
 
 const HOT_ACTIONS = [
+  { href: '/streaks', icon: <Flame size={20} />, color: '#fbbf24', title: 'Health Streaks', sub: 'Build a chain with friends' },
   { href: '/nearby', icon: <Store size={20} />, color: '#34d399', title: 'Nearby Businesses', sub: 'Open now near you' },
   { href: '/nearby', icon: <Calendar size={20} />, color: '#f87171', title: 'Join Events Tonight', sub: 'Happening near you' },
   { href: '/circles', icon: <Users size={20} />, color: '#00d4ff', title: 'Find Circles', sub: 'Active near you' },
-  { href: '/nearby', icon: <Sparkles size={20} />, color: '#fbbf24', title: 'Book Services', sub: 'Beauty · Food · Health' },
-  { href: '/me', icon: <Shield size={20} />, color: '#a78bfa', title: 'Earn Trust & Badges', sub: 'Build your reputation' },
+  { href: '/nearby', icon: <Sparkles size={20} />, color: '#a78bfa', title: 'Book Services', sub: 'Beauty · Food · Health' },
+  { href: '/me', icon: <Shield size={20} />, color: '#34d399', title: 'Earn Trust & Badges', sub: 'Build your reputation' },
 ];
 
 const SHORTCUTS = [
@@ -56,7 +57,7 @@ export default function ActionsPage() {
   const proofCount = (proofsData?.data || []).length;
 
   return (
-    <div className="h-full overflow-y-auto px-4 lg:px-8 pt-[calc(env(safe-area-inset-top,20px)+24px)] lg:pt-6 pb-24">
+    <div className="h-full overflow-y-auto px-4 lg:px-8 xl:px-12 pt-[calc(env(safe-area-inset-top,20px)+24px)] lg:pt-8 xl:pt-10 pb-24">
 
       {/* ══ MOBILE ════════════════════════════════════════ */}
       <div className="lg:hidden max-w-lg mx-auto">
@@ -99,18 +100,18 @@ export default function ActionsPage() {
       </div>
 
       {/* ══ DESKTOP ═══════════════════════════════════════ */}
-      <div className="hidden lg:block max-w-5xl mx-auto">
+      <div className="hidden lg:block max-w-7xl 2xl:max-w-375 mx-auto">
         {/* Location */}
-        <div className="flex items-center gap-1.5 mb-6">
+        <div className="flex items-center gap-1.5 mb-6 xl:mb-8">
           <div className="h-2 w-2 rounded-full bg-[#00d4ff]" />
           <span className="text-sm font-medium text-[#a3adc3]">{city || 'Your Location'}</span>
           <ChevronRight size={14} className="text-[#4a5068]" />
         </div>
 
         {/* Top row: 2 hero cards + Quick Create */}
-        <div className="flex gap-6 mb-8">
+        <div className="flex gap-6 xl:gap-10 mb-8 xl:mb-10">
           {/* Hero cards */}
-          <div className="flex gap-4 w-1/2">
+          <div className="flex gap-4 xl:gap-5 w-1/2">
             <TopCardDesktop href="/create" icon={<Plus size={28} />} label="Create Signal" sub="Publish on the map" color="#00d4ff" />
             <TopCardDesktop href="/actions/ask-gao" icon={<Bot size={28} />} label="Ask Gao AI" sub="Find anything nearby" color="#a78bfa" />
           </div>
@@ -118,7 +119,7 @@ export default function ActionsPage() {
           {/* Quick Create */}
           <div className="flex-1">
             <SectionTitle>Quick Create</SectionTitle>
-            <div className="flex gap-4 mt-3">
+            <div className="flex gap-4 xl:gap-6 mt-3">
               {QUICK_CREATE.map(q => (
                 <Link key={q.href} href={q.href}>
                   <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex flex-col items-center gap-2 cursor-pointer">
@@ -134,17 +135,17 @@ export default function ActionsPage() {
         </div>
 
         {/* Middle: Hot Actions (2-col) + Shortcuts */}
-        <div className="flex gap-6 mb-8">
+        <div className="flex gap-6 xl:gap-10 mb-8 xl:mb-10">
           {/* Hot Actions — 2 columns */}
           <div className="flex-1">
             <SectionTitle>Hot Actions</SectionTitle>
-            <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-2 gap-3 xl:gap-4 mt-3">
               {HOT_ACTIONS.map(a => (
                 <Link key={a.title} href={a.href}>
                   <motion.div
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
-                    className="flex items-center gap-4 rounded-2xl px-4 py-4 cursor-pointer transition-colors hover:bg-white/[0.02]"
+                    className="flex items-center gap-4 rounded-2xl px-4 py-4 xl:px-5 xl:py-5 cursor-pointer transition-colors hover:bg-white/2"
                     style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.04)' }}
                   >
                     <div className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0 relative overflow-hidden">
@@ -163,7 +164,7 @@ export default function ActionsPage() {
           </div>
 
           {/* Right sidebar: Shortcuts + Scan */}
-          <div className="w-[280px] shrink-0">
+          <div className="w-72 xl:w-80 shrink-0">
             <SectionTitle>Your Shortcuts</SectionTitle>
             <div className="space-y-2 mt-3 mb-4">
               {SHORTCUTS.map(s => (
