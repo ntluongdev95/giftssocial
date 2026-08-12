@@ -4,32 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Share2, Download, Copy, Check, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
-
+import PixelFormation from './PixelFormation';
 import {
   playIntroSound, playFlyingSound, playHeartbeat, playCelebration,
   playMessageChime, playRomanticBg, playProposalSound, playYesSound,
 } from '@/lib/kiss-audio';
-import GiftDropIntro, { type VehicleKind } from './GiftDropIntro';
-
-// Great-circle distance in km (Haversine). Used to pick the vehicle in
-// the intro so the animation matches what will fly on the map next.
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// Dev override: `?force_vehicle=car|dove|plane` forces the intro to
-// play that vehicle animation regardless of real distance. Handy for
-// testing car / plane reveals without having to send kisses across
-// continents. Returns undefined when the param isn't present.
-function readForcedVehicle(): VehicleKind | undefined {
-  if (typeof window === 'undefined') return undefined;
-  const v = new URLSearchParams(window.location.search).get('force_vehicle');
-  return v === 'car' || v === 'dove' || v === 'plane' ? v : undefined;
-}
 
 export interface Kiss {
   id: string;
@@ -76,8 +55,42 @@ async function getCity(lat: number, lng: number): Promise<string> {
   } catch { return 'Unknown'; }
 }
 // Stable particles for cinematic intro
-
-
+const CINEMATIC_PARTICLES = Array.from({ length: 35 }, (_, i) => ({
+  id: i,
+  left: Math.random() * 100,
+  top: Math.random() * 100,
+  size: 1 + Math.random() * 2,
+  duration: 3 + Math.random() * 4,
+  delay: Math.random() * 4,
+}));
+function CinematicParticles() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {CINEMATIC_PARTICLES.map((particle) => (
+        <motion.span
+          key={particle.id}
+          className="absolute rounded-full bg-white"
+          style={{
+            left: `${particle.left}%`,
+            top: `${particle.top}%`,
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+          }}
+          animate={{
+            opacity: [0, 0.15, 0.4, 0.15, 0],
+            scale: [0.5, 1, 1.2, 1, 0.5],
+          }}
+          transition={{
+            duration: particle.duration,
+            delay: particle.delay,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 // Precomputed at module level — avoids impure Math.random() calls during render
 const ARRIVAL_PARTICLE_OFFSETS = Array.from({ length: 20 }, () => ({
@@ -260,14 +273,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[999] flex items-center justify-center"
-        style={{
-          // Flying is the only step that lets the map show through —
-          // intro renders its own night-sky scene, later steps sit on a
-          // blurred dark cover.
-          background: step === 'flying' ? 'transparent' : 'rgba(0,0,0,0.85)',
-          backdropFilter: step === 'flying' ? 'none' : 'blur(12px)',
-          transition: 'background 1s, backdrop-filter 1s',
-        }}
+        style={{ background: step === 'flying' ? 'transparent' : 'rgba(0,0,0,0.85)', backdropFilter: step === 'flying' ? 'none' : 'blur(12px)', transition: 'background 1s, backdrop-filter 1s' }}
       >
         {/* Controls — always visible */}
         <div className="absolute top-6 right-6 z-[1000] flex items-center gap-2">
@@ -283,23 +289,21 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           </button>
         </div>
 
-        {/* ── Step 1: Cinematic Intro — gifts + letters drop, then the
-             delivery vehicle appropriate to the sender→receiver distance
-             flies / drives in to carry the kiss.
-             Dev override: `?force_vehicle=car|dove|plane` in the URL
-             forces the vehicle regardless of real distance. */}
+        {/* ── Step 1: Cinematic Intro ── */}
         {step === 'intro' && (
-          <GiftDropIntro
-            distanceKm={haversineKm(kiss.sender_lat, kiss.sender_lng, kiss.receiver_lat, kiss.receiver_lng)}
-            vehicle={readForcedVehicle()}
-            onComplete={() => {
-              setStep('flying');
-              if (onFlyStart && !hasFlownRef.current) {
-                hasFlownRef.current = true;
-                onFlyStart();
-              }
-            }}
-          />
+          <CinematicIntro
+    kiss={kiss}
+    senderCity={senderCity}
+    receiverCity={receiverCity}
+    onComplete={() => {
+      setStep('flying');
+
+      if (onFlyStart && !hasFlownRef.current) {
+        hasFlownRef.current = true;
+        onFlyStart();
+      }
+    }}
+  />
           // <motion.div
           //   initial={{ opacity: 0 }}
           //   animate={{ opacity: 1 }}

@@ -66,6 +66,7 @@ function convertTemplate(t: ApiTemplate): OccasionTemplate {
     accentColor: t.accent_color ?? undefined,
     fieldsSchema: safeParseJson(t.fields_schema, []),
     effects: safeParseJson(t.effects, []),
+    featured: t.featured === 1,
   };
 }
 

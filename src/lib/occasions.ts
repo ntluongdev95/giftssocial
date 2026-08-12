@@ -36,6 +36,9 @@ export interface OccasionTemplate {
   accentColor?: string;                             // template's brand color
   fieldsSchema?: import('@/components/reveals/fields').FieldSpec[];
   effects?: import('@/components/reveals/_effects/_types').EffectSpec[];
+  // Admin flag from template_occasions.featured — pinned at the top of
+  // the picker + shown with a ⭐ badge.
+  featured?: boolean;
 }
 
 export interface Occasion {

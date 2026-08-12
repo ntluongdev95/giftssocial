@@ -1502,7 +1502,7 @@ function getDronePosition(d: DronePoint, progress: number): [number, number] {
   return [d.x, d.y];
 }
 
-function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
+export function BirthdayDroneShow({ delay, name }: { delay: number; name: string }) {
   const sceneData = useMemo<{ points: DronePoint[]; mouthX: number; mouthY: number; rimX: number; rimY: number; cellSize: number }>(() => {
     // Greeting + optional recipient name on a second line below.
     const greeting = 'HAPPY BIRTHDAY';

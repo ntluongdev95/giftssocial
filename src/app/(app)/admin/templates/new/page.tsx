@@ -5,12 +5,11 @@
 // on the right. Preview shows how the template card will appear in the
 // picker + a hint about the next step (adding effects).
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { toast } from 'sonner';
-import { ArrowLeft, ShieldCheck, Sparkles, Wand2, Loader2, ArrowRight, Layers, RefreshCw } from 'lucide-react';
-import MeetAndHugScene from '@/components/reveals/_shared/MeetAndHugScene';
+import { ArrowLeft, ShieldCheck, Sparkles, Wand2, Loader2, ArrowRight, Layers } from 'lucide-react';
 
 interface OccasionRef { id: string; name: string; name_vi?: string | null; emoji: string; theme_color: string; }
 
@@ -41,15 +40,6 @@ export default function AdminNewTemplatePage() {
   const [description, setDescription] = useState('');
   const [occasionIds, setOccasionIds] = useState<string[]>(preselectOccasion ? [preselectOccasion] : []);
   const [saving, setSaving] = useState(false);
-
-  // Loop the meet-and-hug preview so admin sees exactly what plays
-  // just before their reveal effects kick in. Scene lasts ~3.4s; give
-  // it a 1s breath before restarting.
-  const [sceneKey, setSceneKey] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setSceneKey(k => k + 1), 4400);
-    return () => clearInterval(t);
-  }, []);
 
   // Auto-fill ID from name until user overrides it.
   const handleNameChange = (v: string) => {
@@ -331,50 +321,32 @@ export default function AdminNewTemplatePage() {
               )}
             </div>
 
-            {/* Meet-and-hug loop — this always plays first; the admin's
-                future effects run RIGHT AFTER this scene. Looping makes
-                the "then your reveal takes over" moment obvious. */}
+            {/* Placeholder preview — the meet-and-hug intro has been
+                removed from the reveal flow; the template now plays
+                instantly when the recipient opens the kiss. This card
+                signals that + prompts the admin to design effects. */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-wider text-[#7a8299] font-semibold">
-                  What plays before your reveal
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSceneKey(k => k + 1)}
-                  className="flex items-center gap-1 text-[10px] font-semibold text-white/60 hover:text-white cursor-pointer"
-                  title="Replay the meet-and-hug scene"
-                >
-                  <RefreshCw size={10} /> Replay
-                </button>
+              <div className="text-[10px] uppercase tracking-wider text-[#7a8299] font-semibold">
+                Preview
               </div>
-
-              <div className="rounded-2xl relative overflow-hidden" style={{
+              <div className="rounded-2xl relative overflow-hidden flex flex-col items-center justify-center text-center px-6" style={{
                 aspectRatio: '9 / 16',
                 maxHeight: '360px',
-                background: 'radial-gradient(ellipse at center, #08091a 0%, #03050e 55%, #000005 100%)',
-                border: `1px solid ${accent}30`,
+                background: `radial-gradient(ellipse at center, ${accent}22 0%, #08091a 55%, #000005 100%)`,
+                border: `1px dashed ${accent}55`,
               }}>
-                <MeetAndHugScene
-                  key={sceneKey}
-                  sender={{ name: 'You', avatarUrl: undefined }}
-                  receiver={{ name: name || 'Them', avatarUrl: undefined }}
-                  senderAccent={accent}
-                  receiverAccent="#00d4ff"
-                />
-
-                {/* Overlay banner at the bottom telling the admin what
-                    happens next — this is where their effects will play. */}
-                <div className="absolute inset-x-0 bottom-0 p-3 text-center pointer-events-none" style={{
-                  background: `linear-gradient(180deg, transparent, ${accent}dd)`,
-                }}>
-                  <div className="text-[11px] font-bold text-white flex items-center justify-center gap-1.5">
-                    <ArrowRight size={12} className="rotate-90" />
-                    Your reveal plays right after
-                  </div>
-                  <div className="text-[9px] text-white/70 mt-0.5">
-                    Add effects on the next page
-                  </div>
+                <div className="text-6xl mb-3" style={{ filter: `drop-shadow(0 0 22px ${accent}88)` }}>
+                  {emoji}
+                </div>
+                <div className="text-sm font-semibold text-white/85">
+                  Reveal plays instantly
+                </div>
+                <div className="text-[11px] text-white/60 mt-1.5 max-w-[240px] leading-relaxed">
+                  When the recipient opens this kiss, your effects timeline starts right away — no intro to wait through.
+                </div>
+                <div className="mt-4 flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: accent }}>
+                  <ArrowRight size={11} />
+                  Add effects on the next page
                 </div>
               </div>
             </div>

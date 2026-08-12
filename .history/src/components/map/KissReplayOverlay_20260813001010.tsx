@@ -4,32 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Share2, Download, Copy, Check, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
-
 import {
   playIntroSound, playFlyingSound, playHeartbeat, playCelebration,
   playMessageChime, playRomanticBg, playProposalSound, playYesSound,
 } from '@/lib/kiss-audio';
-import GiftDropIntro, { type VehicleKind } from './GiftDropIntro';
-
-// Great-circle distance in km (Haversine). Used to pick the vehicle in
-// the intro so the animation matches what will fly on the map next.
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// Dev override: `?force_vehicle=car|dove|plane` forces the intro to
-// play that vehicle animation regardless of real distance. Handy for
-// testing car / plane reveals without having to send kisses across
-// continents. Returns undefined when the param isn't present.
-function readForcedVehicle(): VehicleKind | undefined {
-  if (typeof window === 'undefined') return undefined;
-  const v = new URLSearchParams(window.location.search).get('force_vehicle');
-  return v === 'car' || v === 'dove' || v === 'plane' ? v : undefined;
-}
 
 export interface Kiss {
   id: string;
@@ -76,9 +54,498 @@ async function getCity(lat: number, lng: number): Promise<string> {
   } catch { return 'Unknown'; }
 }
 // Stable particles for cinematic intro
+const CINEMATIC_PARTICLES = Array.from({ length: 35 }, (_, i) => ({
+  id: i,
+  left: Math.random() * 100,
+  top: Math.random() * 100,
+  size: 1 + Math.random() * 2,
+  duration: 3 + Math.random() * 4,
+  delay: Math.random() * 4,
+}));
+function CinematicParticles() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {CINEMATIC_PARTICLES.map((particle) => (
+        <motion.span
+          key={particle.id}
+          className="absolute rounded-full bg-white"
+          style={{
+            left: `${particle.left}%`,
+            top: `${particle.top}%`,
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+          }}
+          animate={{
+            opacity: [0, 0.15, 0.4, 0.15, 0],
+            scale: [0.5, 1, 1.2, 1, 0.5],
+          }}
+          transition={{
+            duration: particle.duration,
+            delay: particle.delay,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+function CinematicIntro({
+  kiss,
+  senderCity,
+  receiverCity,
+}: {
+  kiss: Kiss;
+  senderCity: string;
+  receiverCity: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 overflow-hidden"
+      style={{
+        background:
+          'radial-gradient(circle at 50% 45%, rgba(35,18,40,0.95) 0%, rgba(5,5,8,1) 55%, #020204 100%)',
+      }}
+    >
+      {/* ========================================================= */}
+      {/* BACKGROUND */}
+      {/* ========================================================= */}
 
+      <div className="absolute inset-0">
+        <CinematicParticles />
+      </div>
 
+      {/* Main ambient glow */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.6 }}
+        animate={{
+          opacity: [0, 0.25, 0.15],
+          scale: [0.6, 1.2, 1],
+        }}
+        transition={{
+          duration: 7,
+          ease: 'easeOut',
+        }}
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        style={{
+          width: 500,
+          height: 500,
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle, rgba(236,72,153,0.22), rgba(168,85,247,0.08) 40%, transparent 70%)',
+          filter: 'blur(35px)',
+        }}
+      />
 
+      {/* ========================================================= */}
+      {/* SCENE CONTAINER */}
+      {/* ========================================================= */}
+
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="relative w-full max-w-xl h-full">
+
+          {/* ===================================================== */}
+          {/* SCENE 1 — SOMEWHERE IN THE WORLD */}
+          {/* 0s → 1.5s */}
+          {/* ===================================================== */}
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 1, 1, 0],
+            }}
+            transition={{
+              duration: 2,
+              times: [0, 0.2, 0.7, 1],
+              ease: 'easeInOut',
+            }}
+            className="absolute inset-0 flex flex-col items-center justify-center"
+          >
+            <motion.p
+              initial={{ opacity: 0, letterSpacing: '0.2em' }}
+              animate={{
+                opacity: [0, 1, 1, 0],
+                letterSpacing: ['0.2em', '0.45em', '0.45em', '0.55em'],
+              }}
+              transition={{
+                duration: 1.8,
+              }}
+              className="text-[10px] uppercase text-white/40"
+            >
+              Somewhere in the world
+            </motion.p>
+
+            {/* Tiny location signal */}
+            <motion.div
+              initial={{
+                scale: 0,
+                opacity: 0,
+              }}
+              animate={{
+                scale: [0, 1, 1.8],
+                opacity: [0, 1, 0],
+              }}
+              transition={{
+                duration: 1.4,
+                delay: 0.5,
+              }}
+              className="absolute"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#ec4899',
+                boxShadow:
+                  '0 0 20px 6px rgba(236,72,153,0.35)',
+              }}
+            />
+          </motion.div>
+
+          {/* ===================================================== */}
+          {/* SCENE 2 — SENDER */}
+          {/* 1.5s → 3.2s */}
+          {/* ===================================================== */}
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 0, 1, 1, 0],
+            }}
+            transition={{
+              duration: 3,
+              times: [0, 0.25, 0.4, 0.78, 1],
+              ease: 'easeInOut',
+            }}
+            className="absolute inset-0 flex flex-col items-center justify-center"
+          >
+            {/* Avatar */}
+            <motion.div
+              initial={{
+                opacity: 0,
+                scale: 0.65,
+                y: 20,
+              }}
+              animate={{
+                opacity: [0, 1, 1, 0],
+                scale: [0.65, 1, 1.04, 1],
+                y: [20, 0, 0, -10],
+              }}
+              transition={{
+                duration: 2.4,
+                delay: 0.3,
+              }}
+              className="relative"
+            >
+              {/* Radar ring */}
+              <motion.div
+                initial={{
+                  scale: 0.8,
+                  opacity: 0,
+                }}
+                animate={{
+                  scale: [0.8, 1.35],
+                  opacity: [0.45, 0],
+                }}
+                transition={{
+                  duration: 1.8,
+                  delay: 0.7,
+                }}
+                className="absolute inset-0 rounded-full"
+                style={{
+                  border: '1px solid rgba(236,72,153,0.5)',
+                }}
+              />
+
+              <motion.div
+                animate={{
+                  boxShadow: [
+                    '0 0 25px rgba(236,72,153,0.15)',
+                    '0 0 55px rgba(236,72,153,0.35)',
+                    '0 0 25px rgba(236,72,153,0.15)',
+                  ],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                }}
+                className="h-24 w-24 rounded-full overflow-hidden flex items-center justify-center"
+                style={{
+                  background:
+                    'linear-gradient(135deg, #ec4899, #f87171)',
+                  border:
+                    '2px solid rgba(255,255,255,0.15)',
+                }}
+              >
+                {kiss.sender_avatar ? (
+                  <img
+                    src={kiss.sender_avatar}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-3xl font-bold text-white">
+                    {(kiss.sender_name || '?')
+                      .charAt(0)
+                      .toUpperCase()}
+                  </span>
+                )}
+              </motion.div>
+            </motion.div>
+
+            {/* Sender name */}
+            <motion.p
+              initial={{
+                opacity: 0,
+                y: 12,
+              }}
+              animate={{
+                opacity: [0, 1, 1, 0],
+                y: [12, 0, 0, -8],
+              }}
+              transition={{
+                duration: 2,
+                delay: 0.7,
+              }}
+              className="mt-5 text-xl font-semibold text-white"
+            >
+              {kiss.sender_name || 'Someone'}
+            </motion.p>
+
+            {/* City */}
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{
+                opacity: [0, 1, 1, 0],
+              }}
+              transition={{
+                duration: 2,
+                delay: 0.9,
+              }}
+              className="mt-1 text-[9px] uppercase tracking-[0.4em] text-white/30"
+            >
+              {senderCity || 'Unknown location'}
+            </motion.p>
+          </motion.div>
+
+          {/* ===================================================== */}
+          {/* SCENE 3 — THE KISS */}
+          {/* 3.2s → 4.8s */}
+          {/* ===================================================== */}
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 0, 1, 1, 0],
+            }}
+            transition={{
+              duration: 2.5,
+              times: [0, 0.35, 0.5, 0.8, 1],
+            }}
+            className="absolute inset-0 flex flex-col items-center justify-center"
+          >
+            <motion.div
+              initial={{
+                scale: 0,
+                rotate: -25,
+              }}
+              animate={{
+                scale: [0, 1.3, 1],
+                rotate: [-25, 6, 0],
+              }}
+              transition={{
+                duration: 1,
+                ease: 'easeOut',
+              }}
+              className="text-7xl"
+              style={{
+                filter:
+                  'drop-shadow(0 0 25px rgba(236,72,153,0.35))',
+              }}
+            >
+              {kiss.emoji}
+            </motion.div>
+
+            <motion.p
+              initial={{
+                opacity: 0,
+                y: 15,
+              }}
+              animate={{
+                opacity: [0, 1, 1, 0],
+                y: [15, 0, 0, -8],
+              }}
+              transition={{
+                duration: 2,
+                delay: 0.5,
+              }}
+              className="mt-7 text-sm text-white/45"
+            >
+              decided to send something special
+            </motion.p>
+          </motion.div>
+
+          {/* ===================================================== */}
+          {/* SCENE 4 — ROUTE */}
+          {/* 4.8s → 6.5s */}
+          {/* ===================================================== */}
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 0, 1, 1, 0],
+            }}
+            transition={{
+              duration: 2.5,
+              times: [0, 0.25, 0.4, 0.82, 1],
+            }}
+            className="absolute inset-0 flex flex-col items-center justify-center"
+          >
+            {/* FROM */}
+            <p className="text-[9px] uppercase tracking-[0.4em] text-white/25">
+              From
+            </p>
+
+            <h2 className="mt-2 text-2xl font-semibold text-white">
+              {senderCity || 'Somewhere'}
+            </h2>
+
+            {/* Route */}
+            <div className="relative w-80 h-20 mt-5">
+
+              {/* Base route */}
+              <div
+                className="absolute left-2 right-2 top-1/2 h-px"
+                style={{
+                  background:
+                    'rgba(255,255,255,0.08)',
+                }}
+              />
+
+              {/* Animated route */}
+              <motion.div
+                initial={{
+                  scaleX: 0,
+                }}
+                animate={{
+                  scaleX: 1,
+                }}
+                transition={{
+                  duration: 1.2,
+                  delay: 0.2,
+                  ease: 'easeInOut',
+                }}
+                className="absolute left-2 right-2 top-1/2 h-px origin-left"
+                style={{
+                  background:
+                    'linear-gradient(90deg, #ec4899, #a855f7, #00d4ff)',
+                  boxShadow:
+                    '0 0 12px rgba(236,72,153,0.4)',
+                }}
+              />
+
+              {/* Origin dot */}
+              <div
+                className="absolute left-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full"
+                style={{
+                  background: '#ec4899',
+                  boxShadow:
+                    '0 0 12px rgba(236,72,153,0.6)',
+                }}
+              />
+
+              {/* Destination dot */}
+              <div
+                className="absolute right-0 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full"
+                style={{
+                  background: '#00d4ff',
+                  boxShadow:
+                    '0 0 12px rgba(0,212,255,0.6)',
+                }}
+              />
+
+              {/* Moving kiss */}
+              <motion.div
+                initial={{
+                  left: '0%',
+                  opacity: 0,
+                }}
+                animate={{
+                  left: ['0%', '10%', '50%', '90%', '100%'],
+                  opacity: [0, 1, 1, 1, 0],
+                }}
+                transition={{
+                  duration: 1.5,
+                  delay: 0.3,
+                  ease: 'easeInOut',
+                }}
+                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-xl"
+              >
+                {kiss.emoji}
+              </motion.div>
+            </div>
+
+            {/* TO */}
+            <p className="text-[9px] uppercase tracking-[0.4em] text-white/25">
+              To
+            </p>
+
+            <h2 className="mt-2 text-2xl font-semibold text-white">
+              {receiverCity || 'Somewhere'}
+            </h2>
+          </motion.div>
+
+          {/* ===================================================== */}
+          {/* FINAL MESSAGE */}
+          {/* 6.0s → 7s */}
+          {/* ===================================================== */}
+
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 15,
+            }}
+            animate={{
+              opacity: [0, 0, 1, 1, 0],
+              y: [15, 15, 0, 0, -10],
+            }}
+            transition={{
+              duration: 1.5,
+              delay: 5.5,
+              times: [0, 0.2, 0.35, 0.75, 1],
+            }}
+            className="absolute bottom-[16%] left-0 right-0 flex flex-col items-center"
+          >
+            <p className="text-[10px] uppercase tracking-[0.35em] text-pink-400">
+              Preparing for takeoff
+            </p>
+
+            {/* Loading dots */}
+            <div className="flex gap-1.5 mt-3">
+              {[0, 1, 2].map((i) => (
+                <motion.span
+                  key={i}
+                  animate={{
+                    opacity: [0.2, 1, 0.2],
+                  }}
+                  transition={{
+                    duration: 1,
+                    delay: i * 0.2,
+                    repeat: Infinity,
+                  }}
+                  className="w-1 h-1 rounded-full bg-pink-400"
+                />
+              ))}
+            </div>
+          </motion.div>
+
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 // Precomputed at module level — avoids impure Math.random() calls during render
 const ARRIVAL_PARTICLE_OFFSETS = Array.from({ length: 20 }, () => ({
   x: (Math.random() - 0.5) * 300,
@@ -260,14 +727,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[999] flex items-center justify-center"
-        style={{
-          // Flying is the only step that lets the map show through —
-          // intro renders its own night-sky scene, later steps sit on a
-          // blurred dark cover.
-          background: step === 'flying' ? 'transparent' : 'rgba(0,0,0,0.85)',
-          backdropFilter: step === 'flying' ? 'none' : 'blur(12px)',
-          transition: 'background 1s, backdrop-filter 1s',
-        }}
+        style={{ background: step === 'flying' ? 'transparent' : 'rgba(0,0,0,0.85)', backdropFilter: step === 'flying' ? 'none' : 'blur(12px)', transition: 'background 1s, backdrop-filter 1s' }}
       >
         {/* Controls — always visible */}
         <div className="absolute top-6 right-6 z-[1000] flex items-center gap-2">
@@ -283,23 +743,21 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           </button>
         </div>
 
-        {/* ── Step 1: Cinematic Intro — gifts + letters drop, then the
-             delivery vehicle appropriate to the sender→receiver distance
-             flies / drives in to carry the kiss.
-             Dev override: `?force_vehicle=car|dove|plane` in the URL
-             forces the vehicle regardless of real distance. */}
+        {/* ── Step 1: Cinematic Intro ── */}
         {step === 'intro' && (
-          <GiftDropIntro
-            distanceKm={haversineKm(kiss.sender_lat, kiss.sender_lng, kiss.receiver_lat, kiss.receiver_lng)}
-            vehicle={readForcedVehicle()}
-            onComplete={() => {
-              setStep('flying');
-              if (onFlyStart && !hasFlownRef.current) {
-                hasFlownRef.current = true;
-                onFlyStart();
-              }
-            }}
-          />
+          <CinematicIntro
+    kiss={kiss}
+    senderCity={senderCity}
+    receiverCity={receiverCity}
+    onComplete={() => {
+      setStep('flying');
+
+      if (onFlyStart && !hasFlownRef.current) {
+        hasFlownRef.current = true;
+        onFlyStart();
+      }
+    }}
+  />
           // <motion.div
           //   initial={{ opacity: 0 }}
           //   animate={{ opacity: 1 }}

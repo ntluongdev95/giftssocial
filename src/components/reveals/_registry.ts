@@ -19,6 +19,7 @@ import { RoseRainConfig }        from './rose-rain/config';
 import { HeartBlastConfig }      from './val-heart-blast/config';
 import { XmasSnowConfig }        from './xmas-snow/config';
 import { BdayPartyConfig }       from './bday-party/config';
+import { BdayJourneyConfig }     from './bday-journey';
 
 // Scaffolds (using PlaceholderReveal) — customize by rewriting index.tsx
 import { ValLoveLetterConfig }   from './val-love-letter';
@@ -41,6 +42,7 @@ export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [HeartBlastConfig.id]:    HeartBlastConfig,
   [XmasSnowConfig.id]:      XmasSnowConfig,
   [BdayPartyConfig.id]:     BdayPartyConfig,
+  [BdayJourneyConfig.id]:   BdayJourneyConfig,
   [ValLoveLetterConfig.id]: ValLoveLetterConfig,
   [ValStarryConfig.id]:     ValStarryConfig,
   [BdayCandlesConfig.id]:   BdayCandlesConfig,

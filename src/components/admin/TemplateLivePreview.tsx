@@ -5,14 +5,17 @@
 // the recipient will actually experience.
 //
 // Controls:
-//   • Device toggle:   Mobile | Tablet | Desktop  (each has aspect + chrome)
-//   • "With intro"     — Meet-and-hug plays first, then the effects
-//   • Replay           — rewind + restart the whole flow
+//   • Device toggle: Mobile | Tablet | Desktop  (each has aspect + chrome)
+//   • Replay:        rewind + restart the effects timeline
+//
+// Note: the "meet-and-hug" intro that used to precede every reveal has
+// been removed from the recipient flow, so this preview no longer
+// offers a "With intro" toggle — the template plays instantly, just
+// like the real reveal.
 
 import { useState, useEffect } from 'react';
 import TemplateRenderer from '@/components/reveals/TemplateRenderer';
 import DynamicForm from '@/components/reveals/DynamicForm';
-import MeetAndHugScene from '@/components/reveals/_shared/MeetAndHugScene';
 import type { EffectSpec } from '@/components/reveals/_effects/_types';
 import type { FieldSpec } from '@/components/reveals/fields';
 import { initialDataFromSchema } from '@/components/reveals/fields';
@@ -44,12 +47,9 @@ const DEVICES: Record<DeviceMode, DeviceConfig> = {
 export default function TemplateLivePreview({ effects, fieldsSchema, accent = '#ec4899' }: Props) {
   const [data, setData] = useState<Record<string, unknown>>(() => initialDataFromSchema(fieldsSchema));
   const [playKey, setPlayKey] = useState(0);
-  const [withIntro, setWithIntro] = useState(false);
-  const [phase, setPhase] = useState<'meet' | 'reveal'>('meet');
   const [device, setDevice] = useState<DeviceMode>('mobile');
 
   useEffect(() => { setData(initialDataFromSchema(fieldsSchema)); }, [fieldsSchema]);
-  useEffect(() => { setPhase(withIntro ? 'meet' : 'reveal'); }, [playKey, withIntro]);
 
   const cfg = DEVICES[device];
 
@@ -86,23 +86,12 @@ export default function TemplateLivePreview({ effects, fieldsSchema, accent = '#
             );
           })}
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[10px] font-semibold cursor-pointer text-white/70 hover:text-white" title="Play the meet-and-hug intro before the reveal, like the recipient sees it">
-            <input
-              type="checkbox"
-              checked={withIntro}
-              onChange={e => { setWithIntro(e.target.checked); setPlayKey(k => k + 1); }}
-              className="cursor-pointer accent-pink-500"
-            />
-            With intro
-          </label>
-          <button
-            onClick={() => setPlayKey(k => k + 1)}
-            className="flex items-center gap-1 text-[10px] font-semibold text-white/70 hover:text-white cursor-pointer"
-          >
-            <RefreshCw size={11} /> Replay
-          </button>
-        </div>
+        <button
+          onClick={() => setPlayKey(k => k + 1)}
+          className="flex items-center gap-1 text-[10px] font-semibold text-white/70 hover:text-white cursor-pointer"
+        >
+          <RefreshCw size={11} /> Replay
+        </button>
       </div>
 
       {/* Device frame — chrome depends on the mode */}
@@ -110,32 +99,14 @@ export default function TemplateLivePreview({ effects, fieldsSchema, accent = '#
         <div
           key={playKey}
           className="relative w-full overflow-hidden"
-          style={{
-            aspectRatio: cfg.aspect,
-            background: withIntro && phase === 'meet'
-              ? 'radial-gradient(ellipse at center, #08091a 0%, #03050e 55%, #000005 100%)'
-              : '#000',
-          }}
+          style={{ aspectRatio: cfg.aspect, background: '#000' }}
         >
-          {effects.length === 0 && phase === 'reveal' ? (
+          {effects.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-[#4a5068] text-center px-6">
               No effects yet — add some below to see the reveal play.
             </div>
-          ) : phase === 'meet' ? (
-            <MeetAndHugScene
-              sender={{ name: 'You' }}
-              receiver={{ name: (data.name as string) || 'Them' }}
-              senderAccent={accent}
-              onComplete={() => setPhase('reveal')}
-            />
           ) : (
             <TemplateRenderer effects={effects} data={data} />
-          )}
-
-          {withIntro && (
-            <div className="absolute top-2 left-2 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded backdrop-blur pointer-events-none" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>
-              {phase === 'meet' ? '1 · Meet & hug' : '2 · Reveal'}
-            </div>
           )}
         </div>
       </DeviceFrame>

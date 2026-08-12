@@ -42,25 +42,36 @@ interface MergedTemplate {
   coins?: number;
   previewVideo?: string;
   hasComponent: boolean;
+  featured?: boolean;
 }
 
 function mergedTemplates(occasion: Occasion): MergedTemplate[] {
-  const registered: MergedTemplate[] = templatesByOccasion(occasion.id).map(t => ({
+  // Use the DB list as the source of truth for order — the API already
+  // returns templates sorted by template_occasions.sort_order per
+  // occasion, so featured / high-priority templates show up first.
+  // Each row is marked hasComponent=true when it either has a React
+  // component in the registry OR effects[] from the data-driven engine.
+  const dbRows: MergedTemplate[] = (occasion.templates ?? []).map(t => ({
     id: t.id, name: t.name, description: t.description, emoji: t.emoji,
     thumbnailBg: t.thumbnailBg, premium: t.premium, coins: t.coins,
-    previewVideo: t.previewVideo, hasComponent: true,
+    previewVideo: t.videoUrl,
+    hasComponent: !!TEMPLATE_REGISTRY[t.id] || (t.effects?.length ?? 0) > 0,
+    featured: t.featured,
   }));
-  const rest: MergedTemplate[] = (occasion.templates ?? [])
-    .filter(t => !TEMPLATE_REGISTRY[t.id])
+
+  // Append any registered React templates that aren't in the DB yet
+  // (dev-only safety net — normally every registered template also has
+  // a DB row).
+  const knownIds = new Set(dbRows.map(t => t.id));
+  const registryOnly: MergedTemplate[] = templatesByOccasion(occasion.id)
+    .filter(t => !knownIds.has(t.id))
     .map(t => ({
       id: t.id, name: t.name, description: t.description, emoji: t.emoji,
       thumbnailBg: t.thumbnailBg, premium: t.premium, coins: t.coins,
-      previewVideo: t.videoUrl,
-      // Data-driven templates (have effects[] from the DB) get the LIVE
-      // badge too, because the DataDrivenReveal actually plays.
-      hasComponent: (t.effects?.length ?? 0) > 0,
+      previewVideo: t.previewVideo, hasComponent: true,
     }));
-  return [...registered, ...rest];
+
+  return [...dbRows, ...registryOnly];
 }
 import { tracksForOccasion, type MusicTrack } from '@/lib/kiss-music';
 import QRCode from 'qrcode';
@@ -469,6 +480,17 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   // previous template's fields don't apply to the new one.
   useEffect(() => { setTemplateData({}); }, [selectedTemplateId]);
 
+  // When the active occasion changes AND nothing is picked yet, pre-select
+  // the featured template (or the first one) so the sender lands with a
+  // sensible default instead of an empty picker.
+  useEffect(() => {
+    if (selectedTemplateId) return;
+    const tpls = activeOccasion?.templates ?? [];
+    const featured = tpls.find(t => t.featured);
+    const pick = featured ?? tpls[0];
+    if (pick) setSelectedTemplateId(pick.id);
+  }, [activeOccasionId, activeOccasion, selectedTemplateId]);
+
   // Derive the selected gift's human name from current emoji + occasion,
   // used in the Send button preview ("Send 🎂 Birthday Cake to Nga").
   const selectedGiftName = (() => {
@@ -819,10 +841,28 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                           key={t.id}
                           onClick={() => setPreviewTemplate(t)}
                           className="relative aspect-video rounded-lg overflow-hidden cursor-pointer transition-transform hover:scale-[1.03] group text-left"
-                          style={{ background: t.thumbnailBg, border: active ? `2px solid ${activeOccasion.themeColor}` : '1px solid rgba(255,255,255,0.08)', boxShadow: active ? `0 4px 16px ${activeOccasion.themeColor}55` : 'none' }}
+                          style={{
+                            background: t.thumbnailBg,
+                            border: active
+                              ? `2px solid ${activeOccasion.themeColor}`
+                              : t.featured
+                                ? `1.5px solid ${activeOccasion.themeColor}66`
+                                : '1px solid rgba(255,255,255,0.08)',
+                            boxShadow: active
+                              ? `0 4px 16px ${activeOccasion.themeColor}55`
+                              : t.featured
+                                ? `0 4px 20px ${activeOccasion.themeColor}44, 0 0 0 1px ${activeOccasion.themeColor}22`
+                                : 'none',
+                          }}
                         >
                           {/* Play badge */}
                           <div className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-[10px] group-hover:bg-black/70">▶</div>
+                          {/* Featured pill — top-center, highest priority */}
+                          {t.featured && (
+                            <div className="absolute top-1.5 left-1/2 -translate-x-1/2 text-[8px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5 backdrop-blur" style={{ background: `${activeOccasion.themeColor}dd`, color: '#fff', boxShadow: `0 2px 8px ${activeOccasion.themeColor}66` }}>
+                              ★ FEATURED
+                            </div>
+                          )}
                           {/* LIVE badge (registered plugin) — top-left, replaces premium if both */}
                           {t.hasComponent ? (
                             <div className="absolute top-1.5 left-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: 'rgba(0,0,0,0.6)', color: '#4ade80' }}>
