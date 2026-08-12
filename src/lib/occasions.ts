@@ -30,6 +30,12 @@ export interface OccasionTemplate {
   videoUrl?: string;        // preview mp4 URL — placeholder for now
   premium?: boolean;        // paid unlock (future)
   coins?: number;           // cost if premium
+  // Data-driven template engine (migration 035). Empty when the template
+  // falls back to a hardcoded React component (via component_key).
+  componentKey?: string;                            // registry key: 'data-driven' | 'rose-rain' | ...
+  accentColor?: string;                             // template's brand color
+  fieldsSchema?: import('@/components/reveals/fields').FieldSpec[];
+  effects?: import('@/components/reveals/_effects/_types').EffectSpec[];
 }
 
 export interface Occasion {

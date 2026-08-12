@@ -96,6 +96,13 @@ const kissSchema = z.object({
   photos: z.array(z.string().max(500)).max(3).default([]),
   music_url: z.string().max(500).optional(),
   music_title: z.string().max(120).optional(),
+  // Reveal template plugin ID (from src/components/reveals/_registry.ts)
+  template_id: z.string().max(60).optional(),
+  // Sender's answers to the template's fields_schema (migration 035).
+  // Free-form { key: value } object — the renderer substitutes these
+  // into effect params at reveal time. Capped at 4KB serialized to
+  // prevent abuse.
+  template_data: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -129,13 +136,24 @@ export async function POST(req: NextRequest) {
     const recLat = hasValidDestination ? (d.receiver_lat || receiver.location_lat) : 0;
     const recLng = hasValidDestination ? (d.receiver_lng || receiver.location_lng) : 0;
 
+    // Cap template_data at 4KB to avoid abuse of the free-form column.
+    let templateDataJson: string | null = null;
+    if (d.template_data && Object.keys(d.template_data).length > 0) {
+      const serialized = JSON.stringify(d.template_data);
+      if (serialized.length > 4096) {
+        return NextResponse.json({ error: { code: 'invalid_request', message: 'template_data too large (max 4KB)' } }, { status: 400 });
+      }
+      templateDataJson = serialized;
+    }
+
     const id = genId('kiss_');
     const row = await db.prepare(
-      `INSERT INTO kisses (id, sender_id, receiver_id, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
+      `INSERT INTO kisses (id, sender_id, receiver_id, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title, template_id, template_data)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
     ).bind(id, userId, d.receiver_id, d.message, d.emoji, d.visibility, d.kiss_type,
       sender.location_lat, sender.location_lng, recLat, recLng,
-      JSON.stringify(d.photos), d.music_url ?? null, d.music_title ?? null).first<Record<string, unknown>>();
+      JSON.stringify(d.photos), d.music_url ?? null, d.music_title ?? null,
+      d.template_id ?? null, templateDataJson).first<Record<string, unknown>>();
 
     // Notify receiver
     const senderName = sender.display_name || 'Someone';

@@ -151,6 +151,10 @@ export interface KissRow {
   // 5-open limit (migration 031)
   open_count: number;
   max_opens: number;
+  // Reveal template plugin ID (migration 032)
+  template_id: string | null;
+  // Sender's answers to the template's fields_schema (migration 035)
+  template_data: string | null; // JSON
 }
 
 export interface BookingRow {

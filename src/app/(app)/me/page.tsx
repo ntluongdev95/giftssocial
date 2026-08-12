@@ -303,6 +303,26 @@ export default function MePage() {
           Edit Profile
         </button>
 
+        {/* Admin quick access — only when is_admin=1 */}
+        {isAdmin && (
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <button
+              onClick={() => router.push('/admin/occasions')}
+              className="rounded-xl py-2.5 px-3 text-xs font-semibold cursor-pointer flex items-center gap-2 justify-center"
+              style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc' }}
+            >
+              <ShieldCheck size={14} /> Templates
+            </button>
+            <button
+              onClick={() => router.push('/admin/marketplace')}
+              className="rounded-xl py-2.5 px-3 text-xs font-semibold cursor-pointer flex items-center gap-2 justify-center"
+              style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc' }}
+            >
+              <ShieldCheck size={14} /> Merchants
+            </button>
+          </div>
+        )}
+
         {/* Photos */}
         {userPhotos.length > 0 && (
           <div className="mb-4">
@@ -392,6 +412,13 @@ export default function MePage() {
           <>
             <SectionTitle>Admin</SectionTitle>
             <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.2)' }}>
+              <ActivityRow
+                icon={<ShieldCheck size={16} />}
+                label="Occasions & Templates"
+                value="Manage the Kiss/Gift catalogue"
+                href="/admin/occasions"
+                onClick={() => router.push('/admin/occasions')}
+              />
               <ActivityRow
                 icon={<ShieldCheck size={16} />}
                 label="Marketplace Applications"
@@ -561,6 +588,13 @@ export default function MePage() {
               <div>
                 <SectionTitle>Admin</SectionTitle>
                 <div className="grid grid-cols-3 gap-3">
+                  <ManageCard
+                    icon={<ShieldCheck size={20} />}
+                    label="Occasions & Templates"
+                    sub="Manage the Kiss/Gift catalogue"
+                    href="/admin/occasions"
+                    onClick={() => router.push('/admin/occasions')}
+                  />
                   <ManageCard
                     icon={<ShieldCheck size={20} />}
                     label="Marketplace Applications"

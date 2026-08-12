@@ -18,7 +18,50 @@ import { GiftsPopup } from '@/components/gifts/GiftsPopup';
 import { HeartBuilder } from '@/components/gifts/HeartBuilder';
 import { CoupleCardBuilder } from '@/components/gifts/CoupleCardBuilder';
 import CapsuleCreateModal from '@/components/capsules/CapsuleCreateModal';
-import { OCCASIONS, bundlePrice, featuredOccasion, type OccasionBundle, type OccasionTemplate } from '@/lib/occasions';
+import { featuredOccasion } from '@/lib/occasions';
+import type { Occasion, OccasionTemplate } from '@/lib/occasions';
+import { useOccasions } from '@/hooks/useOccasions';
+import { templatesByOccasion, getTemplate, TEMPLATE_REGISTRY } from '@/components/reveals/_registry';
+import DynamicForm from '@/components/reveals/DynamicForm';
+import DataDrivenReveal from '@/components/reveals/DataDrivenReveal';
+
+/**
+ * Unified shape for the template picker card. Merges two sources:
+ *   1. Registered plugin templates (real React components in src/components/reveals/)
+ *   2. Legacy stub templates declared in occasions.ts JSON (no component yet)
+ * Registered templates get a "LIVE" badge so the sender knows the reveal
+ * will actually run the custom animation.
+ */
+interface MergedTemplate {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  thumbnailBg: string;
+  premium?: boolean;
+  coins?: number;
+  previewVideo?: string;
+  hasComponent: boolean;
+}
+
+function mergedTemplates(occasion: Occasion): MergedTemplate[] {
+  const registered: MergedTemplate[] = templatesByOccasion(occasion.id).map(t => ({
+    id: t.id, name: t.name, description: t.description, emoji: t.emoji,
+    thumbnailBg: t.thumbnailBg, premium: t.premium, coins: t.coins,
+    previewVideo: t.previewVideo, hasComponent: true,
+  }));
+  const rest: MergedTemplate[] = (occasion.templates ?? [])
+    .filter(t => !TEMPLATE_REGISTRY[t.id])
+    .map(t => ({
+      id: t.id, name: t.name, description: t.description, emoji: t.emoji,
+      thumbnailBg: t.thumbnailBg, premium: t.premium, coins: t.coins,
+      previewVideo: t.videoUrl,
+      // Data-driven templates (have effects[] from the DB) get the LIVE
+      // badge too, because the DataDrivenReveal actually plays.
+      hasComponent: (t.effects?.length ?? 0) > 0,
+    }));
+  return [...registered, ...rest];
+}
 import { tracksForOccasion, type MusicTrack } from '@/lib/kiss-music';
 import QRCode from 'qrcode';
 
@@ -40,6 +83,10 @@ interface Kiss {
   music_title?: string | null;
   open_count?: number;
   max_opens?: number;
+  // Reveal template plugin ID — dispatched via TEMPLATE_REGISTRY
+  template_id?: string | null;
+  // Sender's answers to fields_schema (data-driven templates only)
+  template_data?: string | null; // JSON
 }
 
 // ── Great circle interpolation ──
@@ -97,23 +144,29 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 }
 
 function pickVehicle(distanceKm: number): VehicleConfig {
-  if (distanceKm < 5) return {
+  // 3-tier distance mapping:
+  //   < 50 km   → 🕊️ dove   (local delivery, flat 2D map)
+  //   50–500 km → 🏎️ car    (regional road trip)
+  //   > 500 km  → ✈️ plane  (long-distance flight)
+  if (distanceKm < 50) return {
     kind: 'dove', size: 60, durationMs: 14000, arcSteps: 120,
     cruiseZoom: 13, landZoom: 15, cruisePitch: 0, // flat 2D — no 3D tilt for dove
     lineColor: '#ef4444', lineWidth: 2.5, lineDash: [2, 3],
     emoji: '🕊️', displayName: 'Dove',
   };
-  if (distanceKm < 100) return {
-    kind: 'motorbike', size: 46, durationMs: 12000, arcSteps: 180,
-    cruiseZoom: 13, landZoom: 14.5, cruisePitch: 50,
-    lineColor: '#ec4899', lineWidth: 2.2, lineDash: [2, 3],
-    emoji: '🏍️', displayName: 'Motorbike',
-  };
-  if (distanceKm < 1000) return {
-    kind: 'car', size: 52, durationMs: 20000, arcSteps: 300,
-    cruiseZoom: 12, landZoom: 14, cruisePitch: 45,
-    lineColor: '#f97316', lineWidth: 2.5, lineDash: [3, 3],
-    emoji: '🚗', displayName: 'Car',
+  if (distanceKm < 500) return {
+    kind: 'car',
+    size: 96,
+    durationMs: 20000,
+    arcSteps: 300,
+    cruiseZoom: 12,
+    landZoom: 14,
+    cruisePitch: 45,
+    lineColor: '#f97316',
+    lineWidth: 2.5,
+    lineDash: [3, 3],
+    emoji: '🏎️',
+    displayName: 'Supercar',
   };
   return {
     kind: 'plane', size: 64, durationMs: 25000, arcSteps: 500,
@@ -160,7 +213,61 @@ function buildVehicleSvg(kind: VehicleKind, kissId: string): string {
       <span class="gao-dove-letter" style="font-size:22px;margin-top:-6px;filter:drop-shadow(0 3px 5px rgba(0,0,0,0.4));">💌</span>
     </div>`;
     case 'motorbike': return `<svg viewBox="0 0 46 46" xmlns="http://www.w3.org/2000/svg"><g><circle cx="23" cy="35" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/><circle cx="23" cy="11" r="5" fill="none" stroke="#94a3b8" stroke-width="2"/><path d="M23 30 L23 16" stroke="#ec4899" stroke-width="2.5" stroke-linecap="round"/><ellipse cx="23" cy="23" rx="4" ry="3" fill="#ec4899"/><circle cx="23" cy="18" r="3" fill="#fbbf24"/><rect x="18" y="27" width="10" height="8" rx="2" fill="#f87171"/></g></svg>`;
-    case 'car': return `<svg viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg"><g><rect x="12" y="4" width="28" height="44" rx="8" fill="#ef4444" stroke="#991b1b" stroke-width="0.5"/><path d="M15 12 L37 12 L35 20 L17 20Z" fill="#0c4a6e"/><rect x="17" y="20" width="18" height="12" fill="#b91c1c"/><path d="M17 32 L35 32 L37 40 L15 40Z" fill="#0c4a6e"/><rect x="21" y="23" width="10" height="6" fill="#fbbf24"/></g></svg>`;
+   case 'car': {
+  const hash = Array.from(kissId).reduce(
+    (sum, char) => sum + char.charCodeAt(0),
+    0
+  );
+
+  const cars = [
+    '/cars/porsche.webp',
+    '/cars/ferrari.webp',
+    '/cars/lamborghini.webp',
+  ];
+
+  const carImage = cars[hash % cars.length];
+
+  return `
+    <div
+      style="
+        position: relative;
+        width: 90px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        overflow: visible;
+      "
+    >
+      <img
+        src="${carImage}"
+        alt="Supercar"
+        draggable="false"
+        style="
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 90px;
+          height: 60px;
+          transform: translate(-50%, -50%);
+          object-fit: contain;
+          object-position: center center;
+          display: block;
+          margin: 0;
+          padding: 0;
+          user-select: none;
+          -webkit-user-drag: none;
+          pointer-events: none;
+          filter:
+            drop-shadow(0 7px 5px rgba(0,0,0,.45))
+            drop-shadow(0 0 4px rgba(255,255,255,.12));
+        "
+      />
+    </div>
+  `;
+}
+    // case 'car': return `<svg viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg"><g><rect x="12" y="4" width="28" height="44" rx="8" fill="#ef4444" stroke="#991b1b" stroke-width="0.5"/><path d="M15 12 L37 12 L35 20 L17 20Z" fill="#0c4a6e"/><rect x="17" y="20" width="18" height="12" fill="#b91c1c"/><path d="M17 32 L35 32 L37 40 L15 40Z" fill="#0c4a6e"/><rect x="21" y="23" width="10" height="6" fill="#fbbf24"/></g></svg>`;
     case 'plane': return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><g><path d="M32 6 C29 6 27 10 27 16 L27 48 C27 52 29 56 32 58 C35 56 37 52 37 48 L37 16 C37 10 35 6 32 6Z" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.3"/><path d="M27 24 L4 32 L6 34 L27 28Z" fill="#94a3b8"/><path d="M37 24 L60 32 L58 34 L37 28Z" fill="#94a3b8"/><path d="M32 44 L32 56 L35 54 L35 46Z" fill="#ec4899"/></g></svg>_${id.slice(0,0)}`;
   }
 }
@@ -237,6 +344,16 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
       if (occasionMusic) {
         payload.music_url = occasionMusic.url;
         payload.music_title = `${occasionMusic.title} — ${occasionMusic.artist}`;
+      }
+      // Send template_id whenever the sender picked one. The reveal
+      // dispatcher decides how to render it: registry plugin, data-driven
+      // (effects[] from DB), or fallback to the default cinematic reveal.
+      if (selectedTemplateId) {
+        payload.template_id = selectedTemplateId;
+      }
+      // Data-driven templates carry the sender's answers to fields_schema.
+      if (pickedFieldsSchema.length > 0 && Object.keys(templateData).length > 0) {
+        payload.template_data = templateData;
       }
       const res = await fetch('/api/v1/kisses', {
         method: 'POST',
@@ -321,8 +438,10 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   };
 
   // Gift picker is now purely occasion-driven — no more raw emoji categories.
+  // Live occasions from /api/v1/occasions (falls back to hardcoded on error/loading).
+  const { occasions: liveOccasions } = useOccasions();
   const [activeOccasionId, setActiveOccasionId] = useState<string>(() => featuredOccasion().id);
-  const activeOccasion = OCCASIONS.find(o => o.id === activeOccasionId) ?? OCCASIONS[0];
+  const activeOccasion = liveOccasions.find(o => o.id === activeOccasionId) ?? liveOccasions[0];
   const [occasionPhotos, setOccasionPhotos] = useState<string[]>([]);
   const [occasionMusic, setOccasionMusic] = useState<MusicTrack | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -334,8 +453,21 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   const [extrasOpen, setExtrasOpen] = useState(false);
   // Reveal template picked for the current occasion (visual theme only).
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  // Sender's answers to the picked template's fields_schema (migration 035).
+  // Reset whenever a different template is chosen.
+  const [templateData, setTemplateData] = useState<Record<string, unknown>>({});
   // Video preview modal for a template.
-  const [previewTemplate, setPreviewTemplate] = useState<OccasionTemplate | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<MergedTemplate | null>(null);
+  // Wizard: occasion → template → form. Reset whenever the modal opens.
+  const [wizardStep, setWizardStep] = useState<'occasion' | 'template' | 'form'>('occasion');
+
+  // Look up the picked template's DB row (has fieldsSchema + effects).
+  const pickedTemplate = activeOccasion?.templates?.find(t => t.id === selectedTemplateId);
+  const pickedFieldsSchema = pickedTemplate?.fieldsSchema ?? [];
+
+  // Reset the answer object whenever the sender switches templates —
+  // previous template's fields don't apply to the new one.
+  useEffect(() => { setTemplateData({}); }, [selectedTemplateId]);
 
   // Derive the selected gift's human name from current emoji + occasion,
   // used in the Send button preview ("Send 🎂 Birthday Cake to Nga").
@@ -345,14 +477,6 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
     const gift = activeOccasion.gifts.find(g => g.emoji === emoji);
     return gift?.name ?? '';
   })();
-
-  // Selecting a bundle: set outgoing emoji to the bundle's representative
-  // and prefill message with the bundle name + item emojis.
-  const handleSelectBundle = (b: OccasionBundle) => {
-    setEmoji(b.emoji);
-    const items = b.items.map(it => it.emoji).join(' ');
-    setMessage(`${b.emoji} ${b.name} — ${items}`);
-  };
 
   // Dismiss handler for the QR view — fires onSent (parent close hook)
   // + onClose after the sender has had a chance to share.
@@ -499,13 +623,34 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
           <button onClick={onClose} className="text-[#4a5068] cursor-pointer"><X size={18} /></button>
         </div>
 
-        <div className="px-5 md:px-6 pb-5 md:pb-6 md:grid md:grid-cols-2 md:gap-6 space-y-5 md:space-y-0 max-h-[85vh] overflow-y-auto">
-          {/* On desktop, sections split into 2 columns; on mobile stacks vertically */}
-          <div className="space-y-5">
-          {/* ── Step 1: Recipient ── */}
+        <div className="px-5 md:px-6 pb-5 md:pb-6 space-y-5 max-h-[85vh] overflow-y-auto">
+          {/* ── Wizard progress + back navigation ── */}
+          <div className="flex items-center gap-3 pt-1">
+            {wizardStep !== 'occasion' && (
+              <button type="button" onClick={() => setWizardStep(wizardStep === 'form' ? 'template' : 'occasion')} className="text-[11px] font-semibold text-[#a3adc3] hover:text-white cursor-pointer flex items-center gap-1">
+                ‹ Back
+              </button>
+            )}
+            <div className="flex-1 flex items-center gap-1.5">
+              {(['occasion', 'template', 'form'] as const).map((s, i) => {
+                const currentIdx = ['occasion', 'template', 'form'].indexOf(wizardStep);
+                const active = i === currentIdx;
+                const done = i < currentIdx;
+                return (
+                  <div key={s} className="rounded-full transition-all" style={{ width: active ? 24 : 6, height: 6, background: active ? '#ec4899' : done ? 'rgba(236,72,153,0.55)' : 'rgba(255,255,255,0.15)' }} />
+                );
+              })}
+            </div>
+            <span className="text-[10px] font-semibold text-[#4a5068] uppercase tracking-wider">
+              {wizardStep === 'occasion' ? 'Occasion' : wizardStep === 'template' ? 'Template' : 'Details'}
+            </span>
+          </div>
+
+          {/* ── STEP 3 only: Recipient ── */}
+          {wizardStep === 'form' && (
           <div>
             <SectionHeader num="1" title="To whom?" />
-          </div>
+          </div>)}
 
           {/* Pick recipient — search anyone */}
           <div className="relative">
@@ -611,32 +756,43 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
             })()}
           </div>
 
-          {/* ── Step 2: Occasion ── */}
-          <SectionHeader num="2" title="What's the occasion?" />
-
-          {/* Occasion picker — grid of themed cards. Pick occasion, then
-              bundles + gifts for that occasion appear in the panel below. */}
+          {/* ── STEP 1: Occasion grid (only) ── */}
+          {wizardStep === 'occasion' && (
           <div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mb-3">
-              {OCCASIONS.map(o => {
+            <div className="text-center mb-3">
+              <h4 className="text-lg font-bold text-white">Pick an occasion</h4>
+              <p className="text-[11px] text-[#a3adc3] mt-1">What are you celebrating?</p>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {liveOccasions.map(o => {
                 const active = activeOccasionId === o.id;
                 return (
                   <button
                     key={o.id}
-                    onClick={() => setActiveOccasionId(o.id)}
-                    className="relative rounded-xl p-2 flex flex-col items-center gap-1 cursor-pointer transition-all"
+                    onClick={() => {
+                      setActiveOccasionId(o.id);
+                      setEmoji(o.emoji);
+                      setSelectedTemplateId(null); // reset template when occasion changes
+                      setWizardStep('template');   // advance to template picker
+                    }}
+                    className="relative rounded-xl p-3 flex flex-col items-center gap-1.5 cursor-pointer transition-all hover:scale-[1.03]"
                     style={active
                       ? { background: o.bgGradient, border: `1.5px solid ${o.themeColor}`, boxShadow: `0 0 12px ${o.themeColor}40`, transform: 'scale(1.03)' }
                       : { background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.06)' }}
                   >
-                    <span className="text-2xl leading-none">{o.emoji}</span>
-                    <span className="text-[9px] font-bold text-center leading-tight" style={{ color: active ? '#0a0b0f' : '#a3adc3' }}>{o.name}</span>
+                    <span className="text-3xl leading-none">{o.emoji}</span>
+                    <span className="text-[10px] font-bold text-center leading-tight" style={{ color: active ? '#0a0b0f' : '#a3adc3' }}>{o.name}</span>
                   </button>
                 );
               })}
             </div>
+          </div>
+          )}
 
-            {/* Selected occasion — description + bundles + gifts */}
+          {/* ── STEP 2: Templates for the selected occasion ── */}
+          {wizardStep === 'template' && (
+          <div>
+            {/* Selected occasion — header + template grid */}
             <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(17,19,24,0.4)', border: `1px solid ${activeOccasion.themeColor}25` }}>
               <div className="flex items-center gap-2">
                 <span className="text-xl">{activeOccasion.emoji}</span>
@@ -646,39 +802,17 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                 </div>
               </div>
 
-              {/* Bundle cards */}
-              {activeOccasion.bundles.length > 0 && (
-                <div className="space-y-1.5">
-                  {activeOccasion.bundles.map(b => {
-                    const gross = b.items.reduce((s, g) => s + g.coins, 0);
-                    const net = bundlePrice(b);
-                    const selected = emoji === b.emoji && message.includes(b.name);
-                    return (
-                      <button key={b.id} onClick={() => handleSelectBundle(b)} className="relative w-full flex items-center gap-2 rounded-xl p-2 cursor-pointer transition-all text-left" style={selected ? { background: `${activeOccasion.themeColor}25`, border: `1px solid ${activeOccasion.themeColor}` } : { background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                        <span className="absolute top-1 right-1 text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: activeOccasion.themeColor, color: '#fff' }}>−{b.discountPct}%</span>
-                        <div className="text-2xl shrink-0">{b.emoji}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[11px] font-bold text-white truncate">{b.name}</div>
-                          {b.tagline && <div className="text-[9px] text-[#a3adc3] truncate">{b.tagline}</div>}
-                          <div className="flex items-center gap-0.5 mt-0.5">{b.items.map((it, i) => <span key={i} className="text-xs">{it.emoji}</span>)}</div>
-                        </div>
-                        <div className="text-right shrink-0 pr-8">
-                          <div className="text-[8px] text-white/40 line-through">🪙 {gross}</div>
-                          <div className="text-[11px] font-bold" style={{ color: '#fbbf24' }}>🪙 {net}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
               {/* Reveal templates — themed animation styles per occasion.
-                  Click thumbnail to preview video, click "Use" to select. */}
-              {activeOccasion.templates && activeOccasion.templates.length > 0 && (
+                  Sources: registered React plugins (marked LIVE) + legacy
+                  JSON stubs still declared under occasions.ts.templates. */}
+              {(() => {
+                const templates = mergedTemplates(activeOccasion);
+                if (templates.length === 0) return null;
+                return (
                 <div>
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1.5">🎬 Reveal templates</div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {activeOccasion.templates.map(t => {
+                    {templates.map(t => {
                       const active = selectedTemplateId === t.id;
                       return (
                         <button
@@ -689,8 +823,13 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                         >
                           {/* Play badge */}
                           <div className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 backdrop-blur flex items-center justify-center text-white text-[10px] group-hover:bg-black/70">▶</div>
-                          {/* Premium badge */}
-                          {t.premium && (
+                          {/* LIVE badge (registered plugin) — top-left, replaces premium if both */}
+                          {t.hasComponent ? (
+                            <div className="absolute top-1.5 left-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: 'rgba(0,0,0,0.6)', color: '#4ade80' }}>
+                              <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
+                              LIVE
+                            </div>
+                          ) : t.premium && (
                             <div className="absolute top-1.5 left-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,0,0,0.6)', color: '#fbbf24' }}>🪙{t.coins}</div>
                           )}
                           {/* Hero emoji */}
@@ -710,15 +849,36 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                     })}
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
             </div>
+            {/* Continue to details button */}
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={() => setWizardStep('occasion')} className="flex-1 rounded-xl py-2.5 text-xs font-semibold cursor-pointer" style={{ background: 'rgba(255,255,255,0.06)', color: '#a3adc3', border: '1px solid rgba(255,255,255,0.08)' }}>
+                ‹ Back
+              </button>
+              <button type="button" onClick={() => setWizardStep('form')} className="flex-[2] rounded-xl py-2.5 text-xs font-bold cursor-pointer" style={{ background: `linear-gradient(135deg, ${activeOccasion.themeColor}, #ec4899)`, color: '#fff', boxShadow: `0 4px 16px ${activeOccasion.themeColor}44` }}>
+                Continue with {selectedTemplateId ? 'this template' : 'default'} ›
+              </button>
+            </div>
+          </div>
+          )}
+
+          {/* ── STEP 3 only: Personal touch ── */}
+          {wizardStep === 'form' && (<>
+          {/* Compact banner showing chosen occasion + template */}
+          <div className="rounded-xl p-2.5 flex items-center gap-2" style={{ background: `${activeOccasion.themeColor}15`, border: `1px solid ${activeOccasion.themeColor}35` }}>
+            <span className="text-xl">{activeOccasion.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold text-white truncate">{activeOccasion.name}</div>
+              <div className="text-[9px] text-[#a3adc3] truncate">
+                {selectedTemplateId ? `🎬 ${mergedTemplates(activeOccasion).find(t => t.id === selectedTemplateId)?.name || 'Custom template'}` : 'Default reveal'}
+              </div>
+            </div>
+            <button type="button" onClick={() => setWizardStep('template')} className="text-[10px] font-semibold text-[#a3adc3] hover:text-white cursor-pointer">Change</button>
           </div>
 
-          </div>
-          {/* ── RIGHT COLUMN (desktop) — Step 3 + visibility + send ── */}
-          <div className="space-y-5">
-          {/* ── Step 3: Personal touch ── */}
           <SectionHeader num="3" title="Add a personal touch" optional />
 
           {/* Message — textarea for longer notes */}
@@ -736,6 +896,25 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
               style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
             />
           </div>
+
+          {/* Template-specific fields (data-driven templates only).
+              Each template declares its own inputs in fields_schema JSON;
+              the DynamicForm renders one input per field. Answers are
+              saved as kiss.template_data and substituted into effect
+              params at reveal time. */}
+          {pickedFieldsSchema.length > 0 && (
+            <div className="rounded-xl p-3 space-y-1" style={{ background: 'rgba(17,19,24,0.5)', border: `1px solid ${activeOccasion.themeColor}30` }}>
+              <div className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: activeOccasion.themeColor }}>
+                🎨 Customize this template
+              </div>
+              <DynamicForm
+                schema={pickedFieldsSchema}
+                data={templateData}
+                onChange={setTemplateData}
+                accent={activeOccasion.themeColor}
+              />
+            </div>
+          )}
 
           {/* Collapsible extras — Photos + Music (hidden by default) */}
           <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(17,19,24,0.5)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -947,7 +1126,7 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
               </button>
             );
           })()}
-          </div>{/* /right column */}
+          </>)}
         </div>
       </motion.div>
 
@@ -958,8 +1137,8 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
           <div className="relative w-full max-w-lg rounded-2xl overflow-hidden" style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(236,72,153,0.2)' }} onClick={(e) => e.stopPropagation()}>
             {/* Video / thumbnail area (16:9) */}
             <div className="relative aspect-video" style={{ background: previewTemplate.thumbnailBg }}>
-              {previewTemplate.videoUrl ? (
-                <video src={previewTemplate.videoUrl} autoPlay loop muted controls className="absolute inset-0 w-full h-full object-cover" />
+              {previewTemplate.previewVideo ? (
+                <video src={previewTemplate.previewVideo} autoPlay loop muted controls className="absolute inset-0 w-full h-full object-cover" />
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                   <div className="text-6xl" style={{ textShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>{previewTemplate.emoji}</div>
@@ -985,7 +1164,9 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                 <button
                   onClick={() => {
                     setSelectedTemplateId(previewTemplate.id);
+                    setEmoji(previewTemplate.emoji);
                     setPreviewTemplate(null);
+                    setWizardStep('form'); // advance the wizard
                   }}
                   className="flex-[2] rounded-xl py-2.5 text-xs font-bold cursor-pointer"
                   style={{ background: 'linear-gradient(135deg, #f472b6, #ec4899)', color: '#fff', boxShadow: '0 4px 16px rgba(236,72,153,0.3)' }}
@@ -1559,6 +1740,16 @@ export default function KissGlobe() {
   const { map } = useMap();
   const currentUserId = useAuthStore(s => s.user?.id);
   const isAuthed = useAuthStore(s => s.isAuthed);
+  // Data-driven templates: look up effects[] + fieldsSchema by ID at
+  // reveal time. Falls back to registry lookup if not found.
+  const { occasions: liveOccasionsForReveal } = useOccasions();
+  const templatesById = useMemo(() => {
+    const map = new Map<string, OccasionTemplate>();
+    for (const o of liveOccasionsForReveal) {
+      for (const t of (o.templates ?? [])) map.set(t.id, t);
+    }
+    return map;
+  }, [liveOccasionsForReveal]);
   // Legacy local state kept for callers we haven't migrated yet.
   const [showSendModal] = useState(false);
   const [sendBackTo] = useState<string | null>(null);
@@ -1740,7 +1931,7 @@ export default function KissGlobe() {
     let senderCity = `${kiss.sender_lat.toFixed(1)}°`;
     let receiverCity = `${kiss.receiver_lat.toFixed(1)}°`;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    let isSameCity = false;
+    const isSameCity = false;
 
     try {
       const [sRes, rRes] = await Promise.all([
@@ -1943,8 +2134,15 @@ export default function KissGlobe() {
       planeBrg += brgDiff * brgSmooth;
       // Dove: skip setRotation — the emoji is scaleX(-1) flipped to face
       // right (east). Rotating the marker would spin the emoji off-axis.
-      if (vehicle.kind !== 'dove') planeMarker.setRotation(planeBrg);
+      // if (vehicle.kind !== 'dove') planeMarker.setRotation(planeBrg);
+if (vehicle.kind !== 'dove') {
+  const vehicleRotation =
+    vehicle.kind === 'car'
+      ? planeBrg - 90
+      : planeBrg;
 
+  planeMarker.setRotation(vehicleRotation);
+}
       // ── Dove: LANDING approach. Camera fixed on RECEIVER (not follow
       // bird). Zoom eases 11 → 15 (approach → close). PITCH STAYS AT 45°
       // for the whole flight so the map keeps its 3D perspective — never
@@ -2161,9 +2359,45 @@ export default function KissGlobe() {
         }} />}
       </AnimatePresence>
 
-      {/* Kiss Reveal */}
+      {/* Kiss Reveal — three-tier dispatch:
+          1. Registered React template plugin — looked up by the template's
+             component_key (falls back to template_id for legacy kisses sent
+             before the component_key column existed).
+          2. Data-driven template (effects[] JSON from the DB).
+          3. Fallback → default cinematic KissRevealPopup. */}
       <AnimatePresence>
-        {revealKiss && <KissRevealPopup kiss={revealKiss} onClose={() => setRevealKiss(null)} currentUserId={currentUserId} onSendBack={(toId) => useGiftsPopupStore.getState().openKissModalDirect(toId)} />}
+        {revealKiss && (() => {
+          const dataTpl = revealKiss.template_id ? templatesById.get(revealKiss.template_id) : undefined;
+
+          // Tier 1: React registry — component_key is the routing key.
+          // (Fallback to template_id supports legacy templates where
+          // component_key wasn't set explicitly.)
+          const registryKey = dataTpl?.componentKey || revealKiss.template_id;
+          const tpl = getTemplate(registryKey);
+          if (tpl) {
+            const TemplateComponent = tpl.Component;
+            return <TemplateComponent
+              kiss={revealKiss}
+              currentUserId={currentUserId}
+              onClose={() => setRevealKiss(null)}
+              onSendBack={(toId) => useGiftsPopupStore.getState().openKissModalDirect(toId)}
+            />;
+          }
+          // Tier 2: data-driven (DB effects[])
+          if (dataTpl && (dataTpl.effects?.length ?? 0) > 0) {
+            return <DataDrivenReveal
+              kiss={revealKiss}
+              currentUserId={currentUserId}
+              onClose={() => setRevealKiss(null)}
+              onSendBack={(toId) => useGiftsPopupStore.getState().openKissModalDirect(toId)}
+              effects={dataTpl.effects ?? []}
+              fieldsSchema={dataTpl.fieldsSchema ?? []}
+              accent={dataTpl.accentColor}
+            />;
+          }
+          // Tier 3: fallback
+          return <KissRevealPopup kiss={revealKiss} onClose={() => setRevealKiss(null)} currentUserId={currentUserId} onSendBack={(toId) => useGiftsPopupStore.getState().openKissModalDirect(toId)} />;
+        })()}
       </AnimatePresence>
 
       {/* Unified Gifts popup (tabbed: Kiss + Templates) — opened by
