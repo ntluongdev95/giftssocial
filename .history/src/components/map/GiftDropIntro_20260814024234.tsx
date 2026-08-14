@@ -186,11 +186,103 @@ function StarrySkyScene({ stars }: { stars: StarSpec[] }) {
     </>
   );
 }
+// Pine-forest silhouette — three parallax layers below the sky.
+// FAR = dim purple pines drifting slow, MID = darker mixed heights,
+// NEAR = pitch-black tall pines. Fog rolls between them for depth.
+function ForestSilhouette() {
+  // Generate a deterministic row of tree trunks + crown widths so the
+  // silhouettes never reshuffle on re-render. Each layer uses a
+  // different seed for variety.
+  const layers = useMemo(() => (
+    [
+      { seed: 11, color: '#1a0e28', height: 90,  count: 24, y: '22%' },  // far dim
+      { seed: 47, color: '#0c0616', height: 130, count: 18, y: '15%' },  // mid
+      { seed: 91, color: '#020106', height: 180, count: 14, y: '8%'  },  // near black
+    ].map(l => {
+      const rand = mulberry32(l.seed);
+      const trees: { x: number; h: number; w: number }[] = [];
+      let x = -20;
+      const step = 100 / l.count;
+      for (let i = 0; i < l.count; i++) {
+        trees.push({
+          x: x + (rand() - 0.5) * step * 0.4,
+          h: l.height * (0.7 + rand() * 0.6),
+          w: 20 + rand() * 30,
+        });
+        x += step;
+      }
+      return { ...l, trees };
+    })
+  ), []);
 
+  return (
+    <>
+      {/* Fog band above the trees — sells atmospheric perspective */}
+      <div className="absolute inset-x-0 pointer-events-none" style={{
+        bottom: '20%', height: '15%',
+        background: 'linear-gradient(180deg, transparent, rgba(120,80,150,0.18) 60%, rgba(80,50,110,0.28) 100%)',
+        filter: 'blur(6px)',
+      }} />
+
+      {/* Three forest layers stacked with parallax (all bottom-anchored) */}
+      {layers.map((layer, li) => (
+        <motion.svg
+          key={`forest-${li}`}
+          viewBox="0 0 100 40"
+          preserveAspectRatio="none"
+          className="absolute inset-x-0 pointer-events-none w-full"
+          style={{ bottom: layer.y, height: '30%' }}
+          initial={{ x: 0 }}
+          animate={{ x: `-${5 + li * 3}vw` }}
+          transition={{ duration: 120 - li * 20, repeat: Infinity, repeatType: 'reverse', ease: 'linear' }}
+        >
+          <g fill={layer.color}>
+            {layer.trees.map((t, i) => (
+              <PineTree key={i} x={t.x} width={t.w * 0.06} height={t.h * 0.25} />
+            ))}
+          </g>
+        </motion.svg>
+      ))}
+
+      {/* Ground darkness at the very bottom edge — sinks the trees */}
+      <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{
+        height: '8%',
+        background: 'linear-gradient(180deg, transparent, #000)',
+      }} />
+    </>
+  );
+}
 
 // One pine tree — triangular crown + trunk. Coordinates are in the
 // parent SVG's viewBox space (0..100 wide, ~40 tall from ground up).
-
+function PineTree({ x, width, height }: { x: number; width: number; height: number }) {
+  const baseY = 40;   // ground line in viewBox
+  const topY = baseY - height;
+  const half = width / 2;
+  // 3 staggered triangles for a fuller pine silhouette
+  return (
+    <g transform={`translate(${x}, 0)`}>
+      {/* Trunk — thin rectangle */}
+      <rect x={-half * 0.15} y={baseY - height * 0.15} width={width * 0.15} height={height * 0.15} />
+      {/* Crown — 3 stacked triangles decreasing in size */}
+      <polygon points={`
+        ${-half} ${baseY - height * 0.15}
+        ${half} ${baseY - height * 0.15}
+        0 ${baseY - height * 0.55}
+      `} />
+      <polygon points={`
+        ${-half * 0.85} ${baseY - height * 0.45}
+        ${half * 0.85} ${baseY - height * 0.45}
+        0 ${baseY - height * 0.78}
+      `} />
+      <polygon points={`
+        ${-half * 0.7} ${baseY - height * 0.7}
+        ${half * 0.7} ${baseY - height * 0.7}
+        0 ${topY}
+      `} />
+    </g>
+  );
+}
 
 // Car — SIDE-VIEW nighttime highway running LEFT → RIGHT across the
 // screen. Multi-layer parallax for realism:
@@ -676,306 +768,141 @@ function TwoSilhouettes() {
 // 🕊️ Apple/Google emoji faces LEFT by default, so we scaleX(-1) on a
 // STATIC wrapper (not on the animated element — framer-motion writes to
 // `transform` for its y/scaleY animation and would clobber the flip).
-// function DoveDelivery({ accent }: { accent: string }) {
-//   // Companion flock — 10 doves fly alongside the hero at varied
-//   // vertical positions + wing-flap phases. Only the hero carries the
-//   // letter; the companions are just flying, giving the scene depth
-//   // and a "flock returning home" feel.
-//   // 18 companion birds in 3 depth tiers so the flock has real
-//   // perspective (tiny far birds up to nearly-hero-sized close ones).
-//   // Wing-flap timing spans slow gentle flaps (1.1s) to rapid short
-//   // flaps (0.4s) so no two birds sync — reads as a real flock, not a
-//   // cloned array.
-//   const flock = useMemo(() => (
-//     Array.from({ length: 18 }).map((_, i) => {
-//       const seed = (i * 2654435761) >>> 0;
-//       const r = (n: number) => (((seed ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
-
-//       // Depth tier — first 6 near, next 6 mid, last 6 far
-//       const tier: 'near' | 'mid' | 'far' =
-//         i < 6 ? 'near' : i < 12 ? 'mid' : 'far';
-
-//       // Size range varies dramatically by tier for real perspective
-//       const size = tier === 'near' ? 0.85 + r(3) * 0.35        // 0.85-1.20 (nearly hero-size)
-//                  : tier === 'mid'  ? 0.5  + r(3) * 0.3         // 0.50-0.80
-//                  :                    0.22 + r(3) * 0.2;        // 0.22-0.42 (tiny far birds)
-
-//       // Position spread bigger for far birds (fill the sky), tighter for near
-//       const spreadY = tier === 'near' ? 280 : tier === 'mid' ? 380 : 460;
-//       const spreadX = tier === 'near' ? 340 : tier === 'mid' ? 500 : 620;
-
-//       // Wing-flap variety: near birds flap slower (bigger species),
-//       // mid birds normal, far birds quick (small quick-flapping birds).
-//       const flapDuration = tier === 'near' ? 0.85 + r(5) * 0.35   // 0.85-1.20s slow
-//                         : tier === 'mid'  ? 0.55 + r(5) * 0.3    // 0.55-0.85s medium
-//                         :                    0.35 + r(5) * 0.25;  // 0.35-0.60s rapid
-
-//       return {
-//         id: i,
-//         tier,
-//         offsetY: -spreadY / 2 + r(1) * spreadY,
-//         offsetX: -spreadX / 2 + r(2) * spreadX,
-//         size,
-//         opacity: tier === 'near' ? 0.85 + r(4) * 0.15
-//                : tier === 'mid'  ? 0.6  + r(4) * 0.25
-//                :                    0.35 + r(4) * 0.25,
-//         flapDuration,
-//         flapDelay: r(6) * 1.2,               // stagger up to 1.2s
-//         bobAmt: tier === 'near' ? 10 + r(7) * 6
-//               : tier === 'mid'  ? 6  + r(7) * 6
-//               :                    3  + r(7) * 4,
-//         // Some birds glide subtly (rotation sway) for extra life
-//         gliderRotate: (r(8) - 0.5) * 8,       // ±4°
-//       };
-//     })
-//   ), []);
-
-//   return (
-//     <motion.div
-//       className="absolute top-1/2 pointer-events-none"
-//       style={{ left: 0, y: '-50%' }}
-//       initial={{ x: '-30vw', opacity: 0 }}
-//       animate={{
-//         x: ['-30vw', '50vw', '92vw'],
-//         opacity: [0, 1, 1],
-//       }}
-//       transition={{
-//         delay: 2.6,
-//         duration: 6.4,
-//         times: [0, 0.38, 1],
-//         ease: 'easeInOut',
-//       }}
-//     >
-//       {/* ── FLOCK · 18 companion doves in 3 depth tiers around hero ── */}
-//       {flock.map(bird => (
-//         <div
-//           key={`flock-${bird.id}`}
-//           style={{
-//             position: 'absolute',
-//             left: bird.offsetX,
-//             top: bird.offsetY,
-//             transform: `scale(${bird.size}) scaleX(-1) rotate(${bird.gliderRotate}deg)`,
-//             transformOrigin: 'center center',
-//             opacity: bird.opacity,
-//           }}
-//         >
-//           <motion.div
-//             className="text-5xl md:text-6xl"
-//             animate={{
-//               y: [0, -bird.bobAmt, 0],
-//               scaleY: [1, 0.78, 1],
-//             }}
-//             transition={{
-//               duration: bird.flapDuration,
-//               delay: bird.flapDelay,
-//               repeat: Infinity,
-//               ease: 'easeInOut',
-//             }}
-//             style={{
-//               filter: `drop-shadow(0 4px 10px rgba(0,0,0,0.5)) drop-shadow(0 0 20px ${accent}33)`,
-//               display: 'block',
-//               transformOrigin: 'center bottom',
-//             }}
-//           >
-//             🕊️
-//           </motion.div>
-//         </div>
-//       ))}
-
-//       {/* ── HERO · the only bird carrying the letter ── */}
-//       <div style={{ transform: 'translateX(-50%) scaleX(-1)' }}>
-//         <motion.div
-//           className="text-6xl md:text-7xl"
-//           animate={{ y: [0, -8, 0], scaleY: [1, 0.82, 1] }}
-//           transition={{ duration: 0.75, repeat: Infinity, ease: 'easeInOut' }}
-//           style={{
-//             filter: `drop-shadow(0 6px 16px rgba(0,0,0,0.6)) drop-shadow(0 0 30px ${accent}88)`,
-//             display: 'block',
-//             transformOrigin: 'center bottom',
-//           }}
-//         >
-//           🕊️
-//         </motion.div>
-//         {/* Un-flip the letter so 💌 doesn't render mirrored */}
-//         <div style={{ transform: 'scaleX(-1)' }}>
-//           <motion.div
-//             className="text-3xl -mt-2 text-center"
-//             animate={{ rotate: [-14, 14, -14] }}
-//             transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-//             style={{ filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.5))' }}
-//           >
-//             💌
-//           </motion.div>
-//         </div>
-//       </div>
-//     </motion.div>
-//   );
-// }
-
-export function DoveDelivery({ accent }: { accent: string }) {
+function DoveDelivery({ accent }: { accent: string }) {
+  // Companion flock — 10 doves fly alongside the hero at varied
+  // vertical positions + wing-flap phases. Only the hero carries the
+  // letter; the companions are just flying, giving the scene depth
+  // and a "flock returning home" feel.
+  // 18 companion birds in 3 depth tiers so the flock has real
+  // perspective (tiny far birds up to nearly-hero-sized close ones).
+  // Wing-flap timing spans slow gentle flaps (1.1s) to rapid short
+  // flaps (0.4s) so no two birds sync — reads as a real flock, not a
+  // cloned array.
   const flock = useMemo(() => (
     Array.from({ length: 18 }).map((_, i) => {
       const seed = (i * 2654435761) >>> 0;
       const r = (n: number) => (((seed ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
 
-      // Chia tầng chiều sâu: 6 con gần, 6 con vừa, 6 con xa
-      const tier: 'near' | 'mid' | 'far' = i < 6 ? 'near' : i < 12 ? 'mid' : 'far';
+      // Depth tier — first 6 near, next 6 mid, last 6 far
+      const tier: 'near' | 'mid' | 'far' =
+        i < 6 ? 'near' : i < 12 ? 'mid' : 'far';
 
-      // Kích thước chênh lệch rõ rệt
-      const size = tier === 'near' ? 0.85 + r(3) * 0.35
-                 : tier === 'mid'  ? 0.5  + r(3) * 0.3
-                 :                    0.22 + r(3) * 0.2;
+      // Size range varies dramatically by tier for real perspective
+      const size = tier === 'near' ? 0.85 + r(3) * 0.35        // 0.85-1.20 (nearly hero-size)
+                 : tier === 'mid'  ? 0.5  + r(3) * 0.3         // 0.50-0.80
+                 :                    0.22 + r(3) * 0.2;        // 0.22-0.42 (tiny far birds)
 
-      // 1. TẢN RỘNG KHOẢNG CÁCH (X và Y xa nhau hơn rất nhiều)
-      const spreadY = tier === 'near' ? 320 : tier === 'mid' ? 450 : 580;
-      const spreadX = tier === 'near' ? 600 : tier === 'mid' ? 900 : 1200;
+      // Position spread bigger for far birds (fill the sky), tighter for near
+      const spreadY = tier === 'near' ? 280 : tier === 'mid' ? 380 : 460;
+      const spreadX = tier === 'near' ? 340 : tier === 'mid' ? 500 : 620;
 
-      const offsetY = -spreadY / 2 + r(1) * spreadY;
-      const offsetX = -spreadX / 2 + r(2) * spreadX;
-
-      // 2. VẬN TỐC & THỜI GIAN BAY KHÁC NHAU (Có con lướt nhanh, con lơ đễnh tụt lại)
-      const flightDuration = 5.5 + r(9) * 2.5; // Bay từ 5.5s - 8.0s
-      const flightDelay = 1.8 + r(10) * 1.8;   // Xuất hiện lệch nhau tới 1.8s
-
-      // 3. QUỸ ĐẠO BẤT QUY TẮC (Nhấp nhô bay dốc/lượn sóng riêng)
-      const driftY = (r(11) - 0.5) * 120; // Độ lệch trục dọc khi di chuyển
-
-      // Nhịp vỗ cánh
-      const flapDuration = tier === 'near' ? 0.85 + r(5) * 0.35
-                        : tier === 'mid'  ? 0.55 + r(5) * 0.3
-                        :                    0.35 + r(5) * 0.25;
+      // Wing-flap variety: near birds flap slower (bigger species),
+      // mid birds normal, far birds quick (small quick-flapping birds).
+      const flapDuration = tier === 'near' ? 0.85 + r(5) * 0.35   // 0.85-1.20s slow
+                        : tier === 'mid'  ? 0.55 + r(5) * 0.3    // 0.55-0.85s medium
+                        :                    0.35 + r(5) * 0.25;  // 0.35-0.60s rapid
 
       return {
         id: i,
         tier,
+        offsetY: -spreadY / 2 + r(1) * spreadY,
+        offsetX: -spreadX / 2 + r(2) * spreadX,
         size,
-        offsetY,
-        offsetX,
-        driftY,
-        flightDuration,
-        flightDelay,
         opacity: tier === 'near' ? 0.85 + r(4) * 0.15
                : tier === 'mid'  ? 0.6  + r(4) * 0.25
                :                    0.35 + r(4) * 0.25,
         flapDuration,
-        flapDelay: r(6) * 1.2,
-        bobAmt: tier === 'near' ? 12 + r(7) * 8
-              : tier === 'mid'  ? 7  + r(7) * 6
+        flapDelay: r(6) * 1.2,               // stagger up to 1.2s
+        bobAmt: tier === 'near' ? 10 + r(7) * 6
+              : tier === 'mid'  ? 6  + r(7) * 6
               :                    3  + r(7) * 4,
-        gliderRotate: (r(8) - 0.5) * 12, // Độ nghiêng chao cánh tự nhiên ±6°
+        // Some birds glide subtly (rotation sway) for extra life
+        gliderRotate: (r(8) - 0.5) * 8,       // ±4°
       };
     })
   ), []);
 
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {/* ── ĐÀN CHIM ĐỒNG HÀNH (Mỗi con có luồng di chuyển x/y riêng) ── */}
+    <motion.div
+      className="absolute top-1/2 pointer-events-none"
+      style={{ left: 0, y: '-50%' }}
+      initial={{ x: '-30vw', opacity: 0 }}
+      animate={{
+        x: ['-30vw', '50vw', '92vw'],
+        opacity: [0, 1, 1],
+      }}
+      transition={{
+        delay: 2.6,
+        duration: 6.4,
+        times: [0, 0.38, 1],
+        ease: 'easeInOut',
+      }}
+    >
+      {/* ── FLOCK · 18 companion doves in 3 depth tiers around hero ── */}
       {flock.map(bird => (
-        <motion.div
+        <div
           key={`flock-${bird.id}`}
-          className="absolute top-1/2"
           style={{
-            left: 0,
-            y: '-50%',
+            position: 'absolute',
+            left: bird.offsetX,
+            top: bird.offsetY,
+            transform: `scale(${bird.size}) scaleX(-1) rotate(${bird.gliderRotate}deg)`,
+            transformOrigin: 'center center',
             opacity: bird.opacity,
           }}
-          initial={{ x: '-35vw', opacity: 0 }}
-          animate={{
-            x: ['-35vw', '50vw', '110vw'],
-            y: [`calc(-50% + ${bird.offsetY}px)`, `calc(-50% + ${bird.offsetY + bird.driftY}px)`],
-            opacity: [0, 1, 1, 0],
-          }}
-          transition={{
-            delay: bird.flightDelay,
-            duration: bird.flightDuration,
-            ease: 'easeInOut',
-            times: [0, 0.4, 0.85, 1],
-          }}
         >
-          {/* Định vị chênh lệch vị trí ban đầu + Scale kích thước */}
-          <div
-            style={{
-              transform: `translateX(${bird.offsetX}px) scale(${bird.size}) scaleX(-1) rotate(${bird.gliderRotate}deg)`,
-              transformOrigin: 'center center',
-            }}
-          >
-            {/* Chuyển động đập cánh & nhô người */}
-            <motion.div
-              className="text-5xl md:text-6xl"
-              animate={{
-                y: [0, -bird.bobAmt, 0],
-                scaleY: [1, 0.75, 1],
-              }}
-              transition={{
-                duration: bird.flapDuration,
-                delay: bird.flapDelay,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-              style={{
-                filter: `drop-shadow(0 4px 10px rgba(0,0,0,0.5)) drop-shadow(0 0 20px ${accent}33)`,
-                display: 'block',
-                transformOrigin: 'center bottom',
-              }}
-            >
-              🕊️
-            </motion.div>
-          </div>
-        </motion.div>
-      ))}
-
-      {/* ── CHIM ANH HÙNG (HERO DOVE MANG THƯ) ── */}
-      <motion.div
-        className="absolute top-1/2 z-10"
-        style={{ left: 0, y: '-50%' }}
-        initial={{ x: '-30vw', opacity: 0 }}
-        animate={{
-          x: ['-30vw', '50vw', '105vw'],
-          opacity: [0, 1, 1, 0],
-        }}
-        transition={{
-          delay: 2.6,
-          duration: 6.4,
-          times: [0, 0.38, 0.9, 1],
-          ease: 'easeInOut',
-        }}
-      >
-        <div style={{ transform: 'translateX(-50%) scaleX(-1)' }}>
           <motion.div
-            className="text-6xl md:text-7xl"
-            animate={{ y: [0, -10, 0], scaleY: [1, 0.8, 1] }}
-            transition={{ duration: 0.75, repeat: Infinity, ease: 'easeInOut' }}
+            className="text-5xl md:text-6xl"
+            animate={{
+              y: [0, -bird.bobAmt, 0],
+              scaleY: [1, 0.78, 1],
+            }}
+            transition={{
+              duration: bird.flapDuration,
+              delay: bird.flapDelay,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
             style={{
-              filter: `drop-shadow(0 6px 16px rgba(0,0,0,0.6)) drop-shadow(0 0 30px ${accent}88)`,
+              filter: `drop-shadow(0 4px 10px rgba(0,0,0,0.5)) drop-shadow(0 0 20px ${accent}33)`,
               display: 'block',
               transformOrigin: 'center bottom',
             }}
           >
             🕊️
           </motion.div>
-
-          {/* Bức thư 💌 đảo ngược lại để không bị ngược chiều */}
-          <div style={{ transform: 'scaleX(-1)' }}>
-            <motion.div
-              className="text-3xl -mt-2 text-center"
-              animate={{ rotate: [-14, 14, -14] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-              style={{ filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.5))' }}
-            >
-              💌
-            </motion.div>
-          </div>
         </div>
-      </motion.div>
-    </div>
+      ))}
+
+      {/* ── HERO · the only bird carrying the letter ── */}
+      <div style={{ transform: 'translateX(-50%) scaleX(-1)' }}>
+        <motion.div
+          className="text-6xl md:text-7xl"
+          animate={{ y: [0, -8, 0], scaleY: [1, 0.82, 1] }}
+          transition={{ duration: 0.75, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            filter: `drop-shadow(0 6px 16px rgba(0,0,0,0.6)) drop-shadow(0 0 30px ${accent}88)`,
+            display: 'block',
+            transformOrigin: 'center bottom',
+          }}
+        >
+          🕊️
+        </motion.div>
+        {/* Un-flip the letter so 💌 doesn't render mirrored */}
+        <div style={{ transform: 'scaleX(-1)' }}>
+          <motion.div
+            className="text-3xl -mt-2 text-center"
+            animate={{ rotate: [-14, 14, -14] }}
+            transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.5))' }}
+          >
+            💌
+          </motion.div>
+        </div>
+      </div>
+    </motion.div>
   );
 }
-
-
-
-
-
-// Link GIF chim bồ câu trắng vỗ cánh nền trong suốt chất lượng cao
 
 // Car: hand-drawn SVG supercar cruising LEFT → RIGHT along the highway
 // laid down by HighwayScene. Body has aerodynamic silhouette, tinted

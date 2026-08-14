@@ -10,6 +10,35 @@ import {
   playMessageChime, playRomanticBg, playProposalSound, playYesSound,
 } from '@/lib/kiss-audio';
 import GiftDropIntro, { type VehicleKind } from './GiftDropIntro';
+import PasswordLock from './PasswordLock';
+import { getTemplate } from '@/components/reveals/_registry';
+import AudioPlayer from '@/components/reveals/_shared/AudioPlayer';
+
+// Extract the sender's chosen song URL from template_data. When set,
+// AudioPlayer is rendered at the OVERLAY level so the music starts
+// with the journey (intro step) and carries through all steps —
+// otherwise the sender's song only plays inside the template reveal,
+// which arrives many seconds after the flight.
+function readSongUrl(kiss: { template_data?: string | null }): string {
+  if (!kiss.template_data) return '';
+  try {
+    const d = JSON.parse(kiss.template_data);
+    return typeof d?.song === 'string' ? d.song : '';
+  } catch {
+    return '';
+  }
+}
+
+// Extract the sender's password + hint (if set) from template_data JSON.
+function readPasscode(kiss: { template_data?: string | null }): { code: string; hint: string } {
+  if (!kiss.template_data) return { code: '', hint: '' };
+  try {
+    const d = JSON.parse(kiss.template_data);
+    const raw = typeof d?.password === 'string' || typeof d?.password === 'number' ? String(d.password) : '';
+    const hint = typeof d?.password_hint === 'string' ? d.password_hint : '';
+    return { code: raw.replace(/\D/g, ''), hint };
+  } catch { return { code: '', hint: '' }; }
+}
 
 // Great-circle distance in km (Haversine). Used to pick the vehicle in
 // the intro so the animation matches what will fly on the map next.
@@ -48,6 +77,14 @@ export interface Kiss {
   receiver_lng: number;
   kiss_type?: string;
   created_at: string;
+  // Template hookup — when template_id matches a registered React
+  // component (src/components/reveals/[id]/), the reveal auto-plays
+  // straight after the vehicle arrives (skips the plain message card).
+  template_id?: string | null;
+  template_data?: string | null;   // JSON — sender's field answers
+  photos?: string | null;
+  music_url?: string | null;
+  music_title?: string | null;
 }
 
 interface Props {
@@ -56,14 +93,16 @@ interface Props {
   onFlyStart?: () => void; // callback to trigger map flyTo
 }
 
-type Step = 'intro' | 'flying' | 'arrive' | 'message' | 'share';
+type Step = 'intro' | 'flying' | 'password' | 'arrive' | 'message' | 'template' | 'share';
 
 const STEP_DURATIONS: Record<Step, number> = {
-  intro: 7000, // cinematic intro sequence
-  flying: 0, // controlled by map animation callback
-  arrive: 6000, // chibi animation: hug ~3.5s, proposal ~4.5s
+  intro: 7000,     // cinematic intro sequence
+  flying: 0,       // controlled by map animation callback
+  password: 0,     // PasswordLock fires onSuccess itself
+  arrive: 0,       // hacker countdown fires its own onComplete
   message: 3500,
-  share: 0, // stays until user dismisses
+  template: 0,     // template controls its own duration + close
+  share: 0,        // stays until user dismisses
 };
 
 // Reverse geocode city name
@@ -122,6 +161,11 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   const stopBgMusicRef = useRef<(() => void) | null>(null);
   const hasFlownRef = useRef(false);
 
+  // Sender's chosen song URL (if any). When set, we skip the synth
+  // playRomanticBg() so the two audio streams don't clash — AudioPlayer
+  // handles it end-to-end from the intro step.
+  const senderSong = readSongUrl(kiss);
+
   // Fetch city names
   useEffect(() => {
     getCity(kiss.sender_lat, kiss.sender_lng).then(setSenderCity);
@@ -133,10 +177,16 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
     if (muted) return;
     if (step === 'intro') {
       playIntroSound();
-      stopBgMusicRef.current = playRomanticBg();
+      // Only play the synth bg if the sender didn't provide their own
+      // song — otherwise AudioPlayer handles the whole journey audio.
+      if (!senderSong) {
+        stopBgMusicRef.current = playRomanticBg();
+      }
     } else if (step === 'flying') {
       playFlyingSound();
-    } else if (step === 'arrive') {
+    } else if (step === 'template') {
+      // Reveal celebration cue — same beats as the old arrive step
+      // so declarations still get the proposal + yes sounds.
       playHeartbeat();
       setTimeout(() => {
         if (muted) return;
@@ -154,17 +204,51 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
       stopBgMusicRef.current?.();
       stopBgMusicRef.current = null;
     }
-  }, [step, muted, kiss.kiss_type]);
+  }, [step, muted, kiss.kiss_type, senderSong]);
 
   // Cleanup music on unmount
   useEffect(() => {
     return () => { stopBgMusicRef.current?.(); };
   }, []);
 
+  // Registered React template for this kiss (if any). Determines whether
+  // 'arrive' hands off to a full-screen template reveal or to the plain
+  // message card.
+  const registeredTemplate = kiss.template_id ? getTemplate(kiss.template_id) : undefined;
+
+  // Sender's optional numeric passcode. When set, flying → password →
+  // arrive; otherwise flying → arrive directly. Hint (if provided)
+  // shows under the lock.
+  const passcode = readPasscode(kiss);
+  const hasPasscode = passcode.code.length > 0;
+
+  // Advance to the reveal — prefer the registered template component
+  // when available (auto-plays fullscreen); else fall back to the
+  // plain message card; else share directly. Called by:
+  //   • password's onSuccess (when a passcode exists)
+  //   • flying's onDone      (when no passcode)
+  const advanceToReveal = () => {
+    if (registeredTemplate) {
+      setStep('template');
+    } else {
+      setStep(kiss.message ? 'message' : 'share');
+    }
+  };
+
+  // Where flying hands off to — password gate first (if set), otherwise
+  // straight to the best available reveal (template > message > share).
+  const stepAfterFlying: Step = hasPasscode
+    ? 'password'
+    : registeredTemplate
+    ? 'template'
+    : kiss.message ? 'message' : 'share';
+
   // Step progression
   useEffect(() => {
-    if (step === 'share') return; // stays
-    if (step === 'flying') return; // controlled externally
+    if (step === 'share')    return; // stays
+    if (step === 'template') return; // template drives its own end
+    if (step === 'flying')   return; // controlled externally
+    if (step === 'password') return; // PasswordLock fires onSuccess
 
     const duration = STEP_DURATIONS[step];
     if (!duration) return;
@@ -177,19 +261,17 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           hasFlownRef.current = true;
           onFlyStart();
         }
-        // If no valid coords, skip to arrive
+        // If no valid coords, skip flying → straight to password / arrive
         if (!kiss.receiver_lat || !kiss.sender_lat) {
-          setTimeout(() => setStep('arrive'), 1000);
+          setTimeout(() => setStep(stepAfterFlying), 1000);
         }
-      } else if (step === 'arrive') {
-        setStep(kiss.message ? 'message' : 'share');
       } else if (step === 'message') {
         setStep('share');
       }
     }, duration);
 
     return () => clearTimeout(timer);
-  }, [step, kiss, onFlyStart]);
+  }, [step, kiss, onFlyStart, registeredTemplate]);
 
   // Wait for KissGlobe flight animation to finish, then advance to arrive
   useEffect(() => {
@@ -200,9 +282,9 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
     // Same city (<0.5°) → 9s motorbike, medium (<5°) → 15s, far → 27s
     const flyTime = dist < 0.5 ? 9000 : dist < 5 ? 15000 : 27000;
 
-    const timer = setTimeout(() => setStep('arrive'), flyTime);
+    const timer = setTimeout(() => setStep(stepAfterFlying), flyTime);
     return () => clearTimeout(timer);
-  }, [step, kiss]);
+  }, [step, kiss, stepAfterFlying]);
 
   const handleShare = useCallback(async (platform: string) => {
     const text = kiss.kiss_type === 'declaration'
@@ -261,14 +343,24 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[999] flex items-center justify-center"
         style={{
-          // Flying is the only step that lets the map show through —
-          // intro renders its own night-sky scene, later steps sit on a
-          // blurred dark cover.
-          background: step === 'flying' ? 'transparent' : 'rgba(0,0,0,0.85)',
-          backdropFilter: step === 'flying' ? 'none' : 'blur(12px)',
+          // Intro + flying let the map show through — the intro now
+          // has no backdrop of its own, just the flock + falling gifts
+          // over the actual map. Later steps sit on a blurred dark cover.
+          background: (step === 'flying' || step === 'intro') ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.85)',
+          backdropFilter: (step === 'flying' || step === 'intro') ? 'none' : 'blur(12px)',
           transition: 'background 1s, backdrop-filter 1s',
         }}
       >
+        {/* ── Sender's chosen soundtrack · plays across the ENTIRE
+             journey (intro → flying → password → template → share)
+             instead of only inside the template reveal. AudioPlayer
+             renders a floating pill top-left; user taps to start
+             (browsers block autoplay without a gesture). Muted state
+             hides it so the mute toggle still works. */}
+        {senderSong && !muted && (
+          <AudioPlayer url={senderSong} accent="#ec4899" />
+        )}
+
         {/* Controls — always visible */}
         <div className="absolute top-6 right-6 z-[1000] flex items-center gap-2">
           <button
@@ -442,350 +534,48 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           </motion.div>
         )}
 
-        {/* ── Step 3: Arrival — chibi characters run & hug ── */}
-        {step === 'arrive' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center gap-4 w-full max-w-sm px-4"
-          >
-            <ArrivalParticles emoji={kiss.emoji} />
-
-            {/* Main emoji */}
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: [0, 1.3, 1] }}
-              transition={{ duration: 0.6 }}
-              className="text-6xl"
-            >
-              {kiss.emoji}
-            </motion.div>
-
-            {/* ── Declaration: Proposal scene ── */}
-            {kiss.kiss_type === 'declaration' ? (
-            <div className="relative h-56 w-full flex items-end justify-center overflow-hidden">
-              {/* Spotlight glow */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: [0, 0.6, 0.3] }}
-                transition={{ duration: 2, times: [0, 0.5, 1] }}
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 w-60 h-40"
-                style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(236,72,153,0.25), transparent 70%)' }}
-              />
-
-              {/* Ground / stage */}
-              <div className="absolute bottom-8 left-[15%] right-[15%] h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(236,72,153,0.4) 30%, rgba(168,85,247,0.4) 70%, transparent)' }} />
-              <motion.div
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ delay: 0.5, duration: 1 }}
-                className="absolute bottom-6 left-[20%] right-[20%] h-1 rounded-full origin-center"
-                style={{ background: 'linear-gradient(90deg, #ec4899, #a855f7, #ec4899)' }}
-              />
-
-              {/* Quote */}
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: [0, 0, 1, 1] }}
-                transition={{ duration: 4, times: [0, 0.5, 0.65, 1] }}
-                className="absolute top-0 left-0 right-0 text-center text-[10px] italic text-[#a855f7]"
-              >
-                will you be mine forever?
-              </motion.p>
-
-              {/* Sender — walks in → kneels → holds up heart */}
-              <motion.div
-                initial={{ x: -120 }}
-                animate={{ x: [-120, -20, 40, 40] }}
-                transition={{ duration: 2.5, ease: 'easeOut', times: [0, 0.4, 0.7, 1] }}
-                className="absolute bottom-8 z-10 flex flex-col items-center"
-              >
-                <motion.div className="flex flex-col items-center">
-                  {/* Floating heart above head (appears when kneeling) */}
-                  <motion.span
-                    initial={{ opacity: 0, y: 0, scale: 0 }}
-                    animate={{ opacity: [0, 0, 0, 1, 1], y: [0, 0, 0, -8, -12], scale: [0, 0, 0, 1.3, 1] }}
-                    transition={{ duration: 3.5, times: [0, 0.5, 0.65, 0.8, 1] }}
-                    className="text-2xl absolute -top-8 z-20"
-                  >💍</motion.span>
-
-                  {/* Avatar */}
-                  <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold"
-                    style={{ background: 'rgba(236,72,153,0.15)', border: '2.5px solid #ec4899', color: '#ec4899', boxShadow: '0 0 15px rgba(236,72,153,0.3)' }}>
-                    {kiss.sender_avatar
-                      ? <img src={kiss.sender_avatar} alt="" className="w-full h-full object-cover" />
-                      : (kiss.sender_name || '?').charAt(0).toUpperCase()}
-                  </div>
-
-                  {/* Body: running → kneeling */}
-                  <svg width="32" height="40" viewBox="0 0 32 40" className="-mt-1">
-                    {/* Body — bends down when kneeling */}
-                    <motion.line x1="16" y1="2" x2="16" y2="18" stroke="#ec4899" strokeWidth="2.5" strokeLinecap="round"
-                      animate={{ y2: [18, 18, 18, 14], x2: [16, 16, 16, 20] }}
-                      transition={{ duration: 2.5, times: [0, 0.5, 0.7, 1] }} />
-                    {/* Left arm — running then holds up ring */}
-                    <motion.line x1="16" y1="8" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
-                      animate={{ x2: [6, 4, 8, 8], y2: [4, 12, 0, -4] }}
-                      transition={{ duration: 2.5, times: [0, 0.3, 0.7, 1] }} />
-                    {/* Right arm — running then support */}
-                    <motion.line x1="16" y1="8" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
-                      animate={{ x2: [26, 28, 24, 26], y2: [12, 4, 12, 16] }}
-                      transition={{ duration: 2.5, times: [0, 0.3, 0.7, 1] }} />
-                    {/* Left leg — running then kneeling (bent) */}
-                    <motion.line x1="16" y1="18" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
-                      animate={{ x2: [10, 20, 10, 6], y2: [34, 34, 34, 30] }}
-                      transition={{ duration: 2.5, times: [0, 0.3, 0.7, 1] }} />
-                    {/* Right leg — kneels on ground */}
-                    <motion.line x1="16" y1="18" stroke="#ec4899" strokeWidth="2" strokeLinecap="round"
-                      animate={{ x2: [22, 12, 22, 24], y2: [34, 34, 34, 38] }}
-                      transition={{ duration: 2.5, times: [0, 0.3, 0.7, 1] }} />
-                  </svg>
-                </motion.div>
-                <span className="text-[8px] font-semibold text-[#ec4899]">{kiss.sender_name}</span>
-              </motion.div>
-
-              {/* Receiver — stands, then surprised, then happy */}
-              <motion.div
-                initial={{ x: 80, opacity: 0 }}
-                animate={{ x: 80, opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="absolute bottom-8 z-10 flex flex-col items-center"
-              >
-                <motion.div className="flex flex-col items-center relative">
-                  {/* Reaction emoji — surprise then heart eyes */}
-                  <motion.span
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: [0, 0, 0, 1, 0, 1], scale: [0, 0, 0, 1.2, 0, 1.2] }}
-                    transition={{ duration: 4, times: [0, 0.5, 0.6, 0.7, 0.78, 0.85] }}
-                    className="text-lg absolute -top-7 -right-2 z-20"
-                  >
-                    <motion.span
-                      animate={{ opacity: [1, 1, 0] }}
-                      transition={{ duration: 4, times: [0, 0.75, 0.78] }}
-                      className="absolute"
-                    >😮</motion.span>
-                    <motion.span
-                      animate={{ opacity: [0, 0, 1] }}
-                      transition={{ duration: 4, times: [0, 0.78, 0.85] }}
-                    >🥰</motion.span>
-                  </motion.span>
-
-                  {/* Avatar */}
-                  <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold"
-                    style={{ background: 'rgba(0,212,255,0.15)', border: '2.5px solid #00d4ff', color: '#00d4ff', boxShadow: '0 0 15px rgba(0,212,255,0.3)' }}>
-                    {kiss.receiver_avatar
-                      ? <img src={kiss.receiver_avatar} alt="" className="w-full h-full object-cover" />
-                      : (kiss.receiver_name || 'You').charAt(0).toUpperCase()}
-                  </div>
-
-                  {/* Body — standing, hands go to face (surprised) then heart */}
-                  <svg width="32" height="36" viewBox="0 0 32 36" className="-mt-1" style={{ transform: 'scaleX(-1)' }}>
-                    <line x1="16" y1="2" x2="16" y2="18" stroke="#00d4ff" strokeWidth="2.5" strokeLinecap="round"/>
-                    {/* Arms: idle → hands to face (surprised) → open happy */}
-                    <motion.line x1="16" y1="8" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"
-                      animate={{ x2: [6, 6, 12, 4], y2: [14, 14, 2, 2] }}
-                      transition={{ duration: 3.5, times: [0, 0.6, 0.75, 1] }} />
-                    <motion.line x1="16" y1="8" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"
-                      animate={{ x2: [26, 26, 20, 28], y2: [14, 14, 2, 2] }}
-                      transition={{ duration: 3.5, times: [0, 0.6, 0.75, 1] }} />
-                    <line x1="16" y1="18" x2="11" y2="34" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"/>
-                    <line x1="16" y1="18" x2="21" y2="34" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </motion.div>
-                <span className="text-[8px] font-semibold text-[#00d4ff]">{kiss.receiver_name || 'You'}</span>
-              </motion.div>
-
-              {/* Heart burst when "yes" */}
-              {Array.from({ length: 15 }).map((_, i) => {
-                const angle = (i / 15) * Math.PI * 2;
-                return (
-                  <motion.span key={`prop-${i}`}
-                    className="absolute text-lg pointer-events-none z-30"
-                    style={{ bottom: '6rem', left: '55%' }}
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: [0, 0, 1, 0], x: [0, 0, Math.cos(angle) * 80], y: [0, 0, Math.sin(angle) * 80 - 20], scale: [0, 0, 1.2, 0] }}
-                    transition={{ delay: 3, duration: 1.5, times: [0, 0.01, 0.4, 1] }}
-                  >{['❤️', '💕', '💖', '✨', '💍', '🌟', '💗', '💝'][i % 8]}</motion.span>
-                );
-              })}
-
-              {/* Glow when proposal happens */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0 }}
-                animate={{ opacity: [0, 0, 0.6, 0.3], scale: [0, 0, 1.5, 2.5] }}
-                transition={{ duration: 4, times: [0, 0.65, 0.8, 1] }}
-                className="absolute w-32 h-32 rounded-full"
-                style={{ bottom: '2rem', left: '45%', background: 'radial-gradient(circle, rgba(168,85,247,0.5), rgba(236,72,153,0.3), transparent 70%)' }}
-              />
-            </div>
-            ) : (
-            /* ── Regular kiss: Chibi hug scene ── */
-            <div className="relative h-48 w-full flex items-end justify-center overflow-hidden">
-              <div className="absolute bottom-6 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(236,72,153,0.2) 30%, rgba(0,212,255,0.2) 70%, transparent)' }} />
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: [0, 0, 1, 1, 0] }}
-                transition={{ duration: 3, times: [0, 0.1, 0.25, 0.75, 1] }}
-                className="absolute top-0 left-0 right-0 text-center text-[10px] italic text-[#4a5068]"
-              >distance means nothing when someone means everything</motion.p>
-
-              {/* Sender runs from left */}
-              <motion.div initial={{ x: -130 }} animate={{ x: [-130, -40, 30, 65] }} transition={{ duration: 3, ease: 'easeOut', times: [0, 0.4, 0.8, 1] }} className="absolute bottom-6 z-10 flex flex-col items-center">
-                <motion.div animate={{ y: [0, -6, 0, -6, 0, -3, 0, 0] }} transition={{ duration: 2.8, times: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1] }} className="flex flex-col items-center">
-                  <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold" style={{ background: 'rgba(236,72,153,0.15)', border: '2.5px solid #ec4899', color: '#ec4899', boxShadow: '0 0 15px rgba(236,72,153,0.3)' }}>
-                    {kiss.sender_avatar ? <img src={kiss.sender_avatar} alt="" className="w-full h-full object-cover" /> : (kiss.sender_name || '?').charAt(0).toUpperCase()}
-                  </div>
-                  <svg width="32" height="36" viewBox="0 0 32 36" className="-mt-1">
-                    <line x1="16" y1="2" x2="16" y2="18" stroke="#ec4899" strokeWidth="2.5" strokeLinecap="round"/>
-                    <motion.line x1="16" y1="8" x2="6" y2="4" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" animate={{ x2: [6,4,6,4,2], y2: [4,12,4,12,2] }} transition={{ duration: 2.8, times: [0,0.15,0.3,0.7,1] }}/>
-                    <motion.line x1="16" y1="8" x2="26" y2="12" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" animate={{ x2: [26,28,26,28,30], y2: [12,4,12,4,2] }} transition={{ duration: 2.8, times: [0,0.15,0.3,0.7,1] }}/>
-                    <motion.line x1="16" y1="18" x2="10" y2="34" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" animate={{ x2: [10,20,10,20,12] }} transition={{ duration: 2.8, times: [0,0.15,0.3,0.7,1] }}/>
-                    <motion.line x1="16" y1="18" x2="22" y2="34" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" animate={{ x2: [22,12,22,12,20] }} transition={{ duration: 2.8, times: [0,0.15,0.3,0.7,1] }}/>
-                  </svg>
-                </motion.div>
-                <span className="text-[8px] font-semibold text-[#ec4899]">{kiss.sender_name || 'Sender'}</span>
-              </motion.div>
-
-              {/* Receiver stands */}
-              <motion.div initial={{ x: 80, opacity: 0 }} animate={{ x: 80, opacity: 1 }} transition={{ delay: 0.3 }} className="absolute bottom-6 z-10 flex flex-col items-center">
-                <motion.div animate={{ y: [0, -2, 0] }} transition={{ duration: 2, repeat: Infinity }} className="flex flex-col items-center">
-                  <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold" style={{ background: 'rgba(0,212,255,0.15)', border: '2.5px solid #00d4ff', color: '#00d4ff', boxShadow: '0 0 15px rgba(0,212,255,0.3)' }}>
-                    {kiss.receiver_avatar ? <img src={kiss.receiver_avatar} alt="" className="w-full h-full object-cover" /> : (kiss.receiver_name || 'You').charAt(0).toUpperCase()}
-                  </div>
-                  <svg width="32" height="36" viewBox="0 0 32 36" className="-mt-1" style={{ transform: 'scaleX(-1)' }}>
-                    <line x1="16" y1="2" x2="16" y2="18" stroke="#00d4ff" strokeWidth="2.5" strokeLinecap="round"/>
-                    <motion.line x1="16" y1="8" x2="6" y2="14" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round" animate={{ x2: [6,6,6,2], y2: [14,14,14,3] }} transition={{ duration: 3, times: [0,0.7,0.85,1] }}/>
-                    <motion.line x1="16" y1="8" x2="26" y2="14" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round" animate={{ x2: [26,26,26,30], y2: [14,14,14,3] }} transition={{ duration: 3, times: [0,0.7,0.85,1] }}/>
-                    <line x1="16" y1="18" x2="11" y2="34" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"/>
-                    <line x1="16" y1="18" x2="21" y2="34" stroke="#00d4ff" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </motion.div>
-                <span className="text-[8px] font-semibold text-[#00d4ff]">{kiss.receiver_name || 'You'}</span>
-              </motion.div>
-
-              <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: [0,0,0.8,0.4], scale: [0,0,1.5,2] }} transition={{ duration: 3.5, times: [0,0.7,0.85,1] }} className="absolute w-24 h-24 rounded-full" style={{ bottom: '3rem', right: '20%', background: 'radial-gradient(circle, rgba(236,72,153,0.5), rgba(0,212,255,0.3), transparent 70%)' }} />
-            </div>
-            )}
-
-            {/* Regular kiss: city route */}
-            {kiss.kiss_type !== 'declaration' && (
-              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.5 }} className="text-xs text-[#4a5068]">
-                {senderCity} → {receiverCity}
-              </motion.p>
-            )}
-
-            {/* Declaration: Globe with chibis on top */}
-            {kiss.kiss_type === 'declaration' && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.5, type: 'spring', damping: 15 }}
-                className="flex flex-col items-center gap-3 mt-2"
-              >
-                {/* Mini globe with characters on top */}
-                <div className="relative">
-                  {/* Globe */}
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-                    className="relative"
-                  >
-                    <svg width="160" height="160" viewBox="0 0 160 160">
-                      <defs>
-                        <radialGradient id="globe-grad" cx="40%" cy="35%">
-                          <stop offset="0%" stopColor="#1e3a5f" />
-                          <stop offset="50%" stopColor="#0f2340" />
-                          <stop offset="100%" stopColor="#0a1628" />
-                        </radialGradient>
-                        <radialGradient id="globe-shine" cx="30%" cy="25%">
-                          <stop offset="0%" stopColor="rgba(0,212,255,0.15)" />
-                          <stop offset="100%" stopColor="transparent" />
-                        </radialGradient>
-                      </defs>
-                      {/* Globe sphere */}
-                      <circle cx="80" cy="80" r="75" fill="url(#globe-grad)" stroke="rgba(0,212,255,0.2)" strokeWidth="1" />
-                      <circle cx="80" cy="80" r="75" fill="url(#globe-shine)" />
-                      {/* Continents (simplified) */}
-                      <ellipse cx="55" cy="50" rx="22" ry="15" fill="#22c55e" opacity="0.3" />
-                      <ellipse cx="100" cy="65" rx="18" ry="20" fill="#22c55e" opacity="0.25" />
-                      <ellipse cx="70" cy="95" rx="15" ry="10" fill="#22c55e" opacity="0.2" />
-                      <ellipse cx="115" cy="45" rx="12" ry="14" fill="#22c55e" opacity="0.2" />
-                      {/* Grid lines */}
-                      <ellipse cx="80" cy="80" rx="75" ry="40" fill="none" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
-                      <ellipse cx="80" cy="80" rx="75" ry="60" fill="none" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
-                      <ellipse cx="80" cy="80" rx="40" ry="75" fill="none" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
-                      <line x1="5" y1="80" x2="155" y2="80" stroke="rgba(0,212,255,0.06)" strokeWidth="0.5" />
-                    </svg>
-                  </motion.div>
-
-                  {/* Heart pin on top of globe */}
-                  <motion.div
-                    initial={{ y: -20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 1, type: 'spring', damping: 12 }}
-                    className="absolute -top-4 left-1/2 -translate-x-1/2 flex flex-col items-center"
-                  >
-                    {/* Two avatars side by side */}
-                    <div className="flex items-center -space-x-3">
-                      <div className="h-11 w-11 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold z-10"
-                        style={{ background: 'rgba(236,72,153,0.2)', border: '2.5px solid #ec4899', color: '#ec4899', boxShadow: '0 0 12px rgba(236,72,153,0.4)' }}>
-                        {kiss.sender_avatar
-                          ? <img src={kiss.sender_avatar} alt="" className="w-full h-full object-cover" />
-                          : (kiss.sender_name || '?').charAt(0).toUpperCase()}
-                      </div>
-                      <motion.div
-                        animate={{ scale: [1, 1.2, 1] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                        className="text-xl z-20 -mt-3"
-                      >❤️</motion.div>
-                      <div className="h-11 w-11 rounded-full overflow-hidden flex items-center justify-center text-xs font-bold z-10"
-                        style={{ background: 'rgba(0,212,255,0.2)', border: '2.5px solid #00d4ff', color: '#00d4ff', boxShadow: '0 0 12px rgba(0,212,255,0.4)' }}>
-                        {kiss.receiver_avatar
-                          ? <img src={kiss.receiver_avatar} alt="" className="w-full h-full object-cover" />
-                          : (kiss.receiver_name || 'You').charAt(0).toUpperCase()}
-                      </div>
-                    </div>
-
-                    {/* Names */}
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <span className="text-[9px] font-bold text-[#ec4899]">{kiss.sender_name}</span>
-                      <span className="text-[8px] text-[#4a5068]">&</span>
-                      <span className="text-[9px] font-bold text-[#00d4ff]">{kiss.receiver_name || 'You'}</span>
-                    </div>
-                  </motion.div>
-
-                  {/* Orbiting hearts */}
-                  {['❤️', '💕', '💖'].map((h, i) => (
-                    <motion.span
-                      key={i}
-                      className="absolute text-lg pointer-events-none"
-                      style={{ left: '50%', top: '50%' }}
-                      animate={{
-                        x: [Math.cos(i * 2.1) * 100, Math.cos(i * 2.1 + Math.PI) * 100, Math.cos(i * 2.1 + Math.PI * 2) * 100],
-                        y: [Math.sin(i * 2.1) * 50, Math.sin(i * 2.1 + Math.PI) * 50, Math.sin(i * 2.1 + Math.PI * 2) * 50],
-                        opacity: [0.6, 1, 0.6],
-                      }}
-                      transition={{ duration: 4 + i, repeat: Infinity, ease: 'linear' }}
-                    >{h}</motion.span>
-                  ))}
-                </div>
-
-                {/* Declaration text */}
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 1.5 }}
-                  className="text-sm font-bold text-[#ec4899] text-center"
-                >
-                  Told the whole world 🌍
-                </motion.p>
-              </motion.div>
-            )}
-          </motion.div>
+        {/* ── Step 2b: Password lock ── only when the sender set a
+             numeric passcode via template_data.password. Receiver
+             must enter the correct number to advance to the
+             countdown. Optional hint from template_data.password_hint. */}
+        {step === 'password' && (
+          <PasswordLock
+            correct={passcode.code}
+            hint={passcode.hint}
+            senderName={kiss.sender_name}
+            accent="#ec4899"
+            onSuccess={advanceToReveal}
+          />
         )}
 
-        {/* ── Step 4: Message ── */}
+        {/* ── Step 4b: Template reveal ── auto-plays after password
+             when the kiss's template_id matches a registered React
+             component. Full-screen takeover; template's own X advances
+             to the share screen so the flow stays continuous. */}
+        {step === 'template' && registeredTemplate && (
+          <registeredTemplate.Component
+            kiss={{
+              id: kiss.id,
+              sender_id: kiss.sender_id,
+              sender_name: kiss.sender_name,
+              sender_avatar: kiss.sender_avatar,
+              receiver_id: kiss.receiver_id,
+              receiver_name: kiss.receiver_name,
+              receiver_avatar: kiss.receiver_avatar,
+              message: kiss.message ?? '',
+              emoji: kiss.emoji,
+              photos: kiss.photos ?? null,
+              music_url: kiss.music_url ?? null,
+              music_title: kiss.music_title ?? null,
+              template_id: kiss.template_id ?? null,
+              template_data: kiss.template_data ?? null,
+              created_at: kiss.created_at,
+            }}
+            onClose={() => setStep('share')}
+          />
+        )}
+
+        {/* ── Step 4: Message ── (fallback when no template) */}
         {step === 'message' && kiss.message && (
           <motion.div
             initial={{ opacity: 0, y: 30 }}

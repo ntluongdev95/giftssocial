@@ -365,7 +365,13 @@ export default function AdminTemplateEditPage({ params }: Props) {
             </div>
 
             {/* Preview component owns its device chrome (Mobile/Tablet/Desktop). */}
-            <TemplateLivePreview effects={effects} fieldsSchema={fieldsSchema} accent={accent} />
+            <TemplateLivePreview
+              effects={effects}
+              fieldsSchema={fieldsSchema}
+              accent={accent}
+              templateId={id}
+              templateName={current.name}
+            />
 
             {/* Quick tip card */}
             <div className="rounded-2xl p-3 flex items-start gap-2" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.06), rgba(236,72,153,0.04))', border: '1px solid rgba(168,85,247,0.15)' }}>

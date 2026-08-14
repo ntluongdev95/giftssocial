@@ -145,6 +145,43 @@ export default function DynamicForm({ schema, data, onChange, accent = '#ec4899'
               />
             )}
 
+            {field.type === 'audio-url' && (
+              <div>
+                <input
+                  type="url"
+                  value={String(v)}
+                  onChange={e => setField(field.key, e.target.value)}
+                  placeholder="https://youtu.be/… · https://open.spotify.com/… · direct .mp3 link"
+                  maxLength={500}
+                  className={inputBase}
+                  style={ringStyle}
+                />
+                <div className="text-[10px] text-white/50 mt-1 leading-relaxed">
+                  Paste a link — YouTube, Spotify, SoundCloud, or a direct MP3.
+                  Recipient sees a play button; music plays when they tap.
+                </div>
+              </div>
+            )}
+
+            {field.type === 'password' && (
+              <div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={String(v)}
+                  onChange={e => setField(field.key, e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="e.g. 1412 (an anniversary date, their favorite number…)"
+                  className={`${inputBase} tracking-widest font-mono`}
+                  style={ringStyle}
+                />
+                <div className="text-[10px] text-white/50 mt-1 leading-relaxed">
+                  Recipient must enter this exact number to unlock the reveal.
+                  Pick something they&apos;ll know but nobody else would guess.
+                </div>
+              </div>
+            )}
+
             {field.hint && <div className="text-xs text-white/50 mt-1">{field.hint}</div>}
           </label>
         );

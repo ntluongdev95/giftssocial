@@ -811,6 +811,8 @@ function TwoSilhouettes() {
 //     </motion.div>
 //   );
 // }
+import React, { useMemo } from 'react';
+import { motion } from 'framer-motion';
 
 export function DoveDelivery({ accent }: { accent: string }) {
   const flock = useMemo(() => (

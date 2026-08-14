@@ -812,167 +812,188 @@ function TwoSilhouettes() {
 //   );
 // }
 
-export function DoveDelivery({ accent }: { accent: string }) {
-  const flock = useMemo(() => (
-    Array.from({ length: 18 }).map((_, i) => {
-      const seed = (i * 2654435761) >>> 0;
-      const r = (n: number) => (((seed ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
 
-      // Chia tầng chiều sâu: 6 con gần, 6 con vừa, 6 con xa
-      const tier: 'near' | 'mid' | 'far' = i < 6 ? 'near' : i < 12 ? 'mid' : 'far';
-
-      // Kích thước chênh lệch rõ rệt
-      const size = tier === 'near' ? 0.85 + r(3) * 0.35
-                 : tier === 'mid'  ? 0.5  + r(3) * 0.3
-                 :                    0.22 + r(3) * 0.2;
-
-      // 1. TẢN RỘNG KHOẢNG CÁCH (X và Y xa nhau hơn rất nhiều)
-      const spreadY = tier === 'near' ? 320 : tier === 'mid' ? 450 : 580;
-      const spreadX = tier === 'near' ? 600 : tier === 'mid' ? 900 : 1200;
-
-      const offsetY = -spreadY / 2 + r(1) * spreadY;
-      const offsetX = -spreadX / 2 + r(2) * spreadX;
-
-      // 2. VẬN TỐC & THỜI GIAN BAY KHÁC NHAU (Có con lướt nhanh, con lơ đễnh tụt lại)
-      const flightDuration = 5.5 + r(9) * 2.5; // Bay từ 5.5s - 8.0s
-      const flightDelay = 1.8 + r(10) * 1.8;   // Xuất hiện lệch nhau tới 1.8s
-
-      // 3. QUỸ ĐẠO BẤT QUY TẮC (Nhấp nhô bay dốc/lượn sóng riêng)
-      const driftY = (r(11) - 0.5) * 120; // Độ lệch trục dọc khi di chuyển
-
-      // Nhịp vỗ cánh
-      const flapDuration = tier === 'near' ? 0.85 + r(5) * 0.35
-                        : tier === 'mid'  ? 0.55 + r(5) * 0.3
-                        :                    0.35 + r(5) * 0.25;
-
-      return {
-        id: i,
-        tier,
-        size,
-        offsetY,
-        offsetX,
-        driftY,
-        flightDuration,
-        flightDelay,
-        opacity: tier === 'near' ? 0.85 + r(4) * 0.15
-               : tier === 'mid'  ? 0.6  + r(4) * 0.25
-               :                    0.35 + r(4) * 0.25,
-        flapDuration,
-        flapDelay: r(6) * 1.2,
-        bobAmt: tier === 'near' ? 12 + r(7) * 8
-              : tier === 'mid'  ? 7  + r(7) * 6
-              :                    3  + r(7) * 4,
-        gliderRotate: (r(8) - 0.5) * 12, // Độ nghiêng chao cánh tự nhiên ±6°
-      };
-    })
-  ), []);
-
+// --- COMPONENT SVG CHIM BỒ CÂU ĐỘNG ---
+function RealisticDove({ flapDuration, flapDelay, color = '#FFFFFF' }: { flapDuration: number; flapDelay: number; color?: string }) {
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {/* ── ĐÀN CHIM ĐỒNG HÀNH (Mỗi con có luồng di chuyển x/y riêng) ── */}
-      {flock.map(bird => (
-        <motion.div
-          key={`flock-${bird.id}`}
-          className="absolute top-1/2"
-          style={{
-            left: 0,
-            y: '-50%',
-            opacity: bird.opacity,
-          }}
-          initial={{ x: '-35vw', opacity: 0 }}
-          animate={{
-            x: ['-35vw', '50vw', '110vw'],
-            y: [`calc(-50% + ${bird.offsetY}px)`, `calc(-50% + ${bird.offsetY + bird.driftY}px)`],
-            opacity: [0, 1, 1, 0],
-          }}
-          transition={{
-            delay: bird.flightDelay,
-            duration: bird.flightDuration,
-            ease: 'easeInOut',
-            times: [0, 0.4, 0.85, 1],
-          }}
-        >
-          {/* Định vị chênh lệch vị trí ban đầu + Scale kích thước */}
-          <div
-            style={{
-              transform: `translateX(${bird.offsetX}px) scale(${bird.size}) scaleX(-1) rotate(${bird.gliderRotate}deg)`,
-              transformOrigin: 'center center',
-            }}
-          >
-            {/* Chuyển động đập cánh & nhô người */}
-            <motion.div
-              className="text-5xl md:text-6xl"
-              animate={{
-                y: [0, -bird.bobAmt, 0],
-                scaleY: [1, 0.75, 1],
-              }}
-              transition={{
-                duration: bird.flapDuration,
-                delay: bird.flapDelay,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-              style={{
-                filter: `drop-shadow(0 4px 10px rgba(0,0,0,0.5)) drop-shadow(0 0 20px ${accent}33)`,
-                display: 'block',
-                transformOrigin: 'center bottom',
-              }}
-            >
-              🕊️
-            </motion.div>
-          </div>
-        </motion.div>
-      ))}
-
-      {/* ── CHIM ANH HÙNG (HERO DOVE MANG THƯ) ── */}
-      <motion.div
-        className="absolute top-1/2 z-10"
-        style={{ left: 0, y: '-50%' }}
-        initial={{ x: '-30vw', opacity: 0 }}
+    <svg viewBox="0 0 100 80" className="w-full h-full overflow-visible">
+      {/* Cánh xa (Back Wing) */}
+      <motion.path
+        d="M 45,35 Q 25,5 5,15 Q 20,40 45,40 Z"
+        fill={color}
+        opacity={0.7}
+        style={{ transformOrigin: '45px 35px' }}
         animate={{
-          x: ['-30vw', '50vw', '105vw'],
-          opacity: [0, 1, 1, 0],
+          rotate: [25, -55, 25],
+          scaleY: [0.9, 1.1, 0.9],
         }}
         transition={{
-          delay: 2.6,
-          duration: 6.4,
-          times: [0, 0.38, 0.9, 1],
-          ease: 'easeInOut',
+          duration: flapDuration,
+          delay: flapDelay,
+          repeat: Infinity,
+          ease: [0.45, 0.05, 0.55, 0.95],
         }}
-      >
-        <div style={{ transform: 'translateX(-50%) scaleX(-1)' }}>
-          <motion.div
-            className="text-6xl md:text-7xl"
-            animate={{ y: [0, -10, 0], scaleY: [1, 0.8, 1] }}
-            transition={{ duration: 0.75, repeat: Infinity, ease: 'easeInOut' }}
-            style={{
-              filter: `drop-shadow(0 6px 16px rgba(0,0,0,0.6)) drop-shadow(0 0 30px ${accent}88)`,
-              display: 'block',
-              transformOrigin: 'center bottom',
-            }}
-          >
-            🕊️
-          </motion.div>
+      />
 
-          {/* Bức thư 💌 đảo ngược lại để không bị ngược chiều */}
-          <div style={{ transform: 'scaleX(-1)' }}>
-            <motion.div
-              className="text-3xl -mt-2 text-center"
-              animate={{ rotate: [-14, 14, -14] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-              style={{ filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.5))' }}
-            >
-              💌
-            </motion.div>
-          </div>
-        </div>
-      </motion.div>
-    </div>
+      {/* Thân & Đuôi chim (Body & Tail) */}
+      <path
+        d="M 15,48 C 5,45 0,50 2,55 C 8,53 25,48 35,46 C 45,52 60,52 75,42 C 85,35 92,30 90,26 C 85,22 72,28 60,32 C 48,34 30,36 15,48 Z"
+        fill={color}
+      />
+      {/* Mỏ chim */}
+      <path d="M 89,27 L 96,29 L 88,31 Z" fill="#E67E22" />
+
+      {/* Cánh gần (Front Wing) */}
+      <motion.path
+        d="M 50,38 Q 30,-5 8,8 Q 22,42 50,42 Z"
+        fill={color}
+        style={{ transformOrigin: '50px 38px' }}
+        animate={{
+          rotate: [35, -65, 35],
+          scaleY: [1, 1.15, 1],
+        }}
+        transition={{
+          duration: flapDuration,
+          delay: flapDelay,
+          repeat: Infinity,
+          ease: [0.45, 0.05, 0.55, 0.95],
+        }}
+      />
+    </svg>
   );
 }
 
+// --- COMPONENT CHÍNH DOVE DELIVERY ---
+//  function DoveDelivery({ accent }: { accent: string }) {
+//   const flock = useMemo(() => {
+//     return Array.from({ length: 18 }).map((_, i) => {
+//       const seed = (i * 2654435761) >>> 0;
+//       const r = (n: number) => (((seed ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
 
+//       const tier: 'near' | 'mid' | 'far' = i < 5 ? 'near' : i < 12 ? 'mid' : 'far';
 
+//       // Kích thước & Độ mờ theo tầng sâu
+//       const size = tier === 'near' ? 50 + r(3) * 20 : tier === 'mid' ? 30 + r(3) * 15 : 16 + r(3) * 10;
+//       const opacity = tier === 'near' ? 0.95 : tier === 'mid' ? 0.75 : 0.5;
+//       const blur = tier === 'far' ? 'blur(1px)' : 'none';
+
+//       // Vị trí lệch ban đầu
+//       const spreadY = tier === 'near' ? 240 : tier === 'mid' ? 360 : 480;
+//       const spreadX = tier === 'near' ? 300 : tier === 'mid' ? 480 : 650;
+
+//       // Nhịp đập cánh ngẫu nhiên (không con nào giống con nào)
+//       const flapDuration = tier === 'near' ? 0.5 + r(5) * 0.25 : tier === 'mid' ? 0.4 + r(5) * 0.2 : 0.3 + r(5) * 0.15;
+//       const flapDelay = r(6) * 1.5;
+
+//       // Quỹ đạo lượn sóng bất quy tắc (Nhấp nhô ngẫu nhiên)
+//       const pathY = [
+//         -spreadY / 2 + r(1) * spreadY,
+//         -spreadY / 2 + r(7) * spreadY,
+//         -spreadY / 2 + r(8) * spreadY,
+//         -spreadY / 2 + r(2) * spreadY,
+//       ];
+
+//       // Thời gian hoàn thành hành trình của từng con chim lệch nhau chút ít
+//       const flyDuration = 6.0 + (r(9) - 0.5) * 1.8;
+
+//       return {
+//         id: i,
+//         tier,
+//         size,
+//         opacity,
+//         blur,
+//         offsetX: -spreadX / 2 + r(4) * spreadX,
+//         pathY,
+//         flapDuration,
+//         flapDelay,
+//         flyDuration,
+//         rotations: [r(10) * 10 - 5, r(11) * 16 - 8, r(12) * 10 - 5], // Độ nghiêng tự nhiên khi bay
+//       };
+//     });
+//   }, []);
+
+//   return (
+//     <div className="absolute inset-0 pointer-events-none overflow-hidden">
+//       {/* ── ĐÀN CHIM ĐỒNG HÀNH (18 CON) ── */}
+//       {flock.map((bird) => (
+//         <motion.div
+//           key={`flock-${bird.id}`}
+//           className="absolute top-1/2"
+//           style={{
+//             width: bird.size,
+//             height: bird.size,
+//             filter: bird.blur,
+//           }}
+//           initial={{
+//             x: '-20vw',
+//             y: bird.pathY[0],
+//             opacity: 0,
+//           }}
+//           animate={{
+//             x: ['-20vw', '45vw', '110vw'],
+//             y: bird.pathY,
+//             rotate: bird.rotations,
+//             opacity: [0, bird.opacity, bird.opacity, 0],
+//           }}
+//           transition={{
+//             delay: 1.8 + (bird.id % 4) * 0.2, // Xuất hiện rải rác
+//             duration: bird.flyDuration,
+//             ease: 'easeInOut',
+//             times: [0, 0.45, 0.9, 1],
+//           }}
+//         >
+//           <div style={{ transform: `translateX(${bird.offsetX}px)` }}>
+//             <RealisticDove
+//               flapDuration={bird.flapDuration}
+//               flapDelay={bird.flapDelay}
+//               color={bird.tier === 'far' ? '#DCDCDC' : '#FFFFFF'}
+//             />
+//           </div>
+//         </motion.div>
+//       ))}
+
+//       {/* ── CHIM ANH HÙNG (HERO DOVE - MANG THƯ) ── */}
+//       <motion.div
+//         className="absolute top-1/2 w-20 h-20 z-10"
+//         initial={{ x: '-20vw', y: 0, opacity: 0 }}
+//         animate={{
+//           x: ['-20vw', '48vw', '110vw'],
+//           y: [20, -30, 10, -10],
+//           rotate: [-3, 4, -2, 0],
+//           opacity: [0, 1, 1, 0],
+//         }}
+//         transition={{
+//           delay: 2.2,
+//           duration: 6.4,
+//           ease: 'easeInOut',
+//           times: [0, 0.4, 0.85, 1],
+//         }}
+//       >
+//         <div className="relative w-full h-full" style={{ filter: `drop-shadow(0 0 15px ${accent}88)` }}>
+//           {/* SVG Chim Hero */}
+//           <RealisticDove flapDuration={0.52} flapDelay={0} color="#FFFFFF" />
+
+//           {/* Bức thư 💌 đeo dưới chân/mỏ chim */}
+//           <motion.div
+//             className="absolute -bottom-1 right-2 text-2xl"
+//             animate={{
+//               rotate: [-12, 18, -12],
+//               y: [0, 3, 0],
+//             }}
+//             transition={{
+//               duration: 0.8,
+//               repeat: Infinity,
+//               ease: 'easeInOut',
+//             }}
+//             style={{ filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }}
+//           >
+//             💌
+//           </motion.div>
+//         </div>
+//       </motion.div>
+//     </div>
+//   );
+// }
 
 
 // Link GIF chim bồ câu trắng vỗ cánh nền trong suốt chất lượng cao

@@ -36,6 +36,13 @@ import { PropRingConfig }        from './prop-ring';
 import { PropStarsConfig }       from './prop-stars';
 import { PropPetalsConfig }      from './prop-petals';
 
+// Daily — everyday casual gifts (no special occasion needed)
+import { DailyGoodnightConfig }   from './daily-goodnight';
+import { DailyGoodmorningConfig } from './daily-goodmorning';
+import { DailyLunchConfig }       from './daily-lunch';
+import { DailyCoffeeConfig }      from './daily-coffee';
+import { DailyThinkingConfig }    from './daily-thinking';
+
 /** All registered templates, keyed by config.id. */
 export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [RoseRainConfig.id]:      RoseRainConfig,
@@ -56,6 +63,12 @@ export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [PropRingConfig.id]:      PropRingConfig,
   [PropStarsConfig.id]:     PropStarsConfig,
   [PropPetalsConfig.id]:    PropPetalsConfig,
+  // Daily
+  [DailyGoodnightConfig.id]:   DailyGoodnightConfig,
+  [DailyGoodmorningConfig.id]: DailyGoodmorningConfig,
+  [DailyLunchConfig.id]:       DailyLunchConfig,
+  [DailyCoffeeConfig.id]:      DailyCoffeeConfig,
+  [DailyThinkingConfig.id]:    DailyThinkingConfig,
 };
 
 /** Ordered list of every registered template. */

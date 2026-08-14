@@ -4,7 +4,7 @@
 // The DynamicForm walks the list, mounts the matching input type, and
 // collects values into a { key: value } object saved as kiss.template_data.
 
-export type FieldType = 'text' | 'textarea' | 'number' | 'color' | 'select' | 'toggle' | 'date' | 'image';
+export type FieldType = 'text' | 'textarea' | 'number' | 'color' | 'select' | 'toggle' | 'date' | 'image' | 'audio-url' | 'password';
 
 export interface FieldOption {
   value: string;

@@ -25,6 +25,7 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import TemplateShell from './TemplateShell';
+import AudioPlayer from './AudioPlayer';
 import type { TemplateProps } from '../_types';
 import { parseKissData } from './useTemplateData';
 
@@ -39,6 +40,10 @@ interface Props extends TemplateProps {
   /** Field key on kiss.template_data holding an uploaded image URL.
    *  If present + non-empty, renders a polaroid instead of the emoji hero. */
   photoKey?: string;
+  /** Field key on kiss.template_data holding a music URL (YouTube /
+   *  Spotify / SoundCloud / direct MP3). If present, renders a
+   *  tap-to-play music pill at top-left. */
+  songKey?: string;
 }
 
 export default function PlaceholderReveal({
@@ -51,10 +56,12 @@ export default function PlaceholderReveal({
   particleCount = 60,
   bgGradient,
   photoKey = 'photo',
+  songKey = 'song',
 }: Props) {
-  // Read the sender's uploaded photo (if any) from template_data.
+  // Read the sender's uploads (if any) from template_data.
   const data = parseKissData(kiss);
   const photoUrl = typeof data[photoKey] === 'string' ? (data[photoKey] as string) : '';
+  const songUrl  = typeof data[songKey]  === 'string' ? (data[songKey]  as string) : '';
   const receiverName = typeof data.name === 'string' && data.name
     ? (data.name as string)
     : kiss.receiver_name;
@@ -84,6 +91,10 @@ export default function PlaceholderReveal({
         }} />
       }
     >
+      {/* Music player pill — top-left, tap-to-play. Only mounted when
+          the sender pasted a song URL into an audio-url field. */}
+      {songUrl && <AudioPlayer url={songUrl} accent={accent} />}
+
       <div className="absolute inset-0 overflow-hidden">
         {/* Particle rain */}
         {particles.map((p, i) => (
