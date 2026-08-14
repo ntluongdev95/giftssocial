@@ -358,7 +358,14 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
              (browsers block autoplay without a gesture). Muted state
              hides it so the mute toggle still works. */}
         {senderSong && !muted && (
-          <AudioPlayer url={senderSong} accent="#ec4899" />
+          <AudioPlayer
+            url={senderSong}
+            accent="#ec4899"
+            // Auto-start the moment the receiver reaches the template
+            // reveal step (they already tapped to open the kiss, so
+            // this counts as a user gesture for browser autoplay).
+            autoStart={step === 'template'}
+          />
         )}
 
         {/* Controls — always visible */}

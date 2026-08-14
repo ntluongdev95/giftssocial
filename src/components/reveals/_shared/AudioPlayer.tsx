@@ -15,10 +15,10 @@
 // The play button sits at top-left with a subtle backdrop so it never
 // competes with a template's hero content in the center.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Play, Pause, ExternalLink } from 'lucide-react';
 
-type Kind = 'youtube' | 'spotify' | 'soundcloud' | 'audio' | 'unknown';
+type Kind = 'youtube' | 'spotify' | 'soundcloud' | 'tiktok' | 'audio' | 'unknown';
 
 function detect(url: string): { kind: Kind; embedUrl?: string } {
   const u = url.trim();
@@ -51,6 +51,20 @@ function detect(url: string): { kind: Kind; embedUrl?: string } {
       };
     }
 
+    // TikTok video: tiktok.com/@user/video/VIDEOID (video shown but
+    // rendered off-screen so effectively audio-only). Music page URLs
+    // (/music/xxx-id) aren't publicly embeddable — fall through to
+    // Open-in-new-tab for those.
+    if (host === 'tiktok.com' || host === 'm.tiktok.com') {
+      const m = parsed.pathname.match(/\/video\/(\d+)/);
+      if (m) return { kind: 'tiktok', embedUrl: `https://www.tiktok.com/embed/v2/${m[1]}?autoplay=1` };
+    }
+    if (host === 'vm.tiktok.com') {
+      // Short-link — can't extract video ID client-side without a fetch.
+      // Show open-in-tab fallback.
+      return { kind: 'unknown' };
+    }
+
     // Direct audio file
     if (/\.(mp3|ogg|wav|m4a|aac)(\?.*)?$/i.test(parsed.pathname)) {
       return { kind: 'audio', embedUrl: u };
@@ -64,14 +78,22 @@ function detect(url: string): { kind: Kind; embedUrl?: string } {
 interface Props {
   url: string;
   accent?: string;
-  /** Force auto-mount (skip the tap-to-play gate). Only respected for
-   *  direct <audio> — YouTube/Spotify still need user gesture. */
+  /** Force auto-mount (skip the tap-to-play gate). Now respected for
+   *  ALL players — the receiver has already tapped to open the kiss,
+   *  which counts as a browser user-gesture, so YouTube/Spotify/etc
+   *  are allowed to autoplay via ?autoplay=1 on their embed URLs. */
   autoStart?: boolean;
 }
 
 export default function AudioPlayer({ url, accent = '#ec4899', autoStart = false }: Props) {
   const { kind, embedUrl } = detect(url);
   const [playing, setPlaying] = useState(autoStart);
+
+  // Bridge autoStart changing after mount (e.g. parent flips it to true
+  // when the template step is reached) → auto-mount the iframe.
+  useEffect(() => {
+    if (autoStart) setPlaying(true);
+  }, [autoStart]);
 
   if (!url) return null;
 
@@ -106,9 +128,10 @@ export default function AudioPlayer({ url, accent = '#ec4899', autoStart = false
       >
         <Play size={12} fill="#fff" />
         <span>Play music</span>
-        {kind === 'youtube' && <span className="text-[9px] opacity-70">· YouTube</span>}
-        {kind === 'spotify' && <span className="text-[9px] opacity-70">· Spotify</span>}
+        {kind === 'youtube'    && <span className="text-[9px] opacity-70">· YouTube</span>}
+        {kind === 'spotify'    && <span className="text-[9px] opacity-70">· Spotify</span>}
         {kind === 'soundcloud' && <span className="text-[9px] opacity-70">· SoundCloud</span>}
+        {kind === 'tiktok'     && <span className="text-[9px] opacity-70">· TikTok</span>}
       </button>
     );
   }
@@ -138,6 +161,52 @@ export default function AudioPlayer({ url, accent = '#ec4899', autoStart = false
           onError={() => setPlaying(false)}
         />
       </div>
+    );
+  }
+
+  // TikTok — render the iframe OFF-SCREEN so only its audio plays. The
+  // video is intentionally hidden (user wanted audio-only from TikTok
+  // links). A small "♫ Playing · TikTok" pill sits in the corner so the
+  // user can pause + confirm audio is live.
+  if (kind === 'tiktok') {
+    return (
+      <>
+        <div
+          className="absolute top-4 left-4 z-40 flex items-center gap-2 rounded-full px-3 py-1.5 backdrop-blur"
+          style={{ background: 'rgba(0,0,0,0.6)', border: `1px solid ${accent}66` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setPlaying(false)}
+            className="cursor-pointer text-white/80 hover:text-white"
+            title="Pause music"
+          >
+            <Pause size={12} fill="#fff" />
+          </button>
+          <span className="text-[10px] text-white/80 uppercase tracking-wider">♫ TikTok</span>
+        </div>
+        {/* Off-screen iframe — audio still routes, video is invisible */}
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed',
+            left: -9999,
+            top: 0,
+            width: 340,
+            height: 720,
+            pointerEvents: 'none',
+          }}
+        >
+          <iframe
+            src={embedUrl}
+            title="TikTok audio"
+            width="340"
+            height="720"
+            allow="autoplay; encrypted-media"
+            style={{ border: 0 }}
+          />
+        </div>
+      </>
     );
   }
 

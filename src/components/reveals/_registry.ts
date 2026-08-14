@@ -42,6 +42,7 @@ import { DailyGoodmorningConfig } from './daily-goodmorning';
 import { DailyLunchConfig }       from './daily-lunch';
 import { DailyCoffeeConfig }      from './daily-coffee';
 import { DailyThinkingConfig }    from './daily-thinking';
+import { DailySorryConfig }       from './daily-sorry';
 
 /** All registered templates, keyed by config.id. */
 export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
@@ -69,6 +70,7 @@ export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [DailyLunchConfig.id]:       DailyLunchConfig,
   [DailyCoffeeConfig.id]:      DailyCoffeeConfig,
   [DailyThinkingConfig.id]:    DailyThinkingConfig,
+  [DailySorryConfig.id]:       DailySorryConfig,
 };
 
 /** Ordered list of every registered template. */
