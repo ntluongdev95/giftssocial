@@ -38,6 +38,7 @@ import { PropPetalsConfig }      from './prop-petals';
 
 // Daily — everyday casual gifts (no special occasion needed)
 import { DailyGoodnightConfig }   from './daily-goodnight';
+import { DailyGoodnight2Config }  from './daily-goodnight-2';
 import { DailyGoodmorningConfig } from './daily-goodmorning';
 import { DailyLunchConfig }       from './daily-lunch';
 import { DailyCoffeeConfig }      from './daily-coffee';
@@ -66,6 +67,7 @@ export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [PropPetalsConfig.id]:    PropPetalsConfig,
   // Daily
   [DailyGoodnightConfig.id]:   DailyGoodnightConfig,
+  [DailyGoodnight2Config.id]:  DailyGoodnight2Config,
   [DailyGoodmorningConfig.id]: DailyGoodmorningConfig,
   [DailyLunchConfig.id]:       DailyLunchConfig,
   [DailyCoffeeConfig.id]:      DailyCoffeeConfig,

@@ -1306,7 +1306,7 @@ function PlaneDelivery({ accent }: { accent: string }) {
       {/* ── NỀN BẰNG HÌNH ẢNH CỦA BẠN ── */}
       <motion.div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-        style={{ backgroundImage: 'url(/scenes/plane-landscape.jpg)' }}
+        style={{ backgroundImage: 'url(/scenes/plan-landscape.jpg)' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
@@ -1380,43 +1380,7 @@ function PlaneDelivery({ accent }: { accent: string }) {
 // Realistic jet — top-down silhouette. Sits horizontally so it reads
 // as flying LEFT → RIGHT. Uses the accent color for a subtle underglow
 // (running light) at the nose + tail.
-function JetSilhouette({ accent }: { accent: string }) {
-  return (
-    <svg
-      width="110"
-      height="42"
-      viewBox="0 0 220 84"
-      style={{
-        filter: `drop-shadow(0 6px 12px rgba(0,0,0,0.65)) drop-shadow(0 0 22px ${accent}44)`,
-        display: 'block',
-      }}
-    >
-      {/* Fuselage */}
-      <path
-        d="M 10 42 C 10 36 20 32 40 32 L 170 32 C 190 32 208 36 214 40 L 214 44 C 208 48 190 52 170 52 L 40 52 C 20 52 10 48 10 42 Z"
-        fill="#e5e7eb"
-      />
-      {/* Main wings */}
-      <path d="M 90 40 L 70 8  L 105 8  L 130 40 Z" fill="#cbd5e1" />
-      <path d="M 90 44 L 70 76 L 105 76 L 130 44 Z" fill="#cbd5e1" />
-      {/* Tail wing */}
-      <path d="M 40 40 L 24 22 L 50 22 L 60 40 Z" fill="#94a3b8" />
-      <path d="M 40 44 L 24 62 L 50 62 L 60 44 Z" fill="#94a3b8" />
-      {/* Vertical stabiliser */}
-      <path d="M 30 32 L 20 12 L 42 12 L 52 32 Z" fill="#94a3b8" />
-      {/* Cockpit tint */}
-      <path d="M 175 38 L 200 38 L 205 42 L 200 46 L 175 46 Z" fill="#0f172a" opacity="0.7" />
-      {/* Nose running light */}
-      <circle cx="212" cy="42" r="2" fill={accent} opacity="0.85">
-        <animate attributeName="opacity" values="0.4;1;0.4" dur="1.4s" repeatCount="indefinite" />
-      </circle>
-      {/* Tail running light */}
-      <circle cx="14" cy="42" r="1.6" fill={accent} opacity="0.6">
-        <animate attributeName="opacity" values="0.2;0.8;0.2" dur="1.8s" repeatCount="indefinite" />
-      </circle>
-    </svg>
-  );
-}
+
 
 // ── Helpers ───────────────────────────────────────────────────────────
 

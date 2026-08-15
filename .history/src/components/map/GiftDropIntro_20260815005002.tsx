@@ -1306,7 +1306,7 @@ function PlaneDelivery({ accent }: { accent: string }) {
       {/* ── NỀN BẰNG HÌNH ẢNH CỦA BẠN ── */}
       <motion.div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-        style={{ backgroundImage: 'url(/scenes/plane-landscape.jpg)' }}
+        style={{ backgroundImage: 'url(/scenes/pla-landscape.jpg)' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
@@ -1391,18 +1391,24 @@ function JetSilhouette({ accent }: { accent: string }) {
         display: 'block',
       }}
     >
-      {/* Fuselage */}
+      {/* Fuselage — long slim body, nose pointing RIGHT (direction of travel) */}
       <path
         d="M 10 42 C 10 36 20 32 40 32 L 170 32 C 190 32 208 36 214 40 L 214 44 C 208 48 190 52 170 52 L 40 52 C 20 52 10 48 10 42 Z"
         fill="#e5e7eb"
       />
-      {/* Main wings */}
-      <path d="M 90 40 L 70 8  L 105 8  L 130 40 Z" fill="#cbd5e1" />
-      <path d="M 90 44 L 70 76 L 105 76 L 130 44 Z" fill="#cbd5e1" />
-      {/* Tail wing */}
+      {/* Main wings — swept back, big triangle */}
+      <path
+        d="M 90 40 L 70 8  L 105 8  L 130 40 Z"
+        fill="#cbd5e1"
+      />
+      <path
+        d="M 90 44 L 70 76 L 105 76 L 130 44 Z"
+        fill="#cbd5e1"
+      />
+      {/* Tail wing — smaller triangle near the back */}
       <path d="M 40 40 L 24 22 L 50 22 L 60 40 Z" fill="#94a3b8" />
       <path d="M 40 44 L 24 62 L 50 62 L 60 44 Z" fill="#94a3b8" />
-      {/* Vertical stabiliser */}
+      {/* Vertical stabiliser on top */}
       <path d="M 30 32 L 20 12 L 42 12 L 52 32 Z" fill="#94a3b8" />
       {/* Cockpit tint */}
       <path d="M 175 38 L 200 38 L 205 42 L 200 46 L 175 46 Z" fill="#0f172a" opacity="0.7" />

@@ -1306,7 +1306,7 @@ function PlaneDelivery({ accent }: { accent: string }) {
       {/* ── NỀN BẰNG HÌNH ẢNH CỦA BẠN ── */}
       <motion.div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none"
-        style={{ backgroundImage: 'url(/scenes/plane-landscape.jpg)' }}
+        style={{ backgroundImage: 'url(/scenes/plan-landscape.jpg)' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}

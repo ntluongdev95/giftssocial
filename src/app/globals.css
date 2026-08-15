@@ -1,3 +1,8 @@
+/* Elegant display fonts for reveal templates — Playfair Display for
+   serif hero titles + Cormorant Garamond for italic accents +
+   Dancing Script for legacy cursive templates. Must precede Tailwind
+   @import since @import rules cannot appear after any other rules. */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&family=Cormorant+Garamond:ital,wght@0,500;1,500;1,700&family=Dancing+Script:wght@500;700&display=swap');
 @import 'tailwindcss';
 @import 'maplibre-gl/dist/maplibre-gl.css';
 
