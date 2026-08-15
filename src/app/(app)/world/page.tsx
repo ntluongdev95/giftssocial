@@ -43,10 +43,11 @@ const WorldMap = dynamic(() => import('@/components/map/WorldMap'), {
 
 // ─── Fetcher ──────────────────────────────────────────────────────────────
 
-const fetcher = (url: string) =>
-  fetch(url, {
-    cache: 'no-store'
-  }).then((r) => r.json());
+// Fetcher — uses the browser's default HTTP cache so revisiting
+// /world reuses recent responses instantly instead of hitting the
+// network again. SWR still revalidates in the background on mount/
+// focus so data stays fresh — the user just doesn't see the spinner.
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 // ─── Time filter options ──────────────────────────────────────────────────
 
