@@ -102,7 +102,7 @@ export function useOccasions(): UseOccasionsResult {
     { revalidateOnFocus: false, revalidateOnReconnect: false, dedupingInterval: 60_000 }
   );
 
-  if (data?.data && !error) {
+  if (data?.data && data.data.length > 0 && !error) {
     return { occasions: data.data.map(convertOccasion), isLoading: false, isFallback: false };
   }
   // Fallback while loading or on error — the hardcoded catalogue keeps

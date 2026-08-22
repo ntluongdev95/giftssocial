@@ -13,6 +13,7 @@ import GiftDropIntro, { type VehicleKind } from './GiftDropIntro';
 import PasswordLock from './PasswordLock';
 import { getTemplate } from '@/components/reveals/_registry';
 import AudioPlayer from '@/components/reveals/_shared/AudioPlayer';
+import { getKissUrl } from '@/lib/kiss-slug';
 
 // Extract the sender's chosen song URL from template_data. When set,
 // AudioPlayer is rendered at the OVERLAY level so the music starts
@@ -63,7 +64,7 @@ function readForcedVehicle(): VehicleKind | undefined {
 export interface Kiss {
   id: string;
   sender_id: string;
-  receiver_id: string;
+  receiver_id: string | null;
   sender_name?: string;
   sender_avatar?: string;
   receiver_name?: string;
@@ -85,6 +86,7 @@ export interface Kiss {
   photos?: string | null;
   music_url?: string | null;
   music_title?: string | null;
+  slug?: string | null;
 }
 
 interface Props {
@@ -105,13 +107,15 @@ const STEP_DURATIONS: Record<Step, number> = {
   share: 0,        // stays until user dismisses
 };
 
-// Reverse geocode city name
+// Reverse geocode city name — via our own /api/v1/geocode proxy (see that
+// route's comment for why: Nominatim isn't reachable from every deploy
+// target, and the proxy caches results in KV to keep lookups cheap).
 async function getCity(lat: number, lng: number): Promise<string> {
   if (!lat || !lng) return 'Unknown';
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
+    const res = await fetch(`/api/v1/geocode?lat=${lat}&lon=${lng}`);
     const data = await res.json();
-    return data?.address?.city || data?.address?.town || data?.address?.state || data?.address?.country || 'Unknown';
+    return data?.city || 'Unknown';
   } catch { return 'Unknown'; }
 }
 // Stable particles for cinematic intro
@@ -290,7 +294,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
     const text = kiss.kiss_type === 'declaration'
       ? `🌍❤️ ${kiss.sender_name} declared love to ${kiss.receiver_name || 'someone'}! Watch the journey on Gao Social`
       : `${kiss.emoji} Got a kiss from ${kiss.sender_name || 'someone'}! ${senderCity} → ${receiverCity} on Gao Social`;
-    const url = `${window.location.origin}/kiss/${kiss.id}`;
+    const url = getKissUrl(kiss, window.location.origin);
 
     if (platform === 'native' && navigator.share) {
       try {
@@ -312,7 +316,7 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   }, [kiss, senderCity, receiverCity]);
 
   const handleCopyLink = useCallback(() => {
-    navigator.clipboard.writeText(`${window.location.origin}/kiss/${kiss.id}`);
+    navigator.clipboard.writeText(getKissUrl(kiss, window.location.origin));
     setCopied(true);
     toast.success('Link copied!');
     setTimeout(() => setCopied(false), 2000);

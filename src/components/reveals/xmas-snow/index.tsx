@@ -24,6 +24,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { HeartHandshake } from 'lucide-react';
 import { getKissString, parseKissData } from '../_shared/useTemplateData';
 import type { TemplateProps } from '../_types';
 
@@ -465,6 +466,66 @@ function packToCount(pts: Pt[], n: number): Pt[] {
   return Array.from({ length: n }).map((_, i) => pts[i % pts.length]);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// GiftTouchHint · "touch me" typed out one letter at a time with a
+// blinking cursor. Only renders while the gift stage is on screen —
+// unmounts when the user taps → advances to the heart stage.
+// ─────────────────────────────────────────────────────────────────────
+function GiftTouchHint() {
+  const [typed, setTyped] = useState('');
+  const full = 'touch me';
+  useEffect(() => {
+    let i = 0;
+    // small pause before typing starts so it doesn't sync-fire with
+    // the drone morph
+    const startTimer = setTimeout(() => {
+      const int = setInterval(() => {
+        i += 1;
+        setTyped(full.slice(0, i));
+        if (i >= full.length) clearInterval(int);
+      }, 130);
+    }, 800);
+    return () => clearTimeout(startTimer);
+  }, []);
+  const done = typed.length >= full.length;
+  return (
+    <motion.div
+      className="absolute inset-x-0 pointer-events-none text-center"
+      style={{ bottom: '30%', zIndex: 11 }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.5 }}
+    >
+      <div
+        className="inline-block rounded-full"
+        style={{
+          padding: '10px 24px',
+          background: 'rgba(0,0,0,0.6)',
+          border: '1px solid rgba(244,63,94,0.45)',
+          backdropFilter: 'blur(8px)',
+          fontFamily: "'Courier New', 'JetBrains Mono', monospace",
+          fontSize: 'clamp(20px, 3.4vw, 30px)',
+          fontWeight: 500,
+          letterSpacing: '0.15em',
+          textTransform: 'lowercase',
+          color: '#fff',
+          textShadow: '0 0 10px rgba(244,63,94,0.9), 0 0 22px rgba(249,168,212,0.55)',
+        }}
+      >
+        <span>{typed}</span>
+        {/* Blinking cursor — always visible, blinks slower once typed */}
+        <motion.span
+          animate={{ opacity: [1, 0, 1] }}
+          transition={{ duration: done ? 1.0 : 0.6, repeat: Infinity, ease: 'linear' }}
+          style={{ marginLeft: 3, color: '#f43f5e' }}
+        >
+          _
+        </motion.span>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
   const rawName = (getKissString(kiss, 'name') || kiss.receiver_name || 'em').trim();
   const displayName = rawName || 'em';
@@ -838,126 +899,78 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
         </svg>
       </div>
 
-      {/* ── KISSING COUPLE SILHOUETTE · classic profile view — 2
-             heads facing each other, lips touching in the middle.
-             Iconic silhouette art. Man on left (short hair), woman
-             on right (long flowing hair). Just the shadowy busts —
-             no full bodies, no arms — the pure emotional moment. */}
-      <div className="absolute inset-x-0 bottom-0 pointer-events-none flex justify-center" style={{ zIndex: 4, height: '42%' }}>
-        <svg viewBox="0 0 260 260" preserveAspectRatio="xMidYEnd meet" style={{ width: 'clamp(220px, 28vw, 340px)', height: '100%', display: 'block', overflow: 'visible' }}>
-          <defs>
-            <radialGradient id="couple-glow" cx="50%" cy="80%" r="55%">
-              <stop offset="0%"   stopColor="rgba(253,224,138,0.55)" />
-              <stop offset="45%"  stopColor="rgba(251,191,36,0.24)" />
-              <stop offset="100%" stopColor="rgba(251,191,36,0)" />
-            </radialGradient>
-          </defs>
+      {/* ── COUPLE · MODERN ICON approach. Instead of hand-drawn SVG
+             (which came out crude no matter how much we polished it),
+             use Lucide's professionally-designed HeartHandshake icon
+             — 2 stylised hands meeting to form a heart — rendered
+             HUGE with a warm neon glow. Clean, iconic, modern. */}
+      <div
+        className="absolute inset-x-0 bottom-0 pointer-events-none flex justify-center items-end"
+        style={{ zIndex: 4, height: '38%', paddingBottom: '2vh' }}
+      >
+        <div style={{
+          position: 'relative',
+          width: 'clamp(200px, 28vw, 340px)',
+          aspectRatio: '1 / 1',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          {/* Warm ambient halo behind — like a lantern-lit stage */}
+          <div style={{
+            position: 'absolute',
+            inset: '-20%',
+            background: 'radial-gradient(circle at 50% 55%, rgba(244,63,94,0.35) 0%, rgba(253,224,138,0.22) 30%, transparent 68%)',
+            filter: 'blur(18px)',
+          }} />
 
-          {/* Warm halo on the snow behind them */}
-          <ellipse cx="130" cy="248" rx="130" ry="26" fill="url(#couple-glow)" />
-
-          {/* ══════════════════════════════════════════════════════════
-              MAN silhouette · PROFILE facing RIGHT — smooth graceful
-              curves through: back-of-head, top skull, brow, nose
-              (subtle rounded bump), philtrum indent, cupid's-bow
-              upper lip, meeting-point lip, lower lip, chin curve,
-              jaw, neck, sloping shoulders.
-              ═══════════════════════════════════════════════════════ */}
-          <path fill="#000" d="
-            M 30 250
-            L 30 128
-            C 30 90 40 62 72 52
-            C 92 46 112 52 122 66
-            C 128 76 129 86 128 96
-            C 128 100 129 102 130 105
-            C 132 108 134 111 132 114
-            C 130 116 128 117 127 119
-            C 127 121 128 123 129 125
-            C 129 128 130 131 130 133
-            C 130 134 130 135 130 136
-            C 130 138 130 140 129 141
-            C 128 143 126 145 125 148
-            C 123 152 122 155 122 158
-            C 122 161 121 164 118 166
-            C 114 168 110 170 106 173
-            C 100 178 94 185 88 195
-            C 78 210 65 228 50 245
-            L 30 250 Z
-          " />
-
-          {/* ══════════════════════════════════════════════════════════
-              WOMAN silhouette · PROFILE facing LEFT — mirror of man
-              with softer feminine curves + long flowing hair.
-              ═══════════════════════════════════════════════════════ */}
-          <path fill="#000" d="
-            M 230 250
-            L 230 128
-            C 230 90 220 62 188 52
-            C 168 46 148 52 138 66
-            C 132 76 131 86 132 96
-            C 132 100 131 102 130 105
-            C 128 108 126 111 128 114
-            C 130 116 132 117 133 119
-            C 133 121 132 123 131 125
-            C 131 128 130 131 130 133
-            C 130 134 130 135 130 136
-            C 130 138 130 140 131 141
-            C 132 143 134 145 135 148
-            C 137 152 138 155 138 158
-            C 138 161 139 164 142 166
-            C 146 168 150 170 154 173
-            C 160 178 166 185 172 195
-            C 182 210 195 228 210 245
-            L 230 250 Z
-          " />
-
-          {/* WOMAN'S long flowing hair — soft wavy silhouette down her back */}
-          <path fill="#000" d="
-            M 200 82
-            C 220 100 226 130 224 165
-            C 222 195 216 220 210 240
-            L 240 240
-            C 244 210 246 175 244 145
-            C 242 115 232 90 218 74
-            Z
-          " />
-
-          {/* MAN's small hair tuft at nape of neck */}
-          <path fill="#000" opacity="0.85" d="
-            M 45 90
-            C 38 82 38 68 44 62
-            C 50 58 56 60 58 66
-            L 58 100 Z
-          " />
-
-          {/* Warm RIM LIGHT on the edges facing the sky — creates
-              gentle silhouette outline glow like moonlight touching
-              their faces */}
-          <g opacity="0.55" fill="#fef3c7" style={{ filter: 'drop-shadow(0 0 4px rgba(254,243,199,0.9))' }}>
-            {/* Man top of head rim */}
-            <path d="M 78 55 Q 100 48 118 55 Q 100 51 78 55 Z" />
-            {/* Man nose highlight */}
-            <path d="M 128 92 Q 132 100 130 112 Q 129 102 128 92 Z" />
-            {/* Woman top of head rim */}
-            <path d="M 182 55 Q 160 48 142 55 Q 160 51 182 55 Z" />
-            {/* Woman nose highlight */}
-            <path d="M 132 92 Q 128 100 130 112 Q 131 102 132 92 Z" />
-          </g>
-
-          {/* Subtle warm blush glow where their lips meet — the kiss */}
-          <ellipse cx="130" cy="125" rx="16" ry="7" fill="#f9a8d4" opacity="0.28" style={{ filter: 'blur(4px)' }} />
-          <circle cx="130" cy="125" r="3" fill="#f43f5e" opacity="0.6" style={{ filter: 'drop-shadow(0 0 4px #f43f5e)' }} />
-
-          {/* Floating GLOWING HEART just above their kiss */}
-          <g transform="translate(130 32)">
-            <circle cx="0" cy="0" r="20" fill="rgba(244,63,94,0.32)" style={{ filter: 'blur(9px)' }} />
-            <path
-              d="M 0 12 C -7 6, -11 2, -11 -3 C -11 -6, -8 -8, -5 -8 C -2 -8, -1 -7, 0 -5 C 1 -7, 2 -8, 5 -8 C 8 -8, 11 -6, 11 -3 C 11 2, 7 6, 0 12 Z"
-              fill="#f43f5e"
-              style={{ filter: 'drop-shadow(0 0 8px rgba(244,63,94,1)) drop-shadow(0 0 18px rgba(249,168,212,0.75))' }}
+          {/* HeartHandshake icon at hero size — rose stroke + amber
+              glow, giving a warm hand-in-hand kiss vibe without any
+              anatomy drawing. */}
+          <motion.div
+            style={{
+              position: 'relative',
+              width: '100%',
+              height: '100%',
+              color: '#f43f5e',
+              filter: `
+                drop-shadow(0 0 12px rgba(244,63,94,0.9))
+                drop-shadow(0 0 28px rgba(249,168,212,0.6))
+                drop-shadow(0 0 60px rgba(251,191,36,0.35))
+              `,
+            }}
+            animate={{ scale: [1, 1.03, 1] }}
+            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <HeartHandshake
+              strokeWidth={1.4}
+              size="100%"
+              style={{ width: '100%', height: '100%' }}
             />
-          </g>
-        </svg>
+          </motion.div>
+
+          {/* Small pulsing heart floating above the icon */}
+          <div style={{
+            position: 'absolute',
+            top: '-6%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}>
+            <motion.div
+              animate={{ scale: [1, 1.2, 1], opacity: [0.85, 1, 0.85] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <svg viewBox="0 0 24 24" width="34" height="34" style={{
+                filter: 'drop-shadow(0 0 8px rgba(244,63,94,1)) drop-shadow(0 0 18px rgba(249,168,212,0.8))',
+              }}>
+                <path
+                  d="M 12 21 C 4 15, 1 10, 1 6 C 1 3, 3 1, 6 1 C 9 1, 11 3, 12 5 C 13 3, 15 1, 18 1 C 21 1, 23 3, 23 6 C 23 10, 20 15, 12 21 Z"
+                  fill="#f43f5e"
+                />
+              </svg>
+            </motion.div>
+          </div>
+        </div>
       </div>
 
       {/* ── SNOWFALL BEHIND canvas (semi-transparent overlays merge) ── */}
@@ -1206,9 +1219,12 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
         </motion.div>
       </AnimatePresence>
 
-      {/* (Removed: Vietnamese tap-hint text. The pulsing scale of
-          the gift itself + the reveal timing signal "tap me" clearly
-          enough without an on-screen text prompt.) */}
+      {/* GIFT stage · "touch me" typewriter hint · types out one
+          letter at a time with a blinking cursor. Only visible while
+          the gift box is on screen. */}
+      {stagesConfig[stage]?.kind === 'gift' && (
+        <GiftTouchHint />
+      )}
 
       {/* Distant warm-lit COTTAGE — appears bottom-left on final stage.
           A small silhouette house with glowing windows sits far away

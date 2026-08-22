@@ -12,13 +12,14 @@ import useSWR from 'swr';
 import QRCode from 'qrcode';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
+import { getKissUrl } from '@/lib/kiss-slug';
 
 interface SentKiss {
   id: string;
   emoji: string;
   message: string;
   visibility: string;
-  receiver_id: string;
+  receiver_id: string | null;
   receiver_name?: string;
   receiver_avatar?: string;
   created_at: string;
@@ -29,6 +30,7 @@ interface SentKiss {
   photos?: string; // JSON string
   music_url?: string;
   music_title?: string;
+  slug?: string | null;
 }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
@@ -98,8 +100,8 @@ function SentKissCard({ kiss, onOpenQr }: { kiss: SentKiss; onOpenQr: () => void
 
   const url = useMemo(() => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/kiss/${kiss.id}`;
-  }, [kiss.id]);
+    return getKissUrl(kiss, origin);
+  }, [kiss]);
 
   const remaining = kiss.max_opens - kiss.open_count;
   const exhausted = remaining <= 0;
@@ -192,8 +194,8 @@ function QrModal({ kiss, onClose }: { kiss: SentKiss; onClose: () => void }) {
 
   const url = useMemo(() => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/kiss/${kiss.id}`;
-  }, [kiss.id]);
+    return getKissUrl(kiss, origin);
+  }, [kiss]);
 
   useEffect(() => {
     QRCode.toDataURL(url, {

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getDB } from '@/lib/db';
 import type { Metadata } from 'next';
+import { getTemplate } from '@/components/reveals/_registry';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.gao.social';
 
@@ -14,20 +15,30 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   try {
     const db = getDB();
     const k = await db.prepare(
-      `SELECT k.emoji, k.message, k.visibility,
-              s.display_name AS sender_name, s.avatar_url AS sender_avatar,
-              r.display_name AS receiver_name
+      `SELECT k.emoji, k.kiss_type, k.template_id, k.visibility,
+              s.display_name AS sender_name
        FROM kisses k
        LEFT JOIN users s ON s.id = k.sender_id
-       LEFT JOIN users r ON r.id = k.receiver_id
-       WHERE k.id = ?`
-    ).bind(id).first<{ emoji: string; message: string; visibility: string; sender_name: string; sender_avatar: string; receiver_name: string }>();
+       WHERE k.id = ? OR k.slug = ?`
+    ).bind(id, id).first<{ emoji: string; kiss_type: string; template_id: string | null; visibility: string; sender_name: string }>();
 
     if (!k || k.visibility === 'private') {
       return { title: 'Kiss on Gao Social' };
     }
-    const title = `${k.emoji} ${k.sender_name} sent a kiss to ${k.receiver_name} on Gao Social`;
-    const description = k.message || `${k.sender_name} sent a ${k.emoji} kiss! Watch the journey on Gao Social.`;
+
+    // Deliberately a teaser, not a spoiler — never surface k.message here.
+    // The whole point of the share card is to make people curious enough
+    // to tap, not to give the surprise away in the FB/Zalo/Twitter preview.
+    const senderName = k.sender_name || 'Someone';
+    const isDeclaration = k.kiss_type === 'declaration';
+    const tpl = getTemplate(k.template_id);
+    const title = isDeclaration
+      ? `${k.emoji} ${senderName} declared love to the world 🌍`
+      : `${k.emoji} ${senderName} sent you a secret gift`;
+    const description = tpl
+      ? `A "${tpl.name}" surprise is waiting for you. Tap to open it 🎁✨`
+      : `Something special is waiting for you. Tap to open it 🎁✨`;
+    const ogImage = `${BASE_URL}/api/og/kiss/${id}`;
 
     return {
       title,
@@ -39,12 +50,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         type: 'website',
         url: `${BASE_URL}/kiss/${id}`,
         siteName: 'Gao Social',
-        images: k.sender_avatar ? [{ url: k.sender_avatar.startsWith('/') ? `${BASE_URL}${k.sender_avatar}` : k.sender_avatar, width: 200, height: 200 }] : [],
+        images: [{ url: ogImage, width: 1200, height: 630 }],
       },
       twitter: {
-        card: 'summary',
+        card: 'summary_large_image',
         title,
         description,
+        images: [ogImage],
       },
     };
   } catch {
@@ -65,16 +77,21 @@ export default async function KissSharePage({ params }: Props) {
   let exhausted = false;
   let senderName = '';
   let emoji = '💝';
+  // The URL segment may be a custom slug or the raw kiss ID — resolve to
+  // the canonical ID so the /world?kiss= redirect target matches what the
+  // map's already-loaded kiss list keys on.
+  let canonicalId = id;
   try {
     const db = getDB();
     const row = await db.prepare(
-      `SELECT k.emoji, k.open_count, k.max_opens, s.display_name AS sender_name
+      `SELECT k.id, k.emoji, k.open_count, k.max_opens, s.display_name AS sender_name
        FROM kisses k
        LEFT JOIN users s ON s.id = k.sender_id
-       WHERE k.id = ?`
-    ).bind(id).first<{ emoji: string; open_count: number; max_opens: number; sender_name: string }>();
+       WHERE k.id = ? OR k.slug = ?`
+    ).bind(id, id).first<{ id: string; emoji: string; open_count: number; max_opens: number; sender_name: string }>();
     if (row) {
-      exhausted = (row.open_count ?? 0) >= (row.max_opens ?? 5);
+      canonicalId = row.id;
+      exhausted = (row.open_count ?? 0) >= (row.max_opens ?? 20);
       senderName = row.sender_name || '';
       emoji = row.emoji || '💝';
     }
@@ -98,5 +115,5 @@ export default async function KissSharePage({ params }: Props) {
     );
   }
 
-  redirect(`/world?kiss=${id}`);
+  redirect(`/world?kiss=${canonicalId}`);
 }

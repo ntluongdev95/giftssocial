@@ -30,8 +30,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
        FROM kisses k
        LEFT JOIN users s ON s.id = k.sender_id
        LEFT JOIN users r ON r.id = k.receiver_id
-       WHERE k.id = ?`
-    ).bind(id).first<Record<string, unknown>>();
+       WHERE k.id = ? OR k.slug = ?`
+    ).bind(id, id).first<Record<string, unknown>>();
 
     if (!kiss) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found' } }, { status: 404 });

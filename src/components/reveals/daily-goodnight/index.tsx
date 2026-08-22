@@ -1,49 +1,19 @@
 'use client';
 
-// Good Night · Golden Lantern Festival · Lakeside Edition
-// ─────────────────────────────────────────────────────────────────────
-// A cinematic hand-crafted reveal set on the shore of a moonlit lake.
-// The recipient's photo glows inside a paper lantern that a silhouette
-// couple releases from the shore; more lanterns rise all around, an
-// aurora ribbon shimmers above, and everything is mirrored in the
-// still water below. The recipient's name writes itself across the
-// sky in cursive calligraphy.
-//
-// Story arc (~32s):
-//
-//   0-1.5s OPEN            Deep black night sky, stars twinkle, a
-//                          subtle meteor may pass.
-//   1.5-3s HEART           A luminous 3D rose-red heart fades in at
-//                          center-top of the sky, gently rotating on
-//                          the Y-axis and beating like a real heart.
-//   3.5-5s GREETING        "Chúc {name} ngủ ngon" writes itself in
-//                          cursive under the heart, amber underline.
-//   6-9s   PHOTO (opt)     If a photo is attached, it FALLS from
-//                          above the viewport as a polaroid and
-//                          settles bottom-left with a soft bounce.
-//   7-9s   MESSAGE         Sender's handwritten message unfolds at
-//                          the bottom, signature signs off in amber.
-//   24s    SHARE CTA       Share button appears.
-//   32s    AUTO-CLOSE      Reveal completes, advances to share step.
-//
-// Layers (bottom → top):
-//   sky gradient → stars → aurora → mountains → mist →
-//   ambient lanterns → hero lantern → shore silhouettes → lake water
-//   → water reflection (mirrored) → fireflies foreground → text.
 
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { getKissString } from '../_shared/useTemplateData';
 import type { TemplateProps, TemplateConfig } from '../_types';
+import DailyGoodnight2Reveal from '../daily-goodnight-2';
 
 // Reveal auto-completes after this many ms — parent overlay advances
 // to the share step. User can also tap the button to advance sooner.
 const REVEAL_DURATION_MS = 32_000;
 
 // ─── Palette ─────────────────────────────────────────────────────────
-const ACCENT      = '#f59e0b';   // warm amber
-const ACCENT_DEEP = '#c2410c';   // deep terracotta
+const ACCENT      = '#f59e0b';   // warm amber   // deep terracotta
 const ACCENT_HOT  = '#fef3c7';   // hot cream (candle core)
 const AURORA_A    = '#7c3aed';   // violet
 const AURORA_B    = '#22d3ee';   // cyan
@@ -1096,132 +1066,10 @@ function SingleFigure({ accent }: { accent: string }) {
 // ── LANTERN COMPONENTS ────────────────────────────────────────────────
 
 // Ambient lantern — used dozens of times for the fleet + reflections
-function Lantern() {
-  return (
-    <svg width="60" height="90" viewBox="0 0 60 90">
-      <defs>
-        <radialGradient id="lantern-glow-body" cx="50%" cy="50%">
-          <stop offset="0%"   stopColor={ACCENT_HOT} stopOpacity="0.95" />
-          <stop offset="45%"  stopColor={ACCENT}     stopOpacity="0.9" />
-          <stop offset="90%"  stopColor={ACCENT_DEEP} stopOpacity="0.75" />
-          <stop offset="100%" stopColor={ACCENT_DEEP} stopOpacity="0.5" />
-        </radialGradient>
-      </defs>
-      <line x1="30" y1="0" x2="30" y2="14" stroke="#78350f" strokeWidth="0.8" />
-      <ellipse cx="30" cy="15" rx="10" ry="3" fill="#7c2d12" />
-      <path
-        d="M 20 16 Q 12 30 12 45 Q 12 60 20 74 L 40 74 Q 48 60 48 45 Q 48 30 40 16 Z"
-        fill="url(#lantern-glow-body)"
-        stroke={ACCENT_DEEP}
-        strokeWidth="0.6"
-        style={{ filter: `drop-shadow(0 0 8px ${ACCENT})` }}
-      />
-      <line x1="14" y1="30" x2="46" y2="30" stroke={ACCENT_DEEP} strokeWidth="0.4" opacity="0.7" />
-      <line x1="13" y1="45" x2="47" y2="45" stroke={ACCENT_DEEP} strokeWidth="0.4" opacity="0.7" />
-      <line x1="14" y1="60" x2="46" y2="60" stroke={ACCENT_DEEP} strokeWidth="0.4" opacity="0.7" />
-      <ellipse cx="30" cy="75" rx="10" ry="3" fill="#7c2d12" />
-      <line x1="30" y1="78" x2="30" y2="86" stroke="#78350f" strokeWidth="0.6" />
-      <circle cx="30" cy="87" r="1.5" fill={ACCENT} />
-    </svg>
-  );
-}
+
 
 // Hero lantern — bigger + carries the recipient's photo
-function HeroLantern({ photoUrl }: { photoUrl?: string }) {
-  return (
-    <svg width="240" height="360" viewBox="0 0 240 360">
-      <defs>
-        <radialGradient id="hero-body-glow" cx="50%" cy="55%">
-          <stop offset="0%"   stopColor={ACCENT_HOT} stopOpacity="1" />
-          <stop offset="30%"  stopColor={ACCENT}     stopOpacity="0.95" />
-          <stop offset="70%"  stopColor={ACCENT_DEEP} stopOpacity="0.85" />
-          <stop offset="100%" stopColor={ACCENT_DEEP} stopOpacity="0.5" />
-        </radialGradient>
-        <clipPath id="hero-photo-mask">
-          <circle cx="120" cy="180" r="60" />
-        </clipPath>
-        <filter id="hero-paper-noise" x="0" y="0" width="1" height="1">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" />
-          <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 0.85  0 0 0 0 0.6  0 0 0 0.15 0" />
-        </filter>
-      </defs>
 
-      {/* Rope */}
-      <line x1="120" y1="0" x2="120" y2="46" stroke="#78350f" strokeWidth="2.2" />
-      <ellipse cx="120" cy="20" rx="6" ry="6" fill="#78350f" />
-
-      {/* Top cap */}
-      <ellipse cx="120" cy="52" rx="42" ry="10" fill="#7c2d12" />
-      <ellipse cx="120" cy="50" rx="42" ry="8" fill="#c2410c" />
-
-      {/* Body */}
-      <path
-        d="M 78 54 Q 48 130 48 180 Q 48 232 78 306 L 162 306 Q 192 232 192 180 Q 192 130 162 54 Z"
-        fill="url(#hero-body-glow)"
-        stroke={ACCENT_DEEP}
-        strokeWidth="1.6"
-        style={{ filter: `drop-shadow(0 0 40px ${ACCENT}) drop-shadow(0 0 80px ${ACCENT}88)` }}
-      />
-
-      {/* Bamboo seams */}
-      {[90, 130, 180, 230, 270].map(y => (
-        <line
-          key={y}
-          x1={y === 90 || y === 270 ? 66 : y === 130 || y === 230 ? 52 : 48}
-          y1={y}
-          x2={y === 90 || y === 270 ? 174 : y === 130 || y === 230 ? 188 : 192}
-          y2={y}
-          stroke={ACCENT_DEEP}
-          strokeWidth="1.2"
-          opacity="0.75"
-        />
-      ))}
-
-      {/* Photo inside */}
-      {photoUrl ? (
-        <>
-          <circle cx="120" cy="180" r="60" fill={ACCENT_HOT} opacity="0.4" />
-          <g clipPath="url(#hero-photo-mask)">
-            <image
-              href={photoUrl}
-              x="60" y="120" width="120" height="120"
-              preserveAspectRatio="xMidYMid slice"
-              style={{ mixBlendMode: 'screen', opacity: 0.75 }}
-            />
-          </g>
-          <circle
-            cx="120" cy="180" r="60"
-            fill="none"
-            stroke={ACCENT_HOT}
-            strokeWidth="1.5"
-            opacity="0.6"
-            style={{ filter: `drop-shadow(0 0 10px ${ACCENT})` }}
-          />
-        </>
-      ) : (
-        <g>
-          <ellipse cx="120" cy="200" rx="18" ry="30" fill={ACCENT_HOT} opacity="0.85" />
-          <ellipse cx="120" cy="192" rx="10" ry="18" fill="#fff" opacity="0.6" />
-        </g>
-      )}
-
-      {/* Bottom cap */}
-      <ellipse cx="120" cy="308" rx="42" ry="10" fill="#7c2d12" />
-      <ellipse cx="120" cy="306" rx="42" ry="8" fill="#c2410c" />
-
-      {/* Tassel */}
-      <line x1="120" y1="316" x2="120" y2="352" stroke="#78350f" strokeWidth="1.4" />
-      <circle cx="120" cy="356" r="6" fill={ACCENT} style={{ filter: `drop-shadow(0 0 6px ${ACCENT})` }} />
-
-      {/* Paper texture overlay */}
-      <path
-        d="M 78 54 Q 48 130 48 180 Q 48 232 78 306 L 162 306 Q 192 232 192 180 Q 192 130 162 54 Z"
-        filter="url(#hero-paper-noise)"
-        opacity="0.25"
-      />
-    </svg>
-  );
-}
 
 export default DailyGoodnightReveal;
 
@@ -1232,5 +1080,6 @@ export const DailyGoodnightConfig: TemplateConfig = {
   emoji: '🏮',
   description: 'Lakeside golden lantern festival — two silhouettes release a photo-lit lantern from the shore, an aurora shimmers above, dozens more lanterns rise and reflect in the still water, ending with a handwritten "chúc ngủ ngon".',
   thumbnailBg: 'linear-gradient(135deg, #050208, #7c3aed, #f59e0b)',
-  Component: DailyGoodnightReveal,
+   Component: DailyGoodnightReveal,
+  
 };

@@ -233,7 +233,7 @@ export default function WorldPage() {
   const { data: signalsData } = useSWR<{ data: Signal[] }>(
     `/api/v1/signals?${queryParams}&limit=${viewMode === '3d' ? 100 : 30}`,
     fetcher,
-    { refreshInterval: 30000, fallbackData: { data: [] } }
+    { refreshInterval: 120000, fallbackData: { data: [] } }
   );
 
   // Agents endpoint isn't deployed on dev — short-circuit to an empty list
@@ -245,35 +245,35 @@ export default function WorldPage() {
   const { data: profilesData } = useSWR<{ data: Profile[] }>(
     `/api/v1/profiles?${queryParams}&available=true&limit=${viewMode === '3d' ? 100 : 20}`,
     fetcher,
-    { refreshInterval: 60000, fallbackData: { data: [] } }
+    { refreshInterval: 180000, fallbackData: { data: [] } }
   );
 
   // Fetch businesses — 3D needs all, 2D uses viewport
   const { data: businessesData } = useSWR<{ data: Business[] }>(
     `/api/v1/businesses?${queryParams}&limit=${viewMode === '3d' ? 200 : 50}`,
     fetcher,
-    { refreshInterval: 60000, fallbackData: { data: [] } }
+    { refreshInterval: 180000, fallbackData: { data: [] } }
   );
 
   // Fetch events
   const { data: eventsData } = useSWR<{ data: Event[] }>(
     `/api/v1/events?${queryParams}&limit=${viewMode === '3d' ? 200 : 50}`,
     fetcher,
-    { refreshInterval: 60000, fallbackData: { data: [] } }
+    { refreshInterval: 180000, fallbackData: { data: [] } }
   );
 
   // Fetch circles
   const { data: circlesData } = useSWR<{ data: Circle[] }>(
     `/api/v1/circles?limit=50`,
     fetcher,
-    { refreshInterval: 60000, fallbackData: { data: [] } }
+    { refreshInterval: 180000, fallbackData: { data: [] } }
   );
 
   // Fetch users for map (people layer) — follows viewport like other entities
   const { data: mapUsersData } = useSWR<{ data: MapUser[] }>(
     `/api/v1/users/map?${queryParams}&limit=500`,
     fetcher,
-    { refreshInterval: 60000, fallbackData: { data: [] } }
+    { refreshInterval: 180000, fallbackData: { data: [] } }
   );
 
   const signals = signalsData?.data ?? [];

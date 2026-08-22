@@ -63,7 +63,6 @@ export default function Vehicle({
             drop-shadow(0 0 8px rgba(255,255,255,0.12))
           `,
           userSelect: 'none',
-          WebkitUserDrag: 'none',
         }}
       />
     </div>

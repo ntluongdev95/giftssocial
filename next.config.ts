@@ -91,9 +91,17 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
+  // StrictMode doubles every render + effect in DEV — hides real
+  // problems + halves perceived perf. Enable in prod, disable in dev
+  // for realistic local speed.
+  reactStrictMode: process.env.NODE_ENV === 'production',
   bundlePagesRouterDependencies: true,
   turbopack: {
+    // Pin workspace root to THIS project so Turbopack doesn't
+    // accidentally pick up the user's home-dir `package-lock.json`
+    // (which was causing "detected multiple lockfiles" warning +
+    // slow HMR because file-scanning walked outside the project).
+    root: __dirname,
     // wagmi v3 `tempo` connectors call `import('accounts')` for non-EVM
     // adapters that we don't ship. Aliasing the bare specifier to a
     // stub satisfies Turbopack's static resolution; the runtime path

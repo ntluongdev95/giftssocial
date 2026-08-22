@@ -4,7 +4,7 @@
 // The DynamicForm walks the list, mounts the matching input type, and
 // collects values into a { key: value } object saved as kiss.template_data.
 
-export type FieldType = 'text' | 'textarea' | 'number' | 'color' | 'select' | 'toggle' | 'date' | 'image' | 'audio-url' | 'password';
+export type FieldType = 'text' | 'textarea' | 'number' | 'color' | 'select' | 'toggle' | 'date' | 'image' | 'image-array' | 'audio-url' | 'password';
 
 export interface FieldOption {
   value: string;
@@ -33,6 +33,9 @@ export interface FieldSpec {
   options?: FieldOption[];
   /** If true, the send button is disabled until a value is provided. */
   required?: boolean;
+  /** For image-array — cap on how many photos the sender can attach.
+   * Free tier default is 2; raising this is a future paid unlock. */
+  maxItems?: number;
 }
 
 /** Builds the initial data object from a schema — uses `default` when set. */
@@ -50,7 +53,8 @@ export function validateSchema(schema: FieldSpec[], data: Record<string, unknown
   for (const f of schema) {
     if (!f.required) continue;
     const v = data[f.key];
-    if (v === undefined || v === null || v === '') missing.push(f.key);
+    const isEmpty = v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+    if (isEmpty) missing.push(f.key);
   }
   return missing;
 }

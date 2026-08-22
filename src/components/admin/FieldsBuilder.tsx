@@ -27,11 +27,12 @@ const TYPE_LABELS: Record<FieldType, string> = {
   toggle: 'Toggle',
   date: 'Date',
   image: 'Image upload',
+  'image-array': 'Multiple photos',
   'audio-url': 'Music link (URL)',
   password: 'Password (numeric lock)',
 };
 
-const TYPE_ORDER: FieldType[] = ['text', 'textarea', 'number', 'color', 'select', 'toggle', 'date', 'image', 'audio-url', 'password'];
+const TYPE_ORDER: FieldType[] = ['text', 'textarea', 'number', 'color', 'select', 'toggle', 'date', 'image', 'image-array', 'audio-url', 'password'];
 
 export default function FieldsBuilder({ value, onChange, accent = '#ec4899' }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);

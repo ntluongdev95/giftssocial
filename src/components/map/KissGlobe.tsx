@@ -75,6 +75,7 @@ function mergedTemplates(occasion: Occasion): MergedTemplate[] {
 }
 import { tracksForOccasion, type MusicTrack } from '@/lib/kiss-music';
 import QRCode from 'qrcode';
+import { getKissUrl, slugify, isValidSlug, SLUG_MIN, SLUG_MAX } from '@/lib/kiss-slug';
 
 const fetcher = (url: string) => fetch(url, {
   
@@ -306,12 +307,17 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   const [searchResults, setSearchResults] = useState<{ id: string; name: string; avatar?: string }[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<{ id: string; name: string; avatar?: string } | null>(null);
   const [receiverId, setReceiverId] = useState(defaultReceiverId || '');
+  // Guest mode: send to someone with no Gao Social account yet — identified
+  // by a name + geocoded address instead of an existing user id.
+  const [sendMode, setSendMode] = useState<'friend' | 'guest'>('friend');
+  const [guestName, setGuestName] = useState('');
   const [friendSearch, setFriendSearch] = useState('');
   const [friendDropdownOpen, setFriendDropdownOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [message, setMessage] = useState('');
   const [emoji, setEmoji] = useState('💋');
+  const [customSlug, setCustomSlug] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [kissType, setKissType] = useState<'kiss' | 'declaration'>('kiss');
   const [sending, setSending] = useState(false);
@@ -344,11 +350,21 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
     if (typeof document === 'undefined' || !document.cookie.includes('gao_logged_in=1')) { setSendError('Please login first'); return; }
     setSending(true);
     try {
-      const payload: Record<string, unknown> = { receiver_id: receiverId, message, emoji, visibility, kiss_type: kissType };
+      const payload: Record<string, unknown> = { message, emoji, visibility, kiss_type: kissType };
+      if (sendMode === 'guest') {
+        payload.receiver_name = effectiveGuestName;
+        if (customAddress.trim()) payload.receiver_address = customAddress.trim();
+      } else {
+        payload.receiver_id = receiverId;
+      }
       if (kissType === 'declaration') payload.visibility = 'public'; // declarations are always public
+      if (customSlug.trim()) payload.slug = slugify(customSlug);
       if (overrideReceiverCoords) {
         payload.receiver_lat = overrideReceiverCoords.lat;
         payload.receiver_lng = overrideReceiverCoords.lng;
+      } else if (sendMode === 'guest' && addressCoords) {
+        payload.receiver_lat = addressCoords.lat;
+        payload.receiver_lng = addressCoords.lng;
       }
       // Occasion enrichments — only added when the sender actually attached them.
       if (occasionPhotos.length > 0) payload.photos = occasionPhotos;
@@ -374,10 +390,11 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
       if (res.ok) {
         const d = await res.json();
         const kissId = d.data?.id as string | undefined;
+        const kissSlug = d.data?.slug as string | null | undefined;
         if (kissId) {
-          // Generate a pink-heart-themed QR encoding /kiss/[id]
+          // Generate a pink-heart-themed QR encoding /kiss/[id or slug]
           const origin = typeof window !== 'undefined' ? window.location.origin : '';
-          const url = `${origin}/kiss/${kissId}`;
+          const url = getKissUrl({ id: kissId, slug: kissSlug }, origin);
           try {
             const qrDataUrl = await QRCode.toDataURL(url, {
               width: 400, margin: 1, errorCorrectionLevel: 'H',
@@ -406,10 +423,18 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   const handleSend = async () => {
     setSendError(null);
     setNoLocationWarning(false);
-    if (!receiverId) { setSendError('Pick someone to send to'); return; }
-    if (receiverId === useAuthStore.getState().user?.id) { setSendError("Can't send a kiss to yourself"); return; }
     if (!emoji) { setSendError('Choose a gift first'); return; }
     if (typeof document === 'undefined' || !document.cookie.includes('gao_logged_in=1')) { setSendError('Please login first'); return; }
+
+    if (sendMode === 'guest') {
+      if (!effectiveGuestName) { setSendError("Enter the recipient's name"); return; }
+      if (!addressCoords) { setSendError('Pick their address from the suggestions'); return; }
+      await doSend();
+      return;
+    }
+
+    if (!receiverId) { setSendError('Pick someone to send to'); return; }
+    if (receiverId === useAuthStore.getState().user?.id) { setSendError("Can't send a kiss to yourself"); return; }
 
     // Check if receiver has location
     try {
@@ -441,9 +466,9 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
     if (q.length < 2) { setAddressSuggestions([]); return; }
     addressTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`, { headers: { 'User-Agent': 'GaoSocial/1.0' } });
-        const data = await res.json();
-        setAddressSuggestions(data || []);
+        const res = await fetch(`/api/v1/geocode?q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+        setAddressSuggestions(json.data || []);
       } catch { setAddressSuggestions([]); }
     }, 300);
   };
@@ -457,6 +482,7 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   const [occasionMusic, setOccasionMusic] = useState<MusicTrack | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [musicPickerOpen, setMusicPickerOpen] = useState(false);
+  const [musicLinkInput, setMusicLinkInput] = useState('');
   // Post-send: kiss ID + QR data URL. When set, modal swaps to share view.
   const [sentKiss, setSentKiss] = useState<{ id: string; url: string; qrDataUrl: string } | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -475,6 +501,17 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   // Look up the picked template's DB row (has fieldsSchema + effects).
   const pickedTemplate = activeOccasion?.templates?.find(t => t.id === selectedTemplateId);
   const pickedFieldsSchema = pickedTemplate?.fieldsSchema ?? [];
+  // Some templates already ask for photos via their own fields_schema
+  // (e.g. daily-goodnight-2's "photos" image-array field) — don't also
+  // show the generic extras Photos uploader and ask twice.
+  const templateHasOwnPhotoField = pickedFieldsSchema.some(f => f.type === 'image' || f.type === 'image-array');
+  // Same duplicate-ask problem as photos: templates like daily-goodnight-2
+  // already have their own "name" field ("Their name" for personalization
+  // inside the reveal) — don't also ask for a guest name separately.
+  const templateHasOwnNameField = pickedFieldsSchema.some(f => f.key === 'name');
+  // When the template's own "name" field covers it, that's the name we send —
+  // the separate guest-name input never rendered, so `guestName` state stays empty.
+  const effectiveGuestName = templateHasOwnNameField ? String(templateData.name ?? '').trim() : guestName;
 
   // Reset the answer object whenever the sender switches templates —
   // previous template's fields don't apply to the new one.
@@ -494,9 +531,9 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   // Derive the selected gift's human name from current emoji + occasion,
   // used in the Send button preview ("Send 🎂 Birthday Cake to Nga").
   const selectedGiftName = (() => {
-    const bundle = activeOccasion.bundles.find(b => b.emoji === emoji && message.includes(b.name));
+    const bundle = activeOccasion?.bundles?.find(b => b.emoji === emoji && message.includes(b.name));
     if (bundle) return bundle.name;
-    const gift = activeOccasion.gifts.find(g => g.emoji === emoji);
+    const gift = activeOccasion?.gifts?.find(g => g.emoji === emoji);
     return gift?.name ?? '';
   })();
 
@@ -674,7 +711,71 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
             <SectionHeader num="1" title="To whom?" />
           </div>)}
 
-          {/* Pick recipient — search anyone */}
+          {/* Friend (has an account) vs Guest (no account yet — just an address) */}
+          <div className="flex gap-1.5 rounded-xl p-1" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            {(['friend', 'guest'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => { setSendMode(m); setSendError(null); }}
+                className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold cursor-pointer transition-colors"
+                style={sendMode === m
+                  ? { background: 'linear-gradient(135deg, #f87171, #ec4899)', color: '#fff' }
+                  : { color: '#4a5068' }}
+              >
+                {m === 'friend' ? '👤 Friend' : '📍 No account yet'}
+              </button>
+            ))}
+          </div>
+
+          {/* Guest mode — name + address, no account required */}
+          {sendMode === 'guest' && (
+            <div className="space-y-2">
+              {!templateHasOwnNameField && (
+                <input
+                  value={guestName}
+                  onChange={e => setGuestName(e.target.value)}
+                  placeholder="Their name"
+                  maxLength={80}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none placeholder:text-[#4a5068]"
+                  style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
+                />
+              )}
+              <div className="relative">
+                <input
+                  value={customAddress}
+                  onChange={e => handleAddressInput(e.target.value)}
+                  placeholder="Their address or city"
+                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none placeholder:text-[#4a5068]"
+                  style={{ background: 'rgba(17,19,24,0.8)', border: addressCoords ? '1px solid rgba(52,211,153,0.3)' : '1px solid rgba(255,255,255,0.07)' }}
+                />
+                {addressCoords && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#34d399]">✓</span>}
+                {addressSuggestions.length > 0 && !addressCoords && (
+                  <div className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-50" style={{ background: 'rgba(10,11,15,0.98)', border: '1px solid rgba(255,255,255,0.08)', maxHeight: '150px', overflowY: 'auto' }}>
+                    {addressSuggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setCustomAddress(s.display_name.split(',').slice(0, 2).join(','));
+                          setAddressCoords({ lat: parseFloat(s.lat), lng: parseFloat(s.lon) });
+                          setAddressSuggestions([]);
+                        }}
+                        className="w-full text-left px-3 py-2 text-[10px] text-[#a3adc3] hover:bg-white/5 cursor-pointer truncate"
+                        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                      >
+                        📍 {s.display_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-[10px] text-[#4a5068] leading-relaxed">They&apos;ll get a link to open the gift — no account needed to see it.</p>
+            </div>
+          )}
+
+          {/* Pick recipient — search anyone (existing accounts only) */}
+          {sendMode === 'friend' && (
           <div className="relative">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">Send to</label>
             {(() => {
@@ -777,6 +878,7 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
               );
             })()}
           </div>
+          )}
 
           {/* ── STEP 1: Occasion grid (only) ── */}
           {wizardStep === 'occasion' && (
@@ -937,6 +1039,27 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
             />
           </div>
 
+          {/* Custom link — optional vanity slug instead of the random /kiss/kiss_xxxx URL */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-[#4a5068]">🔗 Custom link (optional)</label>
+              <span className="text-[9px] text-[#4a5068]">{customSlug.length}/{SLUG_MAX}</span>
+            </div>
+            <div className="flex items-center rounded-xl px-3 py-2.5 gap-1" style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <span className="text-[11px] text-[#4a5068] whitespace-nowrap">/kiss/</span>
+              <input
+                value={customSlug}
+                onChange={(e) => setCustomSlug(slugify(e.target.value))}
+                placeholder="anh-yeu-em"
+                maxLength={SLUG_MAX}
+                className="flex-1 min-w-0 bg-transparent text-sm text-white outline-none placeholder:text-[#2d3548]"
+              />
+            </div>
+            {customSlug.length > 0 && !isValidSlug(customSlug) && (
+              <p className="mt-1 text-[10px] text-amber-400">At least {SLUG_MIN} characters — lowercase letters, numbers, and hyphens only</p>
+            )}
+          </div>
+
           {/* Template-specific fields (data-driven templates only).
               Each template declares its own inputs in fields_schema JSON;
               the DynamicForm renders one input per field. Answers are
@@ -968,8 +1091,9 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
             </button>
             {extrasOpen && (
               <div className="px-3 pb-3 pt-1 flex gap-2 border-t border-white/[0.04]">
+                {!templateHasOwnPhotoField && (
                 <div className="flex-1">
-                  <label className="text-[9px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">📷 Photos ({occasionPhotos.length}/3)</label>
+                  <label className="text-[9px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">📷 Photos ({occasionPhotos.length}/2)</label>
                   <div className="flex gap-1 flex-wrap">
                     {occasionPhotos.map((url, i) => (
                       <div key={i} className="relative w-11 h-11 rounded-md overflow-hidden shrink-0" style={{ background: 'rgba(17,19,24,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -978,7 +1102,7 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                         <button type="button" onClick={() => setOccasionPhotos(occasionPhotos.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-black/80 text-white text-[10px] leading-none flex items-center justify-center cursor-pointer">×</button>
                       </div>
                     ))}
-                    {occasionPhotos.length < 3 && (
+                    {occasionPhotos.length < 2 && (
                       <label className="w-11 h-11 rounded-md flex items-center justify-center cursor-pointer shrink-0" style={{ background: 'rgba(236,72,153,0.10)', border: '1px dashed rgba(236,72,153,0.35)' }}>
                         {photoUploading ? <span className="text-[9px]" style={{ color: '#f472b6' }}>...</span> : <span className="text-lg" style={{ color: '#f472b6' }}>+</span>}
                         <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
@@ -998,7 +1122,9 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                       </label>
                     )}
                   </div>
+                  <p className="text-[9px] text-[#4a5068] mt-1">More than 2 photos: coming soon as a paid upgrade</p>
                 </div>
+                )}
 
                 <div className="flex-1 relative">
                   <label className="text-[9px] font-semibold uppercase tracking-wider text-[#4a5068] mb-1 block">🎵 Music</label>
@@ -1013,10 +1139,40 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
                     )}
                   </button>
                   {musicPickerOpen && (
-                    <div className="absolute top-full mt-1 left-0 right-0 z-20 rounded-md max-h-40 overflow-y-auto" style={{ background: 'rgba(17,19,24,0.98)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 20px rgba(0,0,0,0.5)' }}>
+                    <div className="absolute top-full mt-1 left-0 right-0 z-20 rounded-md max-h-64 overflow-y-auto" style={{ background: 'rgba(17,19,24,0.98)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 20px rgba(0,0,0,0.5)' }}>
                       {occasionMusic && (
                         <button type="button" onClick={() => { setOccasionMusic(null); setMusicPickerOpen(false); }} className="w-full text-left px-2 py-1.5 text-[10px] text-[#f87171] hover:bg-white/5 cursor-pointer">✕ Clear</button>
                       )}
+
+                      {/* Paste a link — YouTube / Spotify / SoundCloud / direct mp3 */}
+                      <div className="px-2 py-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            value={musicLinkInput}
+                            onChange={e => setMusicLinkInput(e.target.value)}
+                            placeholder="🔗 Paste a music link…"
+                            className="flex-1 min-w-0 rounded px-2 py-1 text-[10px] text-white placeholder:text-[#4a5068] outline-none"
+                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                          />
+                          <button
+                            type="button"
+                            disabled={!musicLinkInput.trim()}
+                            onClick={() => {
+                              const url = musicLinkInput.trim();
+                              if (!url) return;
+                              setOccasionMusic({ id: 'custom-link', title: 'Custom track', artist: url, url, duration: 0, mood: 'romantic', coins: 0 });
+                              setMusicLinkInput('');
+                              setMusicPickerOpen(false);
+                            }}
+                            className="rounded px-2 py-1 text-[10px] font-semibold cursor-pointer disabled:opacity-40"
+                            style={{ background: 'rgba(236,72,153,0.15)', color: '#f472b6' }}
+                          >
+                            Use
+                          </button>
+                        </div>
+                        <p className="text-[8px] text-[#4a5068] mt-1">YouTube, Spotify, SoundCloud, or a direct MP3 link</p>
+                      </div>
+
                       {tracksForOccasion(activeOccasion.id).map(t => (
                         <button key={t.id} type="button" onClick={() => { setOccasionMusic(t); setMusicPickerOpen(false); }} className="w-full text-left px-2 py-1.5 flex items-center gap-1.5 hover:bg-white/5 cursor-pointer" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                           <span className="text-sm">{t.mood === 'romantic' ? '💕' : t.mood === 'festive' ? '🎉' : t.mood === 'family' ? '👨‍👩‍👧' : t.mood === 'friendship' ? '🤝' : t.mood === 'sad' ? '😢' : '😊'}</span>
@@ -1143,14 +1299,15 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
 
           {/* Send */}
           {!noLocationWarning && (() => {
-            const targetName = selectedPerson?.name || (receiverId ? 'them' : '');
-            const readyToSend = !!receiverId && !!emoji;
+            const hasRecipient = sendMode === 'guest' ? (!!effectiveGuestName && !!addressCoords) : !!receiverId;
+            const targetName = sendMode === 'guest' ? (effectiveGuestName || 'them') : (selectedPerson?.name || (receiverId ? 'them' : ''));
+            const readyToSend = hasRecipient && !!emoji;
             return (
               <button onClick={handleSend} disabled={sending || !readyToSend} className="w-full rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all" style={{ background: readyToSend ? 'linear-gradient(135deg, #f87171, #ec4899)' : 'rgba(255,255,255,0.06)', color: readyToSend ? 'white' : '#4a5068', boxShadow: readyToSend ? '0 4px 20px rgba(236,72,153,0.3)' : 'none' }}>
                 {sending
                   ? 'Sending…'
-                  : !receiverId
-                    ? 'Pick a recipient first'
+                  : !hasRecipient
+                    ? (sendMode === 'guest' ? "Enter name + address" : 'Pick a recipient first')
                     : !emoji
                       ? 'Pick a gift first'
                       : (
@@ -1825,7 +1982,7 @@ export default function KissGlobe() {
     if (isAuthed && showAuthGate) setShowAuthGate(false);
   }, [isAuthed, showAuthGate]);
 
-  const { data, mutate } = useSWR<{ data: Kiss[] }>(giftLayerOn ? '/api/v1/kisses?limit=30' : null, fetcher, { refreshInterval: 30000 });
+  const { data, mutate } = useSWR<{ data: Kiss[] }>(giftLayerOn ? '/api/v1/kisses?limit=30' : null, fetcher, { refreshInterval: 120000 });
   const kisses = data?.data ?? [];
 
   // ── Place static gift marker (no animation) ──
@@ -1975,11 +2132,11 @@ export default function KissGlobe() {
 
     try {
       const [sRes, rRes] = await Promise.all([
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.sender_lat}&lon=${kiss.sender_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${kiss.receiver_lat}&lon=${kiss.receiver_lng}&zoom=10`, { headers: { 'User-Agent': 'GaoSocial/1.0' } }).then(r => r.json()).catch(() => null),
+        fetch(`/api/v1/geocode?lat=${kiss.sender_lat}&lon=${kiss.sender_lng}`).then(r => r.json()).catch(() => null),
+        fetch(`/api/v1/geocode?lat=${kiss.receiver_lat}&lon=${kiss.receiver_lng}`).then(r => r.json()).catch(() => null),
       ]);
-      if (sRes?.address) senderCity = sRes.address.city || sRes.address.town || sRes.address.state || sRes.address.country || senderCity;
-      if (rRes?.address) receiverCity = rRes.address.city || rRes.address.town || rRes.address.state || rRes.address.country || receiverCity;
+      if (sRes?.city) senderCity = sRes.city;
+      if (rRes?.city) receiverCity = rRes.city;
     } catch {}
 
     // Dove: straight approach line from off-screen west → receiver.

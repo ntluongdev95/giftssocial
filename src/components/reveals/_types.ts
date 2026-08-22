@@ -21,7 +21,7 @@ export interface RevealKiss {
   sender_id: string;
   sender_name?: string;
   sender_avatar?: string;
-  receiver_id: string;
+  receiver_id: string | null;
   receiver_name?: string;
   receiver_avatar?: string;
   message: string;
@@ -34,6 +34,7 @@ export interface RevealKiss {
   created_at?: string;
   template_id?: string | null;
   template_data?: string | null;  // JSON — sender's answers for the template's fields_schema
+  slug?: string | null;           // custom vanity link, e.g. /kiss/anh-yeu-em
 }
 
 /** Props every reveal template component receives. */

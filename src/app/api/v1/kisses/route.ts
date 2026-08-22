@@ -4,6 +4,7 @@ import { getDB, genId } from '@/lib/db';
 import type { KissRow } from '@/types/d1';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
+import { isValidSlug, SLUG_MIN, SLUG_MAX } from '@/lib/kiss-slug';
 
 // ─── GET /api/v1/kisses — List public kisses (for globe) ───────────────
 
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
       // No 24h/opened filter here; QR sharing is a long-lived flow.
       const result = await db.prepare(
         `SELECT k.*,
-          r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
+          COALESCE(r.display_name, k.receiver_name) AS receiver_name, r.avatar_url AS receiver_avatar
          FROM kisses k
          LEFT JOIN users r ON r.id = k.receiver_id
          WHERE k.sender_id = ?
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
       const result = await db.prepare(
         `SELECT k.*,
           s.display_name AS sender_name, s.avatar_url AS sender_avatar,
-          r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
+          COALESCE(r.display_name, k.receiver_name) AS receiver_name, r.avatar_url AS receiver_avatar
          FROM kisses k
          LEFT JOIN users s ON s.id = k.sender_id
          LEFT JOIN users r ON r.id = k.receiver_id
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
       const result = await db.prepare(
         `SELECT k.*,
           s.display_name AS sender_name, s.avatar_url AS sender_avatar,
-          r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
+          COALESCE(r.display_name, k.receiver_name) AS receiver_name, r.avatar_url AS receiver_avatar
          FROM kisses k
          LEFT JOIN users s ON s.id = k.sender_id
          LEFT JOIN users r ON r.id = k.receiver_id
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
       const result = await db.prepare(
         `SELECT k.*,
           s.display_name AS sender_name, s.avatar_url AS sender_avatar,
-          r.display_name AS receiver_name, r.avatar_url AS receiver_avatar
+          COALESCE(r.display_name, k.receiver_name) AS receiver_name, r.avatar_url AS receiver_avatar
          FROM kisses k
          LEFT JOIN users s ON s.id = k.sender_id
          LEFT JOIN users r ON r.id = k.receiver_id
@@ -83,7 +84,12 @@ export async function GET(req: NextRequest) {
 // ─── POST /api/v1/kisses — Send a kiss ──────────────────────────────────
 
 const kissSchema = z.object({
-  receiver_id: z.string().min(1),
+  // Either an existing user (receiver_id) OR a guest recipient identified
+  // by name + geocoded address (receiver_name/receiver_lat/receiver_lng) —
+  // the business model only requires the SENDER to have an account.
+  receiver_id: z.string().min(1).optional(),
+  receiver_name: z.string().min(1).max(80).optional(),
+  receiver_address: z.string().max(300).optional(),
   message: z.string().max(500).default(''),
   emoji: z.string().max(10).default('💋'),
   visibility: z.enum(['public', 'private']).default('public'),
@@ -93,17 +99,23 @@ const kissSchema = z.object({
   // Occasion enrichments (optional): up to 3 photo URLs + 1 music track.
   // Accepts absolute URLs (R2 uploads) or relative paths (bundled audio
   // like /audio/*.mp3) — hence plain `.string()` with a length cap.
-  photos: z.array(z.string().max(500)).max(3).default([]),
+  photos: z.array(z.string().max(500)).max(2).default([]),
   music_url: z.string().max(500).optional(),
   music_title: z.string().max(120).optional(),
   // Reveal template plugin ID (from src/components/reveals/_registry.ts)
   template_id: z.string().max(60).optional(),
+  // Custom vanity link, e.g. /kiss/anh-yeu-em — already slugified client-side
+  // (see slugify() in lib/kiss-slug.ts), re-validated here.
+  slug: z.string().max(SLUG_MAX).optional(),
   // Sender's answers to the template's fields_schema (migration 035).
   // Free-form { key: value } object — the renderer substitutes these
   // into effect params at reveal time. Capped at 4KB serialized to
   // prevent abuse.
   template_data: z.record(z.string(), z.unknown()).optional(),
-});
+}).refine(
+  (d) => d.receiver_id || (d.receiver_name && d.receiver_lat != null && d.receiver_lng != null),
+  { message: 'Pick a friend, or enter a name and address for someone without an account yet' },
+);
 
 export async function POST(req: NextRequest) {
   try {
@@ -124,17 +136,26 @@ export async function POST(req: NextRequest) {
     const sender = await db.prepare('SELECT display_name, location_lat, location_lng FROM users WHERE id = ?').bind(userId).first<{ display_name: string; location_lat: number | null; location_lng: number | null }>();
     if (!sender?.location_lat) return NextResponse.json({ error: { code: 'no_location', message: 'Please enable location sharing in your profile first' } }, { status: 400 });
 
-    // Get receiver info (location optional — kiss still sent)
-    const receiver = await db.prepare('SELECT display_name, location_lat, location_lng FROM users WHERE id = ?').bind(d.receiver_id).first<{ display_name: string; location_lat: number | null; location_lng: number | null }>();
-    if (!receiver) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
+    // Receiver is either an existing user, or a guest identified only by
+    // name + geocoded address (no account required — see migration 038).
+    let receiverHasLocation = false;
+    let receiverLocLat: number | null = null;
+    let receiverLocLng: number | null = null;
 
-    const receiverHasLocation = !!receiver.location_lat;
+    if (d.receiver_id) {
+      const receiver = await db.prepare('SELECT display_name, location_lat, location_lng FROM users WHERE id = ?').bind(d.receiver_id).first<{ display_name: string; location_lat: number | null; location_lng: number | null }>();
+      if (!receiver) return NextResponse.json({ error: { code: 'not_found', message: 'User not found' } }, { status: 404 });
+      receiverHasLocation = !!receiver.location_lat;
+      receiverLocLat = receiver.location_lat;
+      receiverLocLng = receiver.location_lng;
+    }
+
     const senderProvidedAddress = !!(d.receiver_lat && d.receiver_lng);
     const hasValidDestination = receiverHasLocation || senderProvidedAddress;
 
     // If no valid destination, store 0 so frontend knows not to animate
-    const recLat = hasValidDestination ? (d.receiver_lat || receiver.location_lat) : 0;
-    const recLng = hasValidDestination ? (d.receiver_lng || receiver.location_lng) : 0;
+    const recLat = hasValidDestination ? (d.receiver_lat || receiverLocLat) : 0;
+    const recLng = hasValidDestination ? (d.receiver_lng || receiverLocLng) : 0;
 
     // Cap template_data at 4KB to avoid abuse of the free-form column.
     let templateDataJson: string | null = null;
@@ -146,45 +167,67 @@ export async function POST(req: NextRequest) {
       templateDataJson = serialized;
     }
 
+    // Custom vanity link (optional) — must be well-formed and not already taken.
+    let slug: string | null = null;
+    if (d.slug) {
+      if (!isValidSlug(d.slug)) {
+        return NextResponse.json({
+          error: { code: 'invalid_slug', message: `Custom link must be ${SLUG_MIN}-${SLUG_MAX} characters: lowercase letters, numbers, and hyphens only` },
+        }, { status: 400 });
+      }
+      const taken = await db.prepare('SELECT 1 FROM kisses WHERE slug = ?').bind(d.slug).first();
+      if (taken) {
+        return NextResponse.json({ error: { code: 'slug_taken', message: 'This link is already taken — try another one' } }, { status: 409 });
+      }
+      slug = d.slug;
+    }
+
     const id = genId('kiss_');
     const row = await db.prepare(
-      `INSERT INTO kisses (id, sender_id, receiver_id, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title, template_id, template_data)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
-    ).bind(id, userId, d.receiver_id, d.message, d.emoji, d.visibility, d.kiss_type,
+      `INSERT INTO kisses (id, sender_id, receiver_id, receiver_name, receiver_address, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title, template_id, template_data, max_opens, slug)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
+    ).bind(id, userId, d.receiver_id ?? null, d.receiver_id ? null : (d.receiver_name ?? null), d.receiver_address ?? null,
+      d.message, d.emoji, d.visibility, d.kiss_type,
       sender.location_lat, sender.location_lng, recLat, recLng,
       JSON.stringify(d.photos), d.music_url ?? null, d.music_title ?? null,
-      d.template_id ?? null, templateDataJson).first<Record<string, unknown>>();
+      d.template_id ?? null, templateDataJson, 20, slug).first<Record<string, unknown>>();
 
-    // Notify receiver
+    // Notify receiver — only possible when they actually have an account.
+    // Guest recipients (no receiver_id) have nowhere to receive a notification.
     const senderName = sender.display_name || 'Someone';
     const isDeclaration = d.kiss_type === 'declaration';
-    if (isDeclaration) {
-      notify(d.receiver_id, 'system', `🌍❤️ ${senderName} declared love to you!`, 'The whole world can see it! Open to watch 🌏✨', 'kiss', id);
-    } else if (hasValidDestination) {
-      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Open it on the map 🎁✨', 'kiss', id);
-    } else {
-      notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Tap here to share your location and see it fly to you! 📍✈️', 'kiss', id);
+    if (d.receiver_id) {
+      if (isDeclaration) {
+        notify(d.receiver_id, 'system', `🌍❤️ ${senderName} declared love to you!`, 'The whole world can see it! Open to watch 🌏✨', 'kiss', id);
+      } else if (hasValidDestination) {
+        notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Open it on the map 🎁✨', 'kiss', id);
+      } else {
+        notify(d.receiver_id, 'system', `${d.emoji} ${senderName} sent you a kiss!`, 'Tap here to share your location and see it fly to you! 📍✈️', 'kiss', id);
+      }
     }
 
     return NextResponse.json({ data: row }, { status: 201 });
   } catch (err) {
     console.error('[Kisses POST]', err);
     const msg = err instanceof Error ? err.message : 'Failed to send kiss';
+    // Unique index race: two senders claimed the same slug at the same instant.
+    if (msg.includes('UNIQUE constraint failed') && msg.includes('slug')) {
+      return NextResponse.json({ error: { code: 'slug_taken', message: 'This link is already taken — try another one' } }, { status: 409 });
+    }
     return NextResponse.json({ error: { code: 'internal_error', message: msg } }, { status: 500 });
   }
 }
 
 // ─── PATCH /api/v1/kisses — Open a kiss ─────────────────────────────────
 // Any authenticated user with the kiss ID (from QR scan or notification)
-// can open the kiss. Each open increments `open_count`; once it hits
-// `max_opens` (default 5), further opens are rejected with 429.
+// can open the kiss. Guest kisses (sent to a receiver_name/address, no
+// receiver_id) can be opened without logging in at all — there's no
+// account to gate against. Each open increments `open_count`; once it
+// hits `max_opens` (default 20), further opens are rejected with 429.
 // Sender is notified each open + a special notification when exhausted.
 
 export async function PATCH(req: NextRequest) {
   try {
-    const userId = await resolveUserId(req);
-    if (!userId) return NextResponse.json({ error: { code: 'unauthorized' } }, { status: 401 });
-
     const body = await req.json();
     const { id, receiver_lat, receiver_lng } = body;
 
@@ -199,8 +242,15 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found' } }, { status: 404 });
     }
 
+    // Account-bound kisses still require login to open; guest kisses
+    // (no receiver_id) are openable by anyone with the link.
+    const userId = await resolveUserId(req);
+    if (!userId && kiss.receiver_id) {
+      return NextResponse.json({ error: { code: 'unauthorized' } }, { status: 401 });
+    }
+
     const openCount = Number(kiss.open_count ?? 0);
-    const maxOpens = Number(kiss.max_opens ?? 5);
+    const maxOpens = Number(kiss.max_opens ?? 20);
     const isReceiver = kiss.receiver_id === userId;
 
     // Check open cap FIRST — exhausted gifts never trigger side effects.

@@ -1218,7 +1218,7 @@ export function useMapMarkers(
   // Re-add markers after style change (style swap removes DOM elements)
   useEffect(() => {
     function handleStyleChanged() {
-      console.log('[STYLE-CHANGED] fired — clearing markers, bumping styleVersion');
+      // (dev log removed — silence hot-path noise)
       // Clear DOM markers
       for (const marker of markersRef.current.values()) {
         marker.remove();
@@ -1695,7 +1695,10 @@ export function useMapMarkers(
         const canvas = document.createElement('canvas');
         canvas.width = this.width;
         canvas.height = this.height;
-        this.context = canvas.getContext('2d');
+        // Every frame ends in getImageData() below — willReadFrequently
+        // tells the browser to keep the pixel buffer CPU-side instead of
+        // GPU-accelerated, avoiding the readback warning/perf hit.
+        this.context = canvas.getContext('2d', { willReadFrequently: true });
       },
       render() {
         const duration = 2200;
@@ -1836,12 +1839,24 @@ export function useMapMarkers(
     const spawnInterval = setInterval(spawnArc, 420);
 
     let rafId = 0;
+    // Track last frame's arc count so we can SKIP setData when there's
+    // nothing to redraw. MapLibre uploads GeoJSON to a GPU buffer on
+    // every setData; calling it 60fps with no changes triggers a
+    // WebGL "READ-usage buffer written before read-back" warning +
+    // burns real CPU/GPU cycles. Skip entirely when idle.
+    let lastArcCount = -1;
     const tickArcs = () => {
       const now = performance.now();
       // Drop finished arcs
       for (let i = liveArcs.length - 1; i >= 0; i--) {
         const a = liveArcs[i];
         if (now - a.startTime > a.drawMs + a.fadeMs) liveArcs.splice(i, 1);
+      }
+      // IDLE FAST-PATH: no arcs now AND source already empty → skip
+      // both the feature-mapping work AND the setData upload.
+      if (liveArcs.length === 0 && lastArcCount === 0) {
+        rafId = requestAnimationFrame(tickArcs);
+        return;
       }
       const features: GeoJSON.Feature[] = liveArcs.map((arc) => {
         const elapsed = now - arc.startTime;
@@ -1865,6 +1880,7 @@ export function useMapMarkers(
           properties: { opacity },
         };
       });
+      lastArcCount = features.length;
       try {
         const src = map.getSource(ARC_SRC) as maplibregl.GeoJSONSource | undefined;
         if (src) src.setData({ type: 'FeatureCollection', features });

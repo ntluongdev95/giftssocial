@@ -145,6 +145,15 @@ export default function DynamicForm({ schema, data, onChange, accent = '#ec4899'
               />
             )}
 
+            {field.type === 'image-array' && (
+              <ImageArrayInput
+                value={Array.isArray(v) ? (v as string[]) : []}
+                onChange={urls => setField(field.key, urls)}
+                accent={accent}
+                maxItems={field.maxItems ?? 2}
+              />
+            )}
+
             {field.type === 'audio-url' && (
               <div>
                 <input
@@ -272,6 +281,95 @@ function ImageInput({ value, onChange, accent }: { value: string; onChange: (url
           )}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── ImageArrayInput — up to `maxItems` photos, used by "image-array" ──
+// Capped on the free tier (default 2) — raising the cap is a future
+// paid upgrade, not something this input controls.
+function ImageArrayInput({
+  value,
+  onChange,
+  accent,
+  maxItems,
+}: {
+  value: string[];
+  onChange: (urls: string[]) => void;
+  accent: string;
+  maxItems: number;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/v1/upload', { method: 'POST', credentials: 'same-origin', body: fd });
+      const json = await res.json();
+      if (!res.ok || !json.data?.url) throw new Error(json.error?.message || 'Upload failed');
+      onChange([...value, json.data.url as string]);
+      toast.success('Uploaded');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) upload(file);
+        }}
+        className="hidden"
+      />
+      <div className="flex flex-wrap gap-2">
+        {value.map((url, i) => (
+          <div key={i} className="relative rounded-lg overflow-hidden group h-24 w-24" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="" className="w-full h-full object-cover" />
+            <button
+              type="button"
+              onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+              className="absolute top-1 right-1 rounded-full w-5 h-5 flex items-center justify-center cursor-pointer bg-black/70 text-white"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+        {value.length < maxItems && (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="h-24 w-24 rounded-lg flex flex-col items-center justify-center gap-1 cursor-pointer disabled:opacity-40"
+            style={{ background: `${accent}0d`, border: `1px dashed ${accent}66` }}
+          >
+            {uploading ? (
+              <Loader2 size={16} className="animate-spin" style={{ color: accent }} />
+            ) : (
+              <>
+                <div className="flex items-center gap-1" style={{ color: accent }}>
+                  <Upload size={13} /> <ImageIcon size={13} />
+                </div>
+                <span className="text-[9px] font-semibold" style={{ color: accent }}>Add photo</span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      <div className="text-[10px] text-white/40 mt-1.5">
+        {value.length}/{maxItems} photos
+      </div>
     </div>
   );
 }

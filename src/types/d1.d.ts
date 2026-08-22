@@ -132,7 +132,11 @@ export interface SignalRow {
 export interface KissRow {
   id: string;
   sender_id: string;
-  receiver_id: string;
+  // Nullable: guest recipients (no account) carry receiver_name +
+  // receiver_address instead of a real users.id (migration 038).
+  receiver_id: string | null;
+  receiver_name: string | null;
+  receiver_address: string | null;
   message: string;
   emoji: string;
   visibility: string;
@@ -155,6 +159,8 @@ export interface KissRow {
   template_id: string | null;
   // Sender's answers to the template's fields_schema (migration 035)
   template_data: string | null; // JSON
+  // Custom vanity link, e.g. /kiss/anh-yeu-em (migration 037)
+  slug: string | null;
 }
 
 export interface BookingRow {

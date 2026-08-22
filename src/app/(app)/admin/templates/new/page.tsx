@@ -5,7 +5,7 @@
 // on the right. Preview shows how the template card will appear in the
 // picker + a hint about the next step (adding effects).
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo,Suspense  } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { toast } from 'sonner';
@@ -24,7 +24,7 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 }
 
-export default function AdminNewTemplatePage() {
+ function AdminNewTemplatePageContent() {
   const router = useRouter();
   const search = useSearchParams();
   const preselectOccasion = search.get('occasion') ?? '';
@@ -355,5 +355,17 @@ export default function AdminNewTemplatePage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminNewTemplatePage() {
+  return (
+    <Suspense fallback={
+      <div className="h-full flex items-center justify-center bg-[#05060a] text-white">
+        Loading...
+      </div>
+    }>
+      <AdminNewTemplatePageContent />
+    </Suspense>
   );
 }

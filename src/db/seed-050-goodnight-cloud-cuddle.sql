@@ -23,9 +23,8 @@ INSERT OR REPLACE INTO templates (
   '#c084fc',
   0, 0, 'gao',
   json('[
-    {"key":"name",   "type":"text",       "label":"Their name",            "hint":"Written under the moon in cursive",           "required":true, "maxLength":40},
-    {"key":"song",   "type":"audio-url",  "label":"Lullaby (optional)",    "hint":"YouTube / Spotify / TikTok link"},
-    {"key":"photos", "type":"image",      "label":"Photos (up to 6)",      "hint":"Each cloud carries one photo across the sky"}
+    {"key":"name",   "type":"text",        "label":"Their name",       "hint":"Written under the moon in cursive", "required":true, "maxLength":40},
+    {"key":"photos", "type":"image-array", "label":"Photos (up to 2)", "hint":"Each cloud carries one photo across the sky · more than 2 is a future paid upgrade", "maxItems":2}
   ]'),
   NULL,
   1
