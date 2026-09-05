@@ -498,7 +498,7 @@ function QrShareModal({ row, onClose }: { row: TemplateRow; onClose: () => void 
           </div>
           {/* Card name as a tiny caption under the QR */}
           <p className="mt-3 text-center text-[10px] uppercase tracking-[0.2em] text-[#4a5068]">
-            Scan to claim · Gao Social
+            Scan to claim · LoVi
           </p>
         </div>
 

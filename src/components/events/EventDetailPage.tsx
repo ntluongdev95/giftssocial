@@ -270,7 +270,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
           <Shield size={16} className="text-[#00d4ff] shrink-0" />
           <div className="flex-1">
             <p className="text-sm font-medium text-white">Trusted</p>
-            <p className="text-[10px] text-[#4a5068]">Verified by Gao Social</p>
+            <p className="text-[10px] text-[#4a5068]">Verified by LoVi</p>
           </div>
           <Heart size={16} className="text-[#f87171]" />
         </div>
@@ -340,7 +340,7 @@ export default function EventDetailPage({ event: e, onClose }: Props) {
           <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full cursor-pointer" style={{ background: 'rgba(10,11,15,0.6)', backdropFilter: 'blur(8px)' }}>
             <ArrowLeft size={18} className="text-white" />
           </button>
-          <span className="text-xs font-bold tracking-[0.2em] text-white/80 uppercase">Gao Social</span>
+          <span className="text-xs font-bold tracking-[0.2em] text-white/80 uppercase">LoVi</span>
           <div className="h-9 w-9 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f87171, #fbbf24)', boxShadow: '0 0 12px rgba(239,68,68,0.3)' }}>
             <Calendar size={16} className="text-white" />
           </div>

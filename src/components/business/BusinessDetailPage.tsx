@@ -342,7 +342,7 @@ export default function BusinessDetailPage({ business: b, onClose }: Props) {
           <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full cursor-pointer" style={{ background: 'rgba(10,11,15,0.6)', backdropFilter: 'blur(8px)' }}>
             <ArrowLeft size={18} className="text-white" />
           </button>
-          <span className="text-xs font-bold tracking-[0.2em] text-white/80 uppercase">Gao Social</span>
+          <span className="text-xs font-bold tracking-[0.2em] text-white/80 uppercase">LoVi</span>
           <div className="h-9 w-9 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #00d4ff, #22C55E)', boxShadow: '0 0 12px rgba(0,212,255,0.3)' }}>
             <span className="text-xs font-bold text-white">{b.name.charAt(0)}</span>
           </div>

@@ -1635,19 +1635,31 @@ export function useMapMarkers(
   // planet looks like a network at rest.
   useEffect(() => {
     if (!map) return;
-    const PULSE_IMG = 'gao-signal-pulse';
     const PULSE_SRC = 'gao-signal-pulse-src';
-    const PULSE_LAYER = 'gao-signal-pulse-layer';
+    // Ring: the expanding "sonar ping" — animated via paint-property
+    // transitions (GPU-interpolated), not a canvas redrawn every frame.
+    const PULSE_RING_LAYER = 'gao-signal-pulse-ring';
+    // Core: the small bright static dot — never animates, no per-frame cost.
+    const PULSE_CORE_LAYER = 'gao-signal-pulse-core';
     const ARC_SRC = 'gao-signal-arc-src';
     const ARC_LAYER = 'gao-signal-arc-layer';
+    // Points are split across this many independently-clocked ring
+    // layers so signals don't all flash in perfect lockstep. Declared up
+    // here (not just near ensureLayer) so removeAll — which can run
+    // before ensureLayer ever does, on the `viewMode !== '3d'` early
+    // return below — knows how many layers to clean up.
+    const PHASE_GROUPS = 7;
+    const ringLayerId = (g: number) => `${PULSE_RING_LAYER}-${g}`;
 
     const removeAll = () => {
       try { if (map.getLayer(ARC_LAYER + '-dash')) map.removeLayer(ARC_LAYER + '-dash'); } catch {}
       try { if (map.getLayer(ARC_LAYER)) map.removeLayer(ARC_LAYER); } catch {}
       try { if (map.getSource(ARC_SRC)) map.removeSource(ARC_SRC); } catch {}
-      try { if (map.getLayer(PULSE_LAYER)) map.removeLayer(PULSE_LAYER); } catch {}
+      try { if (map.getLayer(PULSE_CORE_LAYER)) map.removeLayer(PULSE_CORE_LAYER); } catch {}
+      for (let g = 0; g < PHASE_GROUPS; g++) {
+        try { if (map.getLayer(ringLayerId(g))) map.removeLayer(ringLayerId(g)); } catch {}
+      }
       try { if (map.getSource(PULSE_SRC)) map.removeSource(PULSE_SRC); } catch {}
-      try { if (map.hasImage(PULSE_IMG)) map.removeImage(PULSE_IMG); } catch {}
     };
 
     // Great-circle arc between two [lng,lat] pairs, sampled as `steps` points.
@@ -1683,76 +1695,46 @@ export function useMapMarkers(
       .filter((s) => s.location?.coordinates && s.location.coordinates.length === 2)
       .slice(0, 80);
 
-    const size = 64;
-    // Small animated pulsing dot — StyleImageInterface.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pulsingDot: any = {
-      width: size,
-      height: size,
-      data: new Uint8Array(size * size * 4),
-      context: null as CanvasRenderingContext2D | null,
-      onAdd() {
-        const canvas = document.createElement('canvas');
-        canvas.width = this.width;
-        canvas.height = this.height;
-        // Every frame ends in getImageData() below — willReadFrequently
-        // tells the browser to keep the pixel buffer CPU-side instead of
-        // GPU-accelerated, avoiding the readback warning/perf hit.
-        this.context = canvas.getContext('2d', { willReadFrequently: true });
-      },
-      render() {
-        const duration = 2200;
-        const t = (performance.now() % duration) / duration;
-        const context: CanvasRenderingContext2D | null = this.context;
-        if (!context) return false;
-        const w = this.width as number;
-        const h = this.height as number;
-        const cx = w / 2;
-        const cy = h / 2;
-        const coreRadius = 3.5;
-        const ringRadius = 3.5 + (w / 2 - 4) * t;
+    const RING_MIN_RADIUS = 3.5;
+    const RING_MAX_RADIUS = 22;
+    const RING_CYCLE_MS = 2200;
+    const pulseIntervals: ReturnType<typeof setInterval>[] = [];
 
-        context.clearRect(0, 0, w, h);
-
-        // One subtle expanding ring
-        context.beginPath();
-        context.arc(cx, cy, ringRadius, 0, Math.PI * 2);
-        context.fillStyle = `rgba(0, 212, 255, ${0.35 * (1 - t)})`;
-        context.fill();
-
-        // Small bright core — solid dot with tiny glow
-        const glow = context.createRadialGradient(cx, cy, 0, cx, cy, coreRadius * 2.2);
-        glow.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        glow.addColorStop(0.4, 'rgba(0, 212, 255, 0.85)');
-        glow.addColorStop(1, 'rgba(0, 212, 255, 0)');
-        context.beginPath();
-        context.arc(cx, cy, coreRadius * 2.2, 0, Math.PI * 2);
-        context.fillStyle = glow;
-        context.fill();
-
-        context.beginPath();
-        context.arc(cx, cy, coreRadius, 0, Math.PI * 2);
-        context.fillStyle = '#ffffff';
-        context.fill();
-
-        this.data = context.getImageData(0, 0, w, h).data;
-        map.triggerRepaint();
-        return true;
-      },
+    // GPU-driven pulse: instead of redrawing a canvas + re-uploading a
+    // texture every animation frame (the old approach — the source of the
+    // "readback buffer" / "willReadFrequently" console warnings, since it
+    // ran addImage()+getImageData() 60x/sec), toggle each group's paint
+    // properties twice per cycle and let MapLibre's built-in paint
+    // transitions interpolate the radius/opacity on the GPU in between.
+    // Only 2 cheap JS calls per group per cycle instead of ~130/sec/point.
+    const tickRing = (layerId: string) => {
+      if (!map.getLayer(layerId)) return;
+      try {
+        // 1) Snap back to the start state instantly (no transition).
+        map.setPaintProperty(layerId, 'circle-radius-transition', { duration: 0, delay: 0 });
+        map.setPaintProperty(layerId, 'circle-opacity-transition', { duration: 0, delay: 0 });
+        map.setPaintProperty(layerId, 'circle-radius', RING_MIN_RADIUS);
+        map.setPaintProperty(layerId, 'circle-opacity', 0.35);
+        // 2) On the next frame, animate smoothly out to the end state —
+        // the GPU interpolates every frame in between for free.
+        requestAnimationFrame(() => {
+          if (!map.getLayer(layerId)) return;
+          map.setPaintProperty(layerId, 'circle-radius-transition', { duration: RING_CYCLE_MS, delay: 0 });
+          map.setPaintProperty(layerId, 'circle-opacity-transition', { duration: RING_CYCLE_MS, delay: 0 });
+          map.setPaintProperty(layerId, 'circle-radius', RING_MAX_RADIUS);
+          map.setPaintProperty(layerId, 'circle-opacity', 0);
+        });
+      } catch { /* style mid-transition — next tick will retry */ }
     };
 
     const ensureLayer = () => {
-      try {
-        if (!map.hasImage(PULSE_IMG)) map.addImage(PULSE_IMG, pulsingDot, { pixelRatio: 2 });
-      } catch (err) {
-        console.warn('[PulseLayer] addImage failed', err);
-        return;
-      }
-
-      const pointFeatures: GeoJSON.Feature[] = pts.map((s) => ({
+      const pointFeatures: GeoJSON.Feature[] = pts.map((s, i) => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: s.location.coordinates as [number, number] },
-        properties: { id: s.id, type: s.type },
+        // Deterministic-but-scattered group assignment (not just i % N,
+        // which would cluster consecutive list items into the same
+        // group) so neighboring points don't end up synced together.
+        properties: { id: s.id, type: s.type, phaseGroup: ((i * 2654435761) >>> 0) % PHASE_GROUPS },
       }));
       const pointGeo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: pointFeatures };
 
@@ -1779,30 +1761,70 @@ export function useMapMarkers(
           });
         }
 
-        // Pulse source + layer (draw on top)
+        // Pulse source + layers (draw on top)
         const existing = map.getSource(PULSE_SRC) as maplibregl.GeoJSONSource | undefined;
         if (existing) {
           existing.setData(pointGeo);
         } else {
           map.addSource(PULSE_SRC, { type: 'geojson', data: pointGeo });
+          // One expanding-ring layer per phase group, each filtered to
+          // only its own points — animated purely via paint transitions
+          // (see tickRing), so each group flashes independently.
+          for (let g = 0; g < PHASE_GROUPS; g++) {
+            map.addLayer({
+              id: ringLayerId(g),
+              type: 'circle',
+              source: PULSE_SRC,
+              filter: ['==', ['get', 'phaseGroup'], g],
+              paint: {
+                'circle-radius': RING_MIN_RADIUS,
+                'circle-color': 'rgba(0, 212, 255, 1)',
+                'circle-opacity': 0.35,
+                'circle-pitch-alignment': 'viewport',
+              },
+            });
+          }
+          // Bright static core dot with a soft glow — never animates,
+          // so it doesn't need to be split per group.
           map.addLayer({
-            id: PULSE_LAYER,
-            type: 'symbol',
+            id: PULSE_CORE_LAYER,
+            type: 'circle',
             source: PULSE_SRC,
-            layout: {
-              'icon-image': PULSE_IMG,
-              'icon-allow-overlap': true,
-              'icon-ignore-placement': true,
-              'icon-size': ['interpolate', ['linear'], ['zoom'], 0, 0.7, 3, 0.9, 8, 1.1, 15, 1.3],
-              'icon-pitch-alignment': 'viewport',
-              'icon-rotation-alignment': 'viewport',
+            paint: {
+              // `zoom` may only be the direct input of a top-level step/
+              // interpolate — can't nest it inside `*`, so the scaling
+              // factor (3.5) is baked into each stop directly.
+              'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 2.45, 3, 3.15, 8, 3.85, 15, 4.55],
+              'circle-color': '#ffffff',
+              'circle-blur': 0.6,
+              'circle-pitch-alignment': 'viewport',
             },
           });
+          if (pulseIntervals.length === 0) {
+            for (let g = 0; g < PHASE_GROUPS; g++) {
+              const layerId = ringLayerId(g);
+              // Stagger both the start offset AND the cycle length per
+              // group so they drift in and out of sync over time instead
+              // of just being "the same beat, shifted" forever.
+              const cycleMs = RING_CYCLE_MS + g * 140;
+              const startDelay = (g * RING_CYCLE_MS) / PHASE_GROUPS;
+              const t = setTimeout(() => {
+                tickRing(layerId);
+                pulseIntervals.push(setInterval(() => tickRing(layerId), cycleMs));
+              }, startDelay);
+              // setTimeout ids aren't setInterval ids, but pushing here
+              // too keeps a single array to sweep in cleanup.
+              pulseIntervals.push(t as unknown as ReturnType<typeof setInterval>);
+            }
+          }
         }
 
         // Keep pulse above arcs and other entity layers.
         if (map.getLayer(ARC_LAYER)) map.moveLayer(ARC_LAYER);
-        if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER);
+        for (let g = 0; g < PHASE_GROUPS; g++) {
+          if (map.getLayer(ringLayerId(g))) map.moveLayer(ringLayerId(g));
+        }
+        if (map.getLayer(PULSE_CORE_LAYER)) map.moveLayer(PULSE_CORE_LAYER);
       } catch (err) {
         console.warn('[PulseLayer] add source/layer failed', err);
       }
@@ -1845,6 +1867,14 @@ export function useMapMarkers(
     // WebGL "READ-usage buffer written before read-back" warning +
     // burns real CPU/GPU cycles. Skip entirely when idle.
     let lastArcCount = -1;
+    let lastArcUploadTime = 0;
+    // Arcs are almost always active (new one spawns every 420ms), so the
+    // idle fast-path rarely kicks in — without a floor, this uploads a
+    // fresh GeoJSON buffer to the GPU on every single animation frame
+    // (~60/sec), which is what actually keeps re-triggering the "READ-usage
+    // buffer... fenced" warning continuously. ~24fps is still smooth for
+    // arcs that take 1.4-2.2s to draw, at under half the GPU uploads.
+    const ARC_UPLOAD_INTERVAL_MS = 1000 / 24;
     const tickArcs = () => {
       const now = performance.now();
       // Drop finished arcs
@@ -1858,6 +1888,11 @@ export function useMapMarkers(
         rafId = requestAnimationFrame(tickArcs);
         return;
       }
+      if (now - lastArcUploadTime < ARC_UPLOAD_INTERVAL_MS) {
+        rafId = requestAnimationFrame(tickArcs);
+        return;
+      }
+      lastArcUploadTime = now;
       const features: GeoJSON.Feature[] = liveArcs.map((arc) => {
         const elapsed = now - arc.startTime;
         let visibleEnd: number;
@@ -1892,7 +1927,8 @@ export function useMapMarkers(
     const raiseToTop = () => {
       try {
         if (map.getLayer(ARC_LAYER)) map.moveLayer(ARC_LAYER);
-        if (map.getLayer(PULSE_LAYER)) map.moveLayer(PULSE_LAYER);
+        if (map.getLayer(PULSE_RING_LAYER)) map.moveLayer(PULSE_RING_LAYER);
+        if (map.getLayer(PULSE_CORE_LAYER)) map.moveLayer(PULSE_CORE_LAYER);
       } catch {}
     };
     if (map.isStyleLoaded()) {
@@ -1914,6 +1950,7 @@ export function useMapMarkers(
       clearTimeout(t2);
       clearTimeout(t3);
       clearInterval(spawnInterval);
+      for (const id of pulseIntervals) clearInterval(id);
       if (rafId) cancelAnimationFrame(rafId);
       removeAll();
     };

@@ -33,6 +33,14 @@ interface Props {
   backdrop?: ReactNode;
   /** The template's custom reveal content. */
   children: ReactNode;
+  /** Hide the shell's own X button — for templates where the caller
+   *  already renders its own close control right on top of this one
+   *  (e.g. KissReplayOverlay's always-visible top-right mute+close
+   *  pair sits directly over this button, reading as two X's).
+   *  Defaults to true so every other template + the admin fullscreen
+   *  preview (which relies on this X alongside its own Exit banner)
+   *  keep working unchanged. */
+  showCloseButton?: boolean;
 }
 
 export default function TemplateShell({
@@ -40,6 +48,7 @@ export default function TemplateShell({
   accent = '#ec4899',
   backdrop,
   children,
+  showCloseButton = true,
 }: Props) {
   return (
     <div className="fixed inset-0 z-[200] overflow-hidden" onClick={onClose}>
@@ -49,13 +58,15 @@ export default function TemplateShell({
       )}
 
       {/* Close button */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onClose(); }}
-        className="absolute top-4 right-4 z-50 w-9 h-9 rounded-full bg-black/60 backdrop-blur text-white flex items-center justify-center cursor-pointer hover:bg-black/80"
-        style={{ boxShadow: `0 0 12px ${accent}55` }}
-      >
-        <X size={18} />
-      </button>
+      {showCloseButton && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          className="absolute top-4 right-4 z-50 w-9 h-9 rounded-full bg-black/60 backdrop-blur text-white flex items-center justify-center cursor-pointer hover:bg-black/80"
+          style={{ boxShadow: `0 0 12px ${accent}55` }}
+        >
+          <X size={18} />
+        </button>
+      )}
 
       {/* Template content — plays immediately, no intro gating */}
       <motion.div

@@ -104,6 +104,11 @@ type StageScene =
        *  by the galaxy scene to spin the spiral. Reset to 0 between
        *  stages so subsequent formations don't inherit rotation. */
       spin?: number;
+      /** Axis `spin` rotates around. Defaults to 'z' (flat spiral spin,
+       *  used by the galaxy scene). 'y' turns the formation like a coin
+       *  in 3D space — used to give a flat shape (e.g. the heart) real
+       *  depth as it turns instead of sitting static on one plane. */
+      spinAxis?: 'x' | 'y' | 'z';
     } & ColorsField)
   | ({
       kind: 'text';
@@ -571,6 +576,10 @@ export function JourneyDroneShow({
     let idx = 0;
     let stageStart = performance.now();
     let finished = false;
+    // Counts full loop restarts — spin is only applied on the very first
+    // pass through the stages so a formation turns once and then holds
+    // still, instead of spinning forever on every loop iteration.
+    let loopPass = 0;
 
     // Colour lerp buffers — origins = last-frame drone colours (drone-
     // Colors buffer live-updates), targets = stage's target colours.
@@ -809,10 +818,15 @@ export function JourneyDroneShow({
       // Reset to 0 for stages without spin so heart/text/etc don't
       // inherit rotation from the galaxy stage before them.
       const stageSpin =
-        stage.spec.kind === 'scene' && stage.spec.spin
+        stage.spec.kind === 'scene' && stage.spec.spin && loopPass === 0
           ? stage.spec.spin
           : 0;
-      drones.rotation.z = (stageSpin * elapsed) / 1000;
+      const stageSpinAxis =
+        stage.spec.kind === 'scene' && stage.spec.spinAxis
+          ? stage.spec.spinAxis
+          : 'z';
+      drones.rotation.set(0, 0, 0);
+      drones.rotation[stageSpinAxis] = (stageSpin * elapsed) / 1000;
 
       camera.position.x = Math.sin(now * 0.0001) * 16;
       camera.position.y = 30 + Math.sin(now * 0.00015) * 6;
@@ -824,18 +838,24 @@ export function JourneyDroneShow({
         if (idx < resolved.length - 1) {
           setStage(idx + 1);
           onStageEnter();
-        } else if (loop) {
+        } else if (loop && resolved.length > 1) {
           // Loop mode — restart from the top. Origins snapshot inside
           // setStage means drones smoothly morph from the last stage's
           // formation back into stage 0.
+          loopPass += 1;
           setStage(0);
           onStageEnter();
-        } else {
+        } else if (!loop) {
           finished = true;
           if (photoTimer) clearInterval(photoTimer);
           if (onDone) setTimeout(onDone, 500);
           return;
         }
+        // loop with a single stage: intentionally don't re-run setStage.
+        // `t` stays clamped at 1 (eased stays 1) so the formation holds
+        // steady instead of re-tweening/flickering every durationMs, and
+        // since stageStart/loopPass are untouched, elapsed keeps growing
+        // so `spin` keeps rotating smoothly forever instead of resetting.
       }
       raf = requestAnimationFrame(animate);
     };

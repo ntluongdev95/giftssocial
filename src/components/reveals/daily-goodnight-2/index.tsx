@@ -36,72 +36,16 @@ const heartD = (b: number) =>
   `M${b / 2} ${b * 0.92} C ${b * 0.08} ${b * 0.62}, 0 ${b * 0.33}, ${b * 0.19} ${b * 0.17} C ${b * 0.35} ${b * 0.03}, ${b * 0.49} ${b * 0.12}, ${b / 2} ${b * 0.26} C ${b * 0.51} ${b * 0.12}, ${b * 0.65} ${b * 0.03}, ${b * 0.81} ${b * 0.17} C ${b} ${b * 0.33}, ${b * 0.92} ${b * 0.62}, ${b / 2} ${b * 0.92} Z`;
 
 // ─────────────────────────────────────────────────────────────────────
-// DroneIntro — a swarm of light-dots streams up and converges into a
-// heart silhouette (drone-show style), then "I LOVE YOU" lights up
-// letter by letter underneath.
+// DroneShowCanvas — a real drone-show simulation, canvas-rendered (not
+// individual DOM nodes): hundreds of glowing points launch from the
+// ground, climb with a gentle wobble, and settle into a heart-shaped
+// pair of hands plus the greeting text sampled from an offscreen canvas
+// (same technique real drone-show visualizers use — rasterize the target
+// shape, sample its opaque pixels, animate points toward each sample).
 // ─────────────────────────────────────────────────────────────────────
-const DRONE_W = 300;
-const DRONE_H = 230;
-const DRONE_DOTS = 170;
-
-/** One "wing" outline, traced from the reference photo: a smooth
- * convex outer edge (the back of the hand) sweeping up from the base
- * point, a small rounded cap at the top, then a gently scalloped
- * inner edge (three soft knuckle-like waves suggesting fingers)
- * coming back down to the same base point. Raw units, base at (0,0),
- * shape extends up (−y) and to the right (+x) — mirror x for the
- * left hand. */
-const WING_CURVES: [number, number, number, number, number, number][] = [
-  [15, -38, 25, -78, 30, -108],
-  [45, -126, 65, -138, 85, -133],
-  [92, -124, 88, -112, 74, -117],
-  [60, -103, 68, -93, 55, -85],
-  [42, -75, 50, -67, 37, -59],
-  [25, -49, 31, -39, 19, -29],
-  [10, -19, 5, -9, 0, 0],
-];
-
-function wingD(scale: number, mirror: boolean): string {
-  const mx = mirror ? -1 : 1;
-  let d = 'M0,0';
-  for (const [c1x, c1y, c2x, c2y, ex, ey] of WING_CURVES) {
-    d += ` C${c1x * scale * mx},${c1y * scale} ${c2x * scale * mx},${c2y * scale} ${ex * scale * mx},${ey * scale}`;
-  }
-  return `${d} Z`;
-}
-
-/** Dots sampled evenly along two mirrored wing outlines whose base
- * points meet at bottom-center — two hands closing together into a
- * heart, matching the drone-show reference photo. */
-function heartDotTargets() {
-  if (typeof document === 'undefined') return [];
-  const scale = (DRONE_H * 0.8) / 138;
-  const tipX = DRONE_W / 2;
-  const tipY = DRONE_H * 0.96;
-  const perSide = Math.floor(DRONE_DOTS / 2);
-
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const sampleSide = (side: 'left' | 'right') => {
-    const path = document.createElementNS(svgNS, 'path');
-    path.setAttribute('d', wingD(scale, side === 'left'));
-    const total = path.getTotalLength();
-    return Array.from({ length: perSide }, (_, i) => {
-      const p = path.getPointAtLength((i / perSide) * total);
-      return { x: tipX + p.x, y: tipY + p.y, side };
-    });
-  };
-
-  return [...sampleSide('left'), ...sampleSide('right')];
-}
-
-type DroneDot = { tx: number; ty: number; sx: number; sy: number; delay: number };
-
 const GALAXY_SPIN_S = 3.2; // grand 3D-spinning galaxy act, before the heart forms
-const HEART_FORM_S = 1.15; // dots flying from the settling galaxy into the heart
 const GALAXY_ARMS = 3;
 const GALAXY_STAR_COUNT = 220;
-const RED = '#FF1744';
-const RED_HOT = '#FF6E8F';
 
 const SHOOTING_STARS = Array.from({ length: 10 }, (_, i) => {
   const s = (i * 2654435761) >>> 0;
@@ -211,102 +155,367 @@ function GalaxyBackdrop() {
   );
 }
 
-function DroneIntro({ subtitle }: { subtitle: string }) {
-  const [dots, setDots] = useState<DroneDot[]>([]);
+type Drone = {
+  x: number; y: number; tx: number; ty: number;
+  hue: 'gold' | 'rose'; phase: number; size: number; delay: number;
+};
+
+/** Sample the opaque pixels of an offscreen canvas drawing (text/shape)
+ * into a scattered point cloud — real drone-show software rasterizes
+ * the target artwork the same way, then assigns one drone per sample. */
+function samplePoints(
+  draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
+  w: number,
+  h: number,
+  step: number,
+): { x: number; y: number }[] {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.floor(w));
+  c.height = Math.max(1, Math.floor(h));
+  const ctx = c.getContext('2d');
+  if (!ctx) return [];
+  draw(ctx, c.width, c.height);
+  const data = ctx.getImageData(0, 0, c.width, c.height).data;
+  const pts: { x: number; y: number }[] = [];
+  for (let y = 0; y < c.height; y += step) {
+    for (let x = 0; x < c.width; x += step) {
+      const a = data[(y * c.width + x) * 4 + 3] ?? 0;
+      if (a > 128) pts.push({ x: x + (Math.random() - 0.5) * 1.5, y: y + (Math.random() - 0.5) * 1.5 });
+    }
+  }
+  return pts;
+}
+
+/** Heart formed by two hands closing together, mirrored — traced from
+ * the drone-show reference photo (back-of-hand outer edge, knuckle/top
+ * curve, scalloped finger waves, thumb crease, forearm angling away). */
+function drawHandsHeart(c: CanvasRenderingContext2D, w: number, h: number) {
+  c.clearRect(0, 0, w, h);
+  const S = Math.min(w / 100, h / 100);
+  c.translate((w - 100 * S) / 2, (h - 100 * S) / 2);
+  c.scale(S, S);
+  c.strokeStyle = '#fff';
+  c.fillStyle = '#fff';
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+
+  const half = (dir: 1 | -1) => {
+    c.save();
+    c.translate(50, 0);
+    c.scale(dir, 1);
+
+    c.beginPath();
+    c.moveTo(0, 92);
+    c.bezierCurveTo(-16, 76, -34, 62, -44, 46);
+    c.bezierCurveTo(-54, 28, -44, 10, -28, 10);
+    c.bezierCurveTo(-16, 10, -8, 18, -2, 28);
+    c.lineTo(-2, 34);
+    c.bezierCurveTo(-10, 30, -18, 34, -20, 44);
+    c.bezierCurveTo(-14, 52, -8, 66, 0, 80);
+    c.closePath();
+    c.globalAlpha = 0.22;
+    c.fill();
+    c.globalAlpha = 1;
+    c.lineWidth = 2.4;
+    c.stroke();
+
+    c.lineWidth = 1.3;
+    for (let i = 0; i < 4; i++) {
+      const t = i / 3;
+      c.beginPath();
+      c.moveTo(-44 + t * 8, 44 - t * 12);
+      c.bezierCurveTo(-36 + t * 10, 26 - t * 8, -22 + t * 8, 16 + t * 4, -8 - t * 4, 24 + t * 10);
+      c.stroke();
+    }
+
+    c.lineWidth = 1.3;
+    c.beginPath();
+    c.moveTo(-18, 44);
+    c.bezierCurveTo(-12, 56, -6, 68, -1, 80);
+    c.stroke();
+
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(-40, 50);
+    c.bezierCurveTo(-48, 66, -54, 80, -58, 98);
+    c.stroke();
+    c.restore();
+  };
+  half(1);
+  half(-1);
+}
+
+function DroneShowCanvas({ text }: { text: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const targets = heartDotTargets();
-    const cx = DRONE_W / 2;
-    const cy = DRONE_H * 0.42;
-    const maxR = Math.min(DRONE_W, DRONE_H) * 0.42;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    setDots(
-      targets.map((tgt, i) => {
-        const s = (i * 2654435761) >>> 0;
-        const r = (n2: number) => (((s ^ (n2 * 0x9e3779b1)) >>> 0) % 10000) / 10000;
-        const angle = r(1) * Math.PI * 2;
-        const radius = maxR * (0.2 + r(2) * 0.8);
+    let raf = 0;
+    let drones: Drone[] = [];
+    let W = 0;
+    let H = 0;
+
+    const build = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const rect = canvas.getBoundingClientRect();
+      W = rect.width;
+      H = rect.height;
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const heartH = H * 0.5;
+      const heartW = Math.min(W * 0.7, heartH * 1.15);
+      const step = W < 520 ? 5 : 6;
+
+      const heartPts = samplePoints(drawHandsHeart, heartW, heartH, step).map((p) => ({
+        x: p.x + (W - heartW) / 2,
+        y: p.y + H * 0.03,
+        heart: true,
+      }));
+
+      // Bigger relative to screen height on narrow phones — otherwise the
+      // fixed-width text budget forces the font small to fit a long
+      // phrase on a narrow viewport.
+      const textH = H * (W < 520 ? 0.27 : 0.16);
+      const textPts = samplePoints(
+        (c, w, h) => {
+          c.clearRect(0, 0, w, h);
+          let size = Math.floor(h * 0.88);
+          c.textBaseline = 'middle';
+          c.textAlign = 'center';
+          c.fillStyle = '#fff';
+          do {
+            c.font = `700 ${size}px ${FONT_HERO}`;
+            if (c.measureText(text).width <= w * 0.98) break;
+            size -= 2;
+          } while (size > 8);
+          c.fillText(text, w / 2, h / 2);
+        },
+        W * 0.98,
+        textH,
+        W < 520 ? 3 : 4,
+      ).map((p) => ({ x: p.x + W * 0.01, y: p.y + H * (W < 520 ? 0.56 : 0.62), heart: false }));
+
+      // Drones wait out the galaxy-spin act (see GalaxyBackdrop) before
+      // launching, so the formation reads as "the galaxy settles, THEN
+      // the drones take off" rather than both happening at once.
+      const startOffset = GALAXY_SPIN_S - 0.4;
+      const targets = [...heartPts, ...textPts];
+      drones = targets.map((t, i) => ({
+        x: W / 2 + (Math.random() - 0.5) * W,
+        y: H + Math.random() * H * 0.5,
+        tx: t.x,
+        ty: t.y,
+        hue: t.heart ? 'rose' : 'gold',
+        phase: Math.random() * Math.PI * 2,
+        size: t.heart ? 1.6 : 1.4,
+        delay: startOffset + (t.heart ? 0 : 0.35) + (i % 40) * 0.004 + Math.random() * 0.25,
+      }));
+    };
+
+    build();
+    const onResize = () => build();
+    window.addEventListener('resize', onResize);
+
+    const start = performance.now();
+    const loop = (now: number) => {
+      const t = (now - start) / 1000;
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const d of drones) {
+        const k = Math.min(1, Math.max(0, (t - d.delay) / 2.2));
+        const e = 1 - (1 - k) ** 3;
+        const wobble = Math.sin(t * 1.6 + d.phase) * (1 - e * 0.85) * 10;
+        const x = d.x + (d.tx - d.x) * e + wobble;
+        const y = d.y + (d.ty - d.y) * e + Math.cos(t * 1.4 + d.phase) * (1 - e) * 8;
+
+        const twinkle = 0.8 + 0.2 * Math.sin(t * 3 + d.phase);
+        // Capped well under 1 and the glow kept small — hundreds of these
+        // sit close together in the heart/text shapes, and with additive
+        // ("lighter") blending, glows that are too big or too bright pile
+        // up into a single blown-out white blob instead of reading as
+        // individual points of light.
+        const alpha = Math.min(0.8, k * 1.1) * twinkle;
+        if (alpha <= 0.004) continue;
+        const r = d.size;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+        const col = d.hue === 'gold' ? '255,244,214' : '255,120,150';
+        g.addColorStop(0, `rgba(255,255,255,${alpha * 0.9})`);
+        g.addColorStop(0.35, `rgba(${col},${alpha * 0.5})`);
+        g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.95, alpha * 1.15)})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.75, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [text]);
+
+  return <canvas ref={canvasRef} className="size-full" aria-hidden />;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// MatrixRain — classic "hacker screen" digital rain, but the falling
+// columns spell out romantic phrases instead of random glyphs. Sits
+// behind the mailbox tap prompt as the drone canvas fades out.
+// ─────────────────────────────────────────────────────────────────────
+const FONT_MONO = "'JetBrains Mono', 'Courier New', ui-monospace, monospace";
+
+function MatrixRain({ phrases }: { phrases: string[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const phrasesRef = useRef(phrases);
+  useEffect(() => {
+    phrasesRef.current = phrases;
+  }, [phrases]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let raf = 0;
+    const fontSize = 18;
+    const colWidth = fontSize * 1.15;
+    const colLen = 30;
+    let columns: { chars: string[]; y: number; speed: number; hue: 'gold' | 'rose' }[] = [];
+    // A handful of whole phrases sliding sideways across the screen —
+    // mixed in with the vertical rain for "có chữ ngang có chữ dọc".
+    let hRows: { y: number; x: number; dir: 1 | -1; speed: number; text: string; hue: 'gold' | 'rose' }[] = [];
+    let W = 0;
+    let H = 0;
+
+    // Each column spells out one whole phrase, repeating — legible as it
+    // scrolls by, instead of fully random unreadable glyphs.
+    const pickPhrase = () => {
+      const list = phrasesRef.current;
+      return (list[Math.floor(Math.random() * list.length)] || 'YÊU EM').replace(/\s+/g, ' ').trim();
+    };
+    const pickChars = () => {
+      const phrase = pickPhrase();
+      return Array.from({ length: colLen }, (_, k) => phrase[k % phrase.length] || ' ');
+    };
+
+    const build = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const rect = canvas.getBoundingClientRect();
+      W = rect.width;
+      H = rect.height;
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Resizing the canvas resets all context state (font, alignment),
+      // so these need reapplying here, not just once before the loop.
+      ctx.textAlign = 'center';
+      ctx.font = `700 ${fontSize}px ${FONT_MONO}`;
+
+      const count = Math.ceil(W / colWidth);
+      columns = Array.from({ length: count }, (_, i) => ({
+        chars: pickChars(),
+        y: -Math.random() * H,
+        // True Matrix pace — fast enough that it reads as a cascade,
+        // not a slow drift.
+        speed: 170 + Math.random() * 160,
+        hue: i % 3 === 0 ? 'rose' : 'gold',
+      }));
+
+      const rowCount = Math.max(3, Math.round(H / 220));
+      hRows = Array.from({ length: rowCount }, (_, i) => {
+        const dir: 1 | -1 = i % 2 === 0 ? 1 : -1;
         return {
-          tx: tgt.x,
-          ty: tgt.y,
-          sx: cx + radius * Math.cos(angle),
-          sy: cy + radius * Math.sin(angle),
-          delay: GALAXY_SPIN_S - 0.35 + r(3) * 0.3,
+          y: (H / (rowCount + 1)) * (i + 1),
+          x: dir === 1 ? -Math.random() * W : W + Math.random() * W,
+          dir,
+          speed: 90 + Math.random() * 70,
+          text: pickPhrase(),
+          hue: i % 2 === 0 ? 'gold' : 'rose',
         };
-      }),
-    );
+      });
+    };
+
+    build();
+    const onResize = () => build();
+    window.addEventListener('resize', onResize);
+
+    let last = performance.now();
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      // Faded clear (not a full wipe) leaves the classic trailing streak
+      // behind each falling column — kept short and strongly faded so
+      // the letters stay crisp instead of smearing into a blur.
+      ctx.fillStyle = 'rgba(2,2,18,0.4)';
+      ctx.fillRect(0, 0, W, H);
+
+      columns.forEach((col, i) => {
+        col.y += col.speed * dt;
+        if (col.y > H + col.chars.length * fontSize) {
+          col.y = -Math.random() * H * 0.6;
+          col.chars = pickChars();
+          col.hue = Math.random() < 0.3 ? 'rose' : 'gold';
+        }
+        const x = i * colWidth + colWidth / 2;
+        col.chars.forEach((ch, j) => {
+          const y = col.y - j * fontSize;
+          if (y < -fontSize || y > H + fontSize) return;
+          // Leading character bright white, the trail fades warm gold/rose.
+          if (j === 0) {
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          } else {
+            const fade = Math.max(0, 1 - j / col.chars.length);
+            const col2 = col.hue === 'gold' ? '255,244,214' : '255,140,170';
+            ctx.fillStyle = `rgba(${col2},${Math.min(0.7, fade * 0.75)})`;
+          }
+          ctx.fillText(ch, x, y);
+        });
+      });
+
+      const prevAlign = ctx.textAlign;
+      ctx.textAlign = 'left';
+      hRows.forEach((row) => {
+        row.x += row.dir * row.speed * dt;
+        const textW = ctx.measureText(row.text).width;
+        if (row.dir === 1 && row.x > W) {
+          row.x = -textW - Math.random() * W * 0.4;
+          row.text = pickPhrase();
+        } else if (row.dir === -1 && row.x < -textW) {
+          row.x = W + Math.random() * W * 0.4;
+          row.text = pickPhrase();
+        }
+        const col2 = row.hue === 'gold' ? '255,244,214' : '255,140,170';
+        ctx.fillStyle = `rgba(${col2},0.55)`;
+        ctx.fillText(row.text, row.x, row.y);
+      });
+      ctx.textAlign = prevAlign;
+
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+    };
   }, []);
 
-  const letters = 'I LOVE YOU'.split('');
-  const textDelay = GALAXY_SPIN_S + HEART_FORM_S + 0.1;
-
-  return (
-    // The dots box keeps its own fixed size, so centering it centers the
-    // heart itself — the text stacks below via absolute position and
-    // never shifts the heart off-center.
-    <div className="relative" style={{ width: DRONE_W, height: DRONE_H }}>
-      {dots.map((d, i) => (
-        <motion.span
-          key={i}
-          className="absolute rounded-full"
-          style={{ width: 3.5, height: 3.5, background: RED_HOT, boxShadow: `0 0 8px 2px ${RED}dd` }}
-          initial={{ x: d.sx, y: d.sy, opacity: 0 }}
-          animate={{ x: d.tx, y: d.ty, opacity: [0, 1, 1] }}
-          transition={{ duration: HEART_FORM_S, delay: d.delay, ease: [0.16, 1, 0.3, 1] }}
-        />
-      ))}
-      {/* red flash the instant the heart completes */}
-      <motion.div
-        className="pointer-events-none absolute rounded-full"
-        style={{
-          left: DRONE_W / 2 - 70,
-          top: DRONE_H * 0.42 - 70,
-          width: 140,
-          height: 140,
-          background: `radial-gradient(circle, ${RED_HOT}, transparent 70%)`,
-        }}
-        initial={{ opacity: 0, scale: 0.4 }}
-        animate={{ opacity: [0, 0.9, 0], scale: [0.4, 1.8] }}
-        transition={{ duration: 0.9, delay: GALAXY_SPIN_S + HEART_FORM_S - 0.1, ease: 'easeOut' }}
-      />
-      <div className="absolute left-1/2 flex -translate-x-1/2 gap-[3px]" style={{ top: DRONE_H + 10 }}>
-        {letters.map((ch, i) => (
-          <motion.span
-            key={i}
-            initial={{ opacity: 0, scale: 0.4, y: 6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: textDelay + i * 0.16, ease: [0.16, 1, 0.3, 1] }}
-            style={{
-              fontFamily: FONT_HERO,
-              fontWeight: 700,
-              fontSize: 'clamp(20px, 4.2vw, 34px)',
-              letterSpacing: '0.04em',
-              color: '#fff',
-              textShadow: `0 0 8px rgba(255,255,255,0.9), 0 0 22px ${RED}99`,
-            }}
-          >
-            {ch === ' ' ? ' ' : ch}
-          </motion.span>
-        ))}
-      </div>
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 0.85 }}
-        transition={{ duration: 0.8, delay: textDelay + letters.length * 0.16 + 0.3 }}
-        className="absolute left-1/2 w-max max-w-[80vw] -translate-x-1/2 text-center"
-        style={{
-          top: DRONE_H + 56,
-          fontFamily: FONT_WHISPER,
-          fontStyle: 'italic',
-          fontSize: 'clamp(13px, 2.2vw, 17px)',
-          color: 'rgba(255,255,255,0.85)',
-          textShadow: '0 2px 10px rgba(0,0,0,0.7)',
-        }}
-      >
-        {subtitle}
-      </motion.p>
-    </div>
-  );
+  return <canvas ref={canvasRef} className="size-full" aria-hidden />;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -763,30 +972,42 @@ function WindowGirlScene() {
 // sky; once it's solved, a full-screen drone-show galaxy spins up and
 // closes into a heart as the grand finale, then the goodnight message.
 // ─────────────────────────────────────────────────────────────────────
-const DRONE_FINALE_MS = 8600; // matches DroneIntro's own internal timeline
+// galaxy spin → heart+text drone formation, held a beat, then the
+// mailbox phase takes over (Matrix-style falling text + tap prompt).
+const DRONE_FINALE_MS = 6600;
 
 function DailyGoodnight2Reveal({ kiss, onClose }: TemplateProps) {
   const rawName = (getKissString(kiss, 'name') || kiss.receiver_name || 'em').trim();
   const displayName = rawName || 'em';
 
-  const photoUrl = useMemo(() => {
+  // All uploaded photos — photo 1 becomes the heart puzzle; the final
+  // message screen shows every photo the sender uploaded (just the one,
+  // if that's all there is).
+  const allPhotos = useMemo(() => {
     const raw = parseKissData(kiss).photos;
-    if (Array.isArray(raw)) {
-      const first = raw.find((u): u is string => typeof u === 'string' && !!u);
-      if (first) return first;
-    }
-    return getKissString(kiss, 'photo') || kiss.sender_avatar || DEFAULT_PUZZLE_IMG;
+    const list = Array.isArray(raw) ? raw.filter((u): u is string => typeof u === 'string' && !!u) : [];
+    if (list.length > 0) return list;
+    const single = getKissString(kiss, 'photo') || kiss.sender_avatar;
+    return single ? [single] : [DEFAULT_PUZZLE_IMG];
   }, [kiss]);
+  const photoUrl = allPhotos[0];
 
-  const [phase, setPhase] = useState<'puzzle' | 'drone' | 'final'>('puzzle');
+  // 'mailbox' sits between the drone show and the actual message — the
+  // wish only appears once the player taps to open it, instead of just
+  // auto-revealing after the animation, so opening it feels earned.
+  const [phase, setPhase] = useState<'puzzle' | 'drone' | 'mailbox' | 'final'>('puzzle');
 
   const handleSolved = useCallback(() => {
     setPhase((p) => (p === 'puzzle' ? 'drone' : p));
     playHeartbeat();
     setTimeout(() => playCelebration(), 300);
-    const t1 = setTimeout(() => setPhase('final'), DRONE_FINALE_MS);
-    const t2 = setTimeout(() => onClose(), DRONE_FINALE_MS + 6000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    setTimeout(() => setPhase((p) => (p === 'drone' ? 'mailbox' : p)), DRONE_FINALE_MS);
+  }, []);
+
+  const openMailbox = useCallback(() => {
+    setPhase((p) => (p === 'mailbox' ? 'final' : p));
+    playMessageChime();
+    setTimeout(() => onClose(), 9000);
   }, [onClose]);
 
   const stars = useMemo(
@@ -881,17 +1102,73 @@ function DailyGoodnight2Reveal({ kiss, onClose }: TemplateProps) {
         )}
       </AnimatePresence>
 
-      {/* ── Drone-show finale: full-screen 3D galaxy spin closes into the
-          heart, then "I LOVE YOU" — plays AFTER the puzzle is solved ── */}
+      {/* ── Drone-show finale: full-screen 3D galaxy spin, then the drones
+          climb into a heart + greeting and hold — plays AFTER the puzzle
+          is solved, then hands off to the mailbox phase below. ── */}
       <AnimatePresence>
         {phase === 'drone' && (
           <motion.div key="drone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 1 }}>
             <div className="pointer-events-none absolute inset-0 z-30">
               <GalaxyBackdrop />
             </div>
-            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center px-8 text-center">
-              <DroneIntro subtitle={`Chúc ${displayName} ngủ ngon 💫`} />
+            <div className="pointer-events-none absolute inset-0 z-30">
+              <DroneShowCanvas text={`CHÚC ${displayName.toLocaleUpperCase('vi')} NGỦ NGON`} />
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Mailbox — a "hacker screen" of falling text (em ngủ ngon /
+          yêu em / I love you) behind a tap-to-open envelope icon ── */}
+      <AnimatePresence>
+        {phase === 'mailbox' && (
+          <motion.div
+            key="mailbox"
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-5 px-8 text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            <div className="pointer-events-none absolute inset-0">
+              <MatrixRain phrases={[displayName.toLocaleUpperCase('vi'), 'EM NGỦ NGON', 'YÊU EM', 'I LOVE YOU']} />
+            </div>
+            <motion.button
+              type="button"
+              onClick={openMailbox}
+              className="relative cursor-pointer"
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              aria-label="Mở hộp thư để xem lời chúc"
+            >
+              <motion.div
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                style={{ filter: `drop-shadow(0 0 18px ${MOON_MID}99)` }}
+              >
+                <svg width="84" height="84" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <rect x="2" y="6" width="20" height="14" rx="2.5" fill={MOON_MID} fillOpacity="0.16" stroke={MOON_MID} strokeWidth="1.4" />
+                  <path d="M2.5 7 L12 14 L21.5 7" stroke={MOON_MID} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  <circle cx="12" cy="13" r="2.6" fill={HEART} stroke="#fff" strokeWidth="0.8" />
+                </svg>
+              </motion.div>
+            </motion.button>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.85 }}
+              transition={{ duration: 0.8, delay: 0.6 }}
+              className="relative pointer-events-none"
+              style={{
+                fontFamily: FONT_WHISPER,
+                fontStyle: 'italic',
+                fontSize: 'clamp(14px, 2.4vw, 18px)',
+                color: 'rgba(255,255,255,0.85)',
+                textShadow: '0 2px 10px rgba(0,0,0,0.7)',
+              }}
+            >
+              Chạm để mở hộp thư
+            </motion.p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -918,6 +1195,29 @@ function DailyGoodnight2Reveal({ kiss, onClose }: TemplateProps) {
             >
               Ngủ ngon nhé, {displayName} ✦
             </div>
+            {/* Photo 1 became the heart puzzle — here every uploaded photo
+                shows up (just the one, if that's all the sender added). */}
+            <motion.div
+              className="mx-auto mt-4 flex justify-center gap-3"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.6 }}
+            >
+              {allPhotos.slice(0, 2).map((url, i) => (
+                <div
+                  key={url + i}
+                  className="overflow-hidden rounded-lg border-[3px] border-white bg-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
+                  style={{
+                    width: allPhotos.length > 1 ? 92 : 128,
+                    height: allPhotos.length > 1 ? 92 : 128,
+                    transform: `rotate(${i === 0 ? -4 : 4}deg)`,
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </div>
+              ))}
+            </motion.div>
             {kiss.message && (
               <motion.div
                 initial={{ opacity: 0 }}

@@ -84,7 +84,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             display: 'flex',
           }}
         >
-          GAO SOCIAL
+          LOVI
         </div>
       </div>
     ),

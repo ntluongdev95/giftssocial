@@ -152,18 +152,18 @@ export default function PasswordLock({
               textShadow: `0 2px 12px rgba(0,0,0,0.8), 0 0 20px ${accent}66`,
             }}
           >
-            {senderName ? `${senderName} khoá cửa` : 'Cửa đang khoá'}
+            {senderName ? `${senderName} locked this away` : 'Something secret is waiting'}
           </div>
           <div className="text-[11px] text-white/60 mt-1">
             {state === 'wrong'
-              ? `Sai rồi — thử lại nhé (${attempts})`
+              ? `Not quite — try again (${attempts})`
               : state === 'correct'
-              ? '🔓 Cửa đang mở…'
-              : 'Nhập mã để mở cửa'}
+              ? '🔓 Unlocking…'
+              : 'Enter the code to unlock'}
           </div>
           {hint && state === 'idle' && (
             <div className="text-[11px] italic mt-2 max-w-xs mx-auto" style={{ color: accent }}>
-              💡 Gợi ý: {hint}
+              💡 Hint: {hint}
             </div>
           )}
         </div>

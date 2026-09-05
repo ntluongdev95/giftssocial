@@ -80,7 +80,7 @@ export default function Sidebar() {
         <div className="hidden xl:flex items-center gap-3 px-5 py-5">
           <img src="/images/gao-logo-v2.png" alt="Gao" width={36} height={36} className="shrink-0" />
           <div>
-            <span className="text-base font-bold text-white">Gao Social</span>
+            <span className="text-base font-bold text-white">LoVi</span>
             <div className="mt-0.5">
               <DomainBadge />
             </div>

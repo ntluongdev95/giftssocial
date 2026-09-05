@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ).bind(id, id).first<{ emoji: string; kiss_type: string; template_id: string | null; visibility: string; sender_name: string }>();
 
     if (!k || k.visibility === 'private') {
-      return { title: 'Kiss on Gao Social' };
+      return { title: 'Kiss on LoVi' };
     }
 
     // Deliberately a teaser, not a spoiler — never surface k.message here.
@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         description,
         type: 'website',
         url: `${BASE_URL}/kiss/${id}`,
-        siteName: 'Gao Social',
+        siteName: 'LoVi',
         images: [{ url: ogImage, width: 1200, height: 630 }],
       },
       twitter: {
@@ -60,7 +60,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       },
     };
   } catch {
-    return { title: 'Kiss on Gao Social' };
+    return { title: 'Kiss on LoVi' };
   }
 }
 

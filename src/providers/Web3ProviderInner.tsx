@@ -76,7 +76,7 @@ const wagmiAdapter = new WagmiAdapter({
 // single biggest cause of mobile wallets leaving the user stuck in the
 // wallet app after approving on iOS Safari/Chrome.
 const appKitMetadata = {
-  name: 'Gao Social',
+  name: 'LoVi',
   description: 'Sign in with Gao ID',
   url: appUrl,
   icons: [`${appUrl}/icons/pwa-192.png`],

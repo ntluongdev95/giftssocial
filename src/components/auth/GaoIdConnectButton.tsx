@@ -490,7 +490,7 @@ function GaoIdConnectButtonInner({
           userMsg = 'Signature rejected. Click the button to try again.';
         } else if (TIMEOUT_RE.test(errMsg)) {
           userMsg = isWalletConnect
-            ? "Wallet didn't respond. Open your wallet app, find the pending Gao Social request, and approve — or click Sign in again."
+            ? "Wallet didn't respond. Open your wallet app, find the pending LoVi request, and approve — or click Sign in again."
             : 'Wallet did not respond. Reconnect and retry.';
         } else {
           userMsg = `Signature failed: ${errMsg}`;

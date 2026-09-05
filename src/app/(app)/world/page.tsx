@@ -785,7 +785,12 @@ export default function WorldPage() {
                       disabled={count === 0}
                       className="flex items-center gap-2.5 rounded-lg px-1 py-1 -mx-1 transition-colors active:bg-white/5 disabled:opacity-40 disabled:cursor-default cursor-pointer"
                     >
-                      <span className="text-xl font-light tabular-nums w-6 text-right" style={{ color }}>{count}</span>
+                      <span
+                        className={`shrink-0 font-light tabular-nums text-right ${count >= 1000 ? 'text-sm min-w-[34px]' : count >= 100 ? 'text-base min-w-[30px]' : 'text-xl min-w-[26px]'}`}
+                        style={{ color }}
+                      >
+                        {count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count}
+                      </span>
                       <div className="min-w-0 text-left">
                         <p className="text-[11px] font-medium text-[#f0f4ff] truncate">{label}</p>
                         <p className="text-[9px] text-[#4a5068] truncate">{sub}</p>
@@ -817,7 +822,12 @@ export default function WorldPage() {
                   disabled={count === 0}
                   className="flex items-center gap-2.5 rounded-lg px-1 py-1 -mx-1 transition-colors active:bg-white/5 disabled:opacity-40 disabled:cursor-default cursor-pointer"
                 >
-                  <span className="text-xl font-light tabular-nums w-6 text-right" style={{ color }}>{count}</span>
+                  <span
+                    className={`shrink-0 font-light tabular-nums text-right ${count >= 1000 ? 'text-sm min-w-[34px]' : count >= 100 ? 'text-base min-w-[30px]' : 'text-xl min-w-[26px]'}`}
+                    style={{ color }}
+                  >
+                    {count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count}
+                  </span>
                   <div className="min-w-0 text-left">
                     <p className="text-[11px] font-medium text-[#f0f4ff] truncate">{label}</p>
                     <p className="text-[9px] text-[#4a5068] truncate">{sub}</p>

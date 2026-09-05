@@ -95,7 +95,7 @@ export async function generateVoucherImage(card: VoucherCard, valueLabel: string
   paintRadial(ctx, W * 0.85, H * 0.5,  W * 0.6, 'rgba(0,0,0,0.25)',     'rgba(0,0,0,0)');
 
   // ── 2. Business name — auto-shrunk to fit the canvas width ─────────
-  drawAutoFit(ctx, (card.business_name || 'Gao Social').toUpperCase(), {
+  drawAutoFit(ctx, (card.business_name || 'LoVi').toUpperCase(), {
     x: W / 2,
     y: ZONE.businessY,
     maxWidth: W - 160,           // 80px gutter each side
@@ -268,7 +268,7 @@ export async function generateVoucherImage(card: VoucherCard, valueLabel: string
       shadow: shadowFor(isLight, 0.25),
     });
   }
-  drawText(ctx, 'GAO SOCIAL', {
+  drawText(ctx, 'LOVI', {
     x: W / 2, y: H - 50,
     size: 24, weight: 800,
     color: withAlpha(tc, 0.6),

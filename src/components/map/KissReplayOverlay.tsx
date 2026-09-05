@@ -170,6 +170,19 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   // handles it end-to-end from the intro step.
   const senderSong = readSongUrl(kiss);
 
+  // The sender's own uploaded photo (same `photos` column parsed the
+  // same way elsewhere — KissGlobe, rose-rain, sent-kisses) — used as
+  // the share card's background so it reads like an actual postcard
+  // instead of a plain gradient panel.
+  const cardPhoto = (() => {
+    try {
+      const list = kiss.photos ? JSON.parse(kiss.photos) : [];
+      return Array.isArray(list) && typeof list[0] === 'string' ? list[0] : '';
+    } catch {
+      return '';
+    }
+  })();
+
   // Fetch city names
   useEffect(() => {
     getCity(kiss.sender_lat, kiss.sender_lng).then(setSenderCity);
@@ -292,13 +305,13 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
 
   const handleShare = useCallback(async (platform: string) => {
     const text = kiss.kiss_type === 'declaration'
-      ? `🌍❤️ ${kiss.sender_name} declared love to ${kiss.receiver_name || 'someone'}! Watch the journey on Gao Social`
-      : `${kiss.emoji} Got a kiss from ${kiss.sender_name || 'someone'}! ${senderCity} → ${receiverCity} on Gao Social`;
+      ? `🌍❤️ ${kiss.sender_name} declared love to ${kiss.receiver_name || 'someone'}! Watch the journey on LoVi`
+      : `${kiss.emoji} Got a kiss from ${kiss.sender_name || 'someone'}! ${senderCity} → ${receiverCity} on LoVi`;
     const url = getKissUrl(kiss, window.location.origin);
 
     if (platform === 'native' && navigator.share) {
       try {
-        await navigator.share({ title: 'Kiss on Gao Social', text, url });
+        await navigator.share({ title: 'Kiss on LoVi', text, url });
       } catch { /* user cancelled */ }
       return;
     }
@@ -490,59 +503,80 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
             animate={{ opacity: 1, y: 0 }}
             className="w-full max-w-sm mx-4"
           >
-            {/* Share card (screenshot-able) */}
+            {/* Share card (screenshot-able) — the sender's own photo as
+                a full-bleed postcard background when they uploaded one,
+                so it reads like an actual card instead of a flat panel.
+                Falls back to the old solid gradient when there's no
+                photo. */}
             <div
               ref={shareCardRef}
-              className="rounded-3xl overflow-hidden mb-4"
-              style={{ background: 'linear-gradient(135deg, #0a0b0f 0%, #1a0a1a 50%, #0a0b0f 100%)', border: '1px solid rgba(236,72,153,0.2)' }}
+              className="relative rounded-3xl overflow-hidden mb-4"
+              style={{
+                background: cardPhoto ? '#0a0b0f' : 'linear-gradient(135deg, #0a0b0f 0%, #1a0a1a 50%, #0a0b0f 100%)',
+                border: '1px solid rgba(236,72,153,0.2)',
+                minHeight: cardPhoto ? 460 : undefined,
+              }}
             >
-              {/* Card header gradient */}
-              <div className="h-1.5" style={{ background: 'linear-gradient(90deg, #ec4899, #f87171, #ec4899)' }} />
+              {cardPhoto && (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={cardPhoto} alt="" className="absolute inset-0 size-full object-cover" />
+                  <div
+                    className="absolute inset-0"
+                    style={{ background: 'linear-gradient(180deg, rgba(10,11,15,0.35) 0%, rgba(10,11,15,0.55) 45%, rgba(10,11,15,0.92) 100%)' }}
+                  />
+                </>
+              )}
 
-              <div className="px-6 py-6 flex flex-col items-center gap-4 text-center">
-                {/* Sender avatar + emoji */}
-                <div className="relative">
-                  <div className="h-16 w-16 rounded-full flex items-center justify-center text-2xl font-bold overflow-hidden" style={{ background: 'linear-gradient(135deg, #ec4899, #f87171)', border: '2px solid rgba(236,72,153,0.4)' }}>
-                    {kiss.sender_avatar
-                      ? <img src={kiss.sender_avatar} alt="" className="h-full w-full object-cover" />
-                      : (kiss.sender_name || '?').charAt(0).toUpperCase()
-                    }
+              <div className="relative z-10">
+                {/* Card header gradient */}
+                <div className="h-1.5" style={{ background: 'linear-gradient(90deg, #ec4899, #f87171, #ec4899)' }} />
+
+                <div className={`px-6 py-6 flex flex-col items-center gap-4 text-center ${cardPhoto ? 'justify-end' : ''}`} style={cardPhoto ? { minHeight: 452 } : undefined}>
+                  {/* Sender avatar + emoji */}
+                  <div className="relative">
+                    <div className="h-16 w-16 rounded-full flex items-center justify-center text-2xl font-bold overflow-hidden" style={{ background: 'linear-gradient(135deg, #ec4899, #f87171)', border: '2px solid rgba(236,72,153,0.4)' }}>
+                      {kiss.sender_avatar
+                        ? <img src={kiss.sender_avatar} alt="" className="h-full w-full object-cover" />
+                        : (kiss.sender_name || '?').charAt(0).toUpperCase()
+                      }
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 text-2xl">{kiss.emoji}</span>
                   </div>
-                  <span className="absolute -bottom-1 -right-1 text-2xl">{kiss.emoji}</span>
-                </div>
 
-                {/* Names + route */}
-                <div>
-                  <p className="text-lg font-bold text-white">{kiss.sender_name || 'Someone'}</p>
-                  <p className="text-[11px] text-[#ec4899] mt-0.5">
-                    {kiss.kiss_type === 'declaration' ? 'declared love to' : 'sent a kiss to'}
-                  </p>
-                  <p className="text-lg font-bold text-white mt-0.5">{kiss.receiver_name || 'You'}</p>
-                </div>
-
-                {/* Declaration badge or route */}
-                {kiss.kiss_type === 'declaration' ? (
-                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'linear-gradient(135deg, rgba(236,72,153,0.15), rgba(168,85,247,0.15))', border: '1px solid rgba(236,72,153,0.2)' }}>
-                    <span className="text-xs">🌍</span>
-                    <span className="text-[10px] font-semibold text-[#ec4899]">Public Love Declaration</span>
+                  {/* Names + route */}
+                  <div>
+                    <p className="text-lg font-bold text-white">{kiss.sender_name || 'Someone'}</p>
+                    <p className="text-[11px] text-[#ec4899] mt-0.5">
+                      {kiss.kiss_type === 'declaration' ? 'declared love to' : 'sent a kiss to'}
+                    </p>
+                    <p className="text-lg font-bold text-white mt-0.5">{kiss.receiver_name || 'You'}</p>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-xs text-[#4a5068]">
-                    <span>{senderCity}</span>
-                    <span className="text-[#ec4899]">✈️</span>
-                    <span>{receiverCity}</span>
+
+                  {/* Declaration badge or route */}
+                  {kiss.kiss_type === 'declaration' ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'linear-gradient(135deg, rgba(236,72,153,0.15), rgba(168,85,247,0.15))', border: '1px solid rgba(236,72,153,0.2)' }}>
+                      <span className="text-xs">🌍</span>
+                      <span className="text-[10px] font-semibold text-[#ec4899]">Public Love Declaration</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-[#4a5068]">
+                      <span>{senderCity}</span>
+                      <span className="text-[#ec4899]">✈️</span>
+                      <span>{receiverCity}</span>
+                    </div>
+                  )}
+
+                  {/* Message */}
+                  {kiss.message && (
+                    <p className="text-sm text-[#a3adc3] italic">&ldquo;{kiss.message}&rdquo;</p>
+                  )}
+
+                  {/* Branding */}
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <img src="/images/gao-logo-v2.png" alt="Gao" className="h-5 w-5 rounded-full" />
+                    <span className="text-[10px] font-semibold text-[#4a5068]">LoVi</span>
                   </div>
-                )}
-
-                {/* Message */}
-                {kiss.message && (
-                  <p className="text-sm text-[#a3adc3] italic">&ldquo;{kiss.message}&rdquo;</p>
-                )}
-
-                {/* Branding */}
-                <div className="flex items-center gap-1.5 mt-2">
-                  <img src="/images/gao-logo-v2.png" alt="Gao" className="h-5 w-5 rounded-full" />
-                  <span className="text-[10px] font-semibold text-[#4a5068]">Gao Social</span>
                 </div>
               </div>
             </div>

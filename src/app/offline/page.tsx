@@ -24,7 +24,7 @@ export default function OfflinePage() {
 
       <div className="mt-12 flex items-center gap-2">
         <div className="h-5 w-5 rounded-full" style={{ background: 'linear-gradient(135deg, #00d4ff, #6366f1)' }} />
-        <span className="text-xs font-semibold text-[#2d3548]">Gao Social</span>
+        <span className="text-xs font-semibold text-[#2d3548]">LoVi</span>
       </div>
     </div>
   );

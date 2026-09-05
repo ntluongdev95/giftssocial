@@ -44,6 +44,8 @@ interface Props extends TemplateProps {
    *  Spotify / SoundCloud / direct MP3). If present, renders a
    *  tap-to-play music pill at top-left. */
   songKey?: string;
+  /** Passed straight through to TemplateShell — see its own doc comment. */
+  showCloseButton?: boolean;
 }
 
 export default function PlaceholderReveal({
@@ -57,10 +59,17 @@ export default function PlaceholderReveal({
   bgGradient,
   photoKey = 'photo',
   songKey = 'song',
+  showCloseButton,
 }: Props) {
-  // Read the sender's uploads (if any) from template_data.
+  // Read the sender's uploads (if any) from template_data. Prefers the
+  // multi-photo "photos" array (every template's field got upgraded to
+  // this in seed-061); falls back to the legacy single `photoKey`
+  // field for any template still on the old schema.
   const data = parseKissData(kiss);
-  const photoUrl = typeof data[photoKey] === 'string' ? (data[photoKey] as string) : '';
+  const photosArray = Array.isArray(data.photos)
+    ? data.photos.filter((u): u is string => typeof u === 'string' && !!u)
+    : [];
+  const photoUrl = photosArray[0] || (typeof data[photoKey] === 'string' ? (data[photoKey] as string) : '');
   const songUrl  = typeof data[songKey]  === 'string' ? (data[songKey]  as string) : '';
   const receiverName = typeof data.name === 'string' && data.name
     ? (data.name as string)
@@ -85,6 +94,7 @@ export default function PlaceholderReveal({
       accent={accent}
       particles={particleEmojis}
       onClose={onClose}
+      showCloseButton={showCloseButton}
       backdrop={
         <div className="absolute inset-0" style={{
           background: bgGradient ?? `radial-gradient(ellipse at center, ${accent}44 0%, #0a0a12 60%, #05050a 100%)`,

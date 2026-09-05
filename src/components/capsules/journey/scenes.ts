@@ -1027,6 +1027,95 @@ export const roseBouquetScene: SceneDrawer = (ctx, w, h) => {
   fillCircle(ctx, cx + gripXOffset, gripY, handR);
 };
 
+// A bouquet floating on its own — no one holding it. Reuses the same
+// rose-dome/leaves/bow composition as roseBouquetScene, minus the
+// person + arms, and scaled up to fill the frame the way a real
+// drone-show bouquet formation does (reference: rose dome up top,
+// two long ribbon streamers trailing all the way down).
+export const bouquetFloatScene: SceneDrawer = (ctx, w, h) => {
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#fff';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const scale = (Math.min(w, h) / 200) * 1.7;
+  const bqCx = w / 2;
+  const bqTop = h * 0.14;
+  const bqWrapTop = bqTop + 32 * scale;
+  const bqWrapBottom = bqWrapTop + 26 * scale;
+
+  // Wrap paper — trapezoid cone, wider at top.
+  ctx.beginPath();
+  ctx.moveTo(bqCx - 24 * scale, bqWrapTop);
+  ctx.lineTo(bqCx + 24 * scale, bqWrapTop);
+  ctx.lineTo(bqCx + 10 * scale, bqWrapBottom);
+  ctx.lineTo(bqCx - 10 * scale, bqWrapBottom);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bow — two elliptical loops + centre knot + long trailing ribbons
+  // (the reference photo's two dotted streamers running the rest of
+  // the way down the frame).
+  const bowY = bqWrapTop + 6 * scale;
+  ctx.save();
+  ctx.translate(bqCx - 8 * scale, bowY);
+  ctx.rotate(-Math.PI / 6);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 6.5 * scale, 4.5 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  ctx.translate(bqCx + 8 * scale, bowY);
+  ctx.rotate(Math.PI / 6);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 6.5 * scale, 4.5 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  fillCircle(ctx, bqCx, bowY, 3 * scale);
+  // long ribbon streamers, trailing down through the lower frame
+  const ribbonBottom = h * 0.94;
+  thickLine(ctx, bqCx - 3 * scale, bowY + 4 * scale, bqCx - 9 * scale, bqWrapBottom + 10 * scale, 2.4 * scale);
+  thickLine(ctx, bqCx - 9 * scale, bqWrapBottom + 10 * scale, bqCx - 6 * scale, ribbonBottom, 2.4 * scale);
+  thickLine(ctx, bqCx + 3 * scale, bowY + 4 * scale, bqCx + 10 * scale, bqWrapBottom + 12 * scale, 2.4 * scale);
+  thickLine(ctx, bqCx + 10 * scale, bqWrapBottom + 12 * scale, bqCx + 7 * scale, ribbonBottom, 2.4 * scale);
+
+  // Leaves poking out at the base of the dome, angled outward.
+  const leaves: Array<[number, number, number, number]> = [
+    [-22, 20, -Math.PI / 3.2, 1.0],
+    [22, 20, Math.PI / 3.2, 1.0],
+    [0, 30, 0, 0.75],
+  ];
+  for (const [dx, dy, rot, sMul] of leaves) {
+    ctx.save();
+    ctx.translate(bqCx + dx * scale, bqTop + dy * scale);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10 * scale * sMul, 4 * scale * sMul, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Rose blooms — same layered dome composition as roseBouquetScene.
+  const roseSpecs: Array<[number, number, number, number]> = [
+    [-19, -6, 0.7, 0.3], [-5, -9, 0.72, -0.2], [10, -9, 0.72, 0.5], [22, -5, 0.7, -0.35],
+    [-26, 8, 0.88, -0.4], [-14, 6, 0.92, 0.35], [14, 6, 0.92, -0.35], [26, 8, 0.88, 0.4],
+    [-22, 22, 1.05, 0.25], [22, 22, 1.05, -0.25],
+    [0, 14, 1.35, 0.1],
+    [-11, 24, 1.1, -0.3], [11, 24, 1.1, 0.3],
+    [0, 36, 0.85, 0],
+  ];
+  const roses = roseSpecs
+    .map(([dx, dy, sMul, rot]) => ({ x: bqCx + dx * scale, y: bqTop + dy * scale, r: 12 * scale * sMul, rot }))
+    .sort((a, b) => a.y - b.y);
+  for (const rose of roses) {
+    drawRose(ctx, rose.x, rose.y, rose.r, rose.rot);
+  }
+
+  // Stems dropping below the wrap.
+  for (let i = -2; i <= 2; i++) {
+    thickLine(ctx, bqCx + i * 3.5 * scale, bqWrapBottom, bqCx + i * 2 * scale, bqWrapBottom + 22 * scale, 2 * scale);
+  }
+};
+
 // One partner waiting on the left, another sprinting in from the
 // right — the "gap between us is closing" beat that precedes the
 // hug scene. The running figure faces LEFT so its motion clearly
@@ -1173,6 +1262,217 @@ export const hugScene: SceneDrawer = (ctx, w, h) => {
   ctx.fill();
 };
 
+// A diamond engagement ring — a thick circular band with a faceted
+// gem sitting on top, sparkle rays radiating off it. The band is
+// drawn as a stroked annulus (donut) rather than a filled disc, so it
+// samples as a proper ring outline instead of a solid coin.
+export const ringScene: SceneDrawer = (ctx, w, h) => {
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#fff';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const scale = Math.min(w, h) / 200;
+  const cx = w / 2;
+  const cy = h / 2 + 14 * scale;
+
+  // band — a thick stroked circle (annulus)
+  const bandR = 42 * scale;
+  ctx.lineWidth = 15 * scale;
+  ctx.beginPath();
+  ctx.arc(cx, cy, bandR, 0.35 * Math.PI, 1.9 * Math.PI);
+  ctx.stroke();
+
+  // gem — faceted diamond sitting where the band meets at the top
+  const gemCy = cy - bandR - 4 * scale;
+  const gemW = 30 * scale;
+  const gemTopH = 14 * scale;
+  const gemBotH = 26 * scale;
+  ctx.beginPath();
+  ctx.moveTo(cx - gemW / 2, gemCy);
+  ctx.lineTo(cx, gemCy - gemTopH);
+  ctx.lineTo(cx + gemW / 2, gemCy);
+  ctx.lineTo(cx, gemCy + gemBotH);
+  ctx.closePath();
+  ctx.fill();
+  // facet lines
+  ctx.lineWidth = 1.6 * scale;
+  ctx.beginPath();
+  ctx.moveTo(cx - gemW / 2, gemCy);
+  ctx.lineTo(cx, gemCy + gemBotH * 0.4);
+  ctx.moveTo(cx + gemW / 2, gemCy);
+  ctx.lineTo(cx, gemCy + gemBotH * 0.4);
+  ctx.moveTo(cx, gemCy - gemTopH);
+  ctx.lineTo(cx, gemCy + gemBotH);
+  ctx.stroke();
+
+  // sparkle rays around the gem
+  const sparkleAt = (dx: number, dy: number, len: number) => {
+    ctx.lineWidth = 2 * scale;
+    ctx.beginPath();
+    ctx.moveTo(cx + dx, gemCy - gemTopH * 0.5 + dy);
+    ctx.lineTo(cx + dx * (1 + len), gemCy - gemTopH * 0.5 + dy * (1 + len));
+    ctx.stroke();
+  };
+  sparkleAt(-24 * scale, -22 * scale, 0.6);
+  sparkleAt(28 * scale, -18 * scale, 0.6);
+  sparkleAt(0, -34 * scale, 0.7);
+};
+
+// The proposal — a woman in a full gown (left), a man kneeling on one
+// knee (right), reaching to meet her hand. Drawn with organic
+// quadratic/bezier curves (not straight thickLine segments) for a
+// softer, more lifelike silhouette — coordinates in a local 0-200
+// working space, positioned into the canvas via translate+scale below.
+export const proposalScene: SceneDrawer = (ctx, w, h) => {
+  ctx.save();
+  const scale = Math.min(w, h) / 210;
+  // Their composition centers around local (111, 100) — shift that to
+  // the canvas center so the couple sits balanced in frame.
+  ctx.translate(w / 2 - 111 * scale, h / 2 - 100 * scale);
+  ctx.scale(scale, scale);
+
+  ctx.strokeStyle = '#fff';
+  ctx.fillStyle = '#fff';
+  ctx.lineWidth = 1.7;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  // ── woman (left) ──
+  ctx.beginPath();
+  ctx.arc(72, 40, 9, 0, Math.PI * 2); // head
+  ctx.moveTo(63, 32);
+  ctx.arc(64, 30, 8, 0.2, Math.PI * 1.5); // hair bun
+  ctx.stroke();
+  // a single veil strand trailing off the BACK of the bun (starting
+  // clear of the bun's own arc so the two don't tangle into a scribble),
+  // drifting down past her shoulder — reads as movement/elegance.
+  ctx.beginPath();
+  ctx.moveTo(56, 38);
+  ctx.bezierCurveTo(42, 46, 36, 62, 40, 80);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(72, 49); // neck
+  ctx.lineTo(72, 56);
+  // shoulders + bodice
+  ctx.moveTo(60, 60);
+  ctx.quadraticCurveTo(72, 52, 84, 60);
+  ctx.moveTo(60, 60);
+  ctx.quadraticCurveTo(63, 76, 66, 88);
+  ctx.moveTo(84, 60);
+  ctx.quadraticCurveTo(82, 76, 80, 88);
+  ctx.stroke();
+
+  // dress skirt
+  ctx.beginPath();
+  ctx.moveTo(66, 88);
+  ctx.bezierCurveTo(52, 118, 44, 146, 40, 168);
+  ctx.moveTo(80, 88);
+  ctx.bezierCurveTo(92, 118, 96, 146, 98, 168);
+  // hem
+  ctx.moveTo(40, 168);
+  ctx.quadraticCurveTo(69, 180, 98, 168);
+  ctx.stroke();
+
+  // skirt drape folds
+  ctx.beginPath();
+  for (const t of [0.25, 0.5, 0.75]) {
+    const topX = 66 + (80 - 66) * t;
+    const botX = 46 + (94 - 46) * t;
+    ctx.moveTo(topX, 92);
+    ctx.quadraticCurveTo(topX + (botX - topX) * 0.5, 130, botX, 172 - Math.abs(t - 0.5) * 8);
+  }
+  ctx.stroke();
+
+  // her arm reaching toward him
+  ctx.beginPath();
+  ctx.moveTo(84, 62);
+  ctx.quadraticCurveTo(98, 72, 104, 84);
+  ctx.stroke();
+
+  // ── man (right, kneeling) ──
+  ctx.beginPath();
+  ctx.arc(136, 52, 9, 0, Math.PI * 2); // head
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(136, 61); // neck
+  ctx.lineTo(134, 68);
+  // torso
+  ctx.moveTo(126, 72);
+  ctx.quadraticCurveTo(136, 66, 146, 74);
+  ctx.moveTo(126, 72);
+  ctx.quadraticCurveTo(122, 96, 126, 118);
+  ctx.moveTo(146, 74);
+  ctx.quadraticCurveTo(150, 96, 148, 118);
+  ctx.moveTo(126, 118);
+  ctx.lineTo(148, 118);
+  ctx.stroke();
+
+  // arms reaching left, offering the ring
+  ctx.beginPath();
+  ctx.moveTo(127, 76);
+  ctx.quadraticCurveTo(112, 82, 106, 90);
+  ctx.moveTo(130, 86);
+  ctx.quadraticCurveTo(114, 92, 108, 96);
+  ctx.stroke();
+
+  // front leg — weight-bearing: thigh forward to a knee bent at roughly
+  // a right angle, shin straight down to a foot planted flat on the
+  // ground directly under the knee (the classic kneeling silhouette).
+  ctx.beginPath();
+  ctx.moveTo(126, 118);
+  ctx.lineTo(110, 122);
+  ctx.lineTo(108, 142); // knee
+  ctx.moveTo(138, 122);
+  ctx.lineTo(122, 128);
+  ctx.lineTo(120, 144);
+  ctx.moveTo(108, 142);
+  ctx.lineTo(108, 172); // shin, straight down
+  ctx.moveTo(120, 144);
+  ctx.lineTo(122, 172);
+  ctx.moveTo(108, 172);
+  ctx.lineTo(128, 175); // foot, planted forward
+  ctx.lineTo(122, 172);
+  ctx.stroke();
+
+  // back leg — the grounded knee: thigh angles down-back to a knee
+  // resting on the ground, then the shin folds back along the floor to
+  // a trailing foot, instead of both legs ending at the same height.
+  ctx.beginPath();
+  ctx.moveTo(146, 120);
+  ctx.lineTo(158, 138);
+  ctx.lineTo(160, 163); // grounded knee
+  ctx.moveTo(138, 124);
+  ctx.lineTo(148, 140);
+  ctx.lineTo(148, 166);
+  ctx.moveTo(160, 163);
+  ctx.lineTo(170, 170); // shin trailing back along the ground
+  ctx.lineTo(148, 166);
+  ctx.moveTo(170, 170);
+  ctx.lineTo(172, 174);
+  ctx.lineTo(163, 173);
+  ctx.stroke();
+
+  // the ring, held up between them — one bold circle + a 4-point
+  // sparkle. Fine detail (a hinged box, facets) doesn't survive a
+  // 600-drone point-sampled reconstruction, so this stays bold and
+  // simple rather than intricate.
+  strokeCircle(ctx, 105, 88, 4, 1.6);
+  ctx.beginPath();
+  ctx.moveTo(105, 76);
+  ctx.lineTo(105, 82);
+  ctx.moveTo(105, 94);
+  ctx.lineTo(105, 100);
+  ctx.moveTo(96, 88);
+  ctx.lineTo(101, 88);
+  ctx.moveTo(109, 88);
+  ctx.lineTo(114, 88);
+  ctx.stroke();
+
+  ctx.restore();
+};
+
 // Cake — final stage before the photo + reveal.
 export const cakeScene: SceneDrawer = (ctx, w, h) => {
   ctx.fillStyle = '#fff';
@@ -1213,10 +1513,13 @@ export const SCENE_DRAWERS: Record<string, SceneDrawer> = {
   cake: cakeScene,
   runners: runnersScene,
   bouquet: roseBouquetScene,
+  bouquetFloat: bouquetFloatScene,
   fireworks: fireworksScene,
   fireworksShells: fireworksShellsScene,
   fireworksLaunch: fireworksLaunchScene,
   galaxy: galaxyScene,
   approach: approachScene,
   hug: hugScene,
+  proposal: proposalScene,
+  ring: ringScene,
 };

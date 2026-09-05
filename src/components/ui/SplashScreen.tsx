@@ -225,7 +225,7 @@ export default function SplashScreen() {
         </div>
 
         <h1 className="mt-5 text-xl font-bold tracking-[0.25em] text-white animate-[fadeUp_0.6s_ease-out_0.4s_both]">
-          GAO SOCIAL
+          LOVI
         </h1>
 
         <p className="mt-1.5 text-[10px] tracking-[0.3em] animate-[fadeUp_0.6s_ease-out_0.6s_both]" style={{ color: '#4a6080' }}>

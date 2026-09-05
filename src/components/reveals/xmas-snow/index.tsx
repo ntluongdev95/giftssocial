@@ -32,9 +32,7 @@ import type { TemplateProps } from '../_types';
 const PURPLE     = '#c084fc';    // reindeer
 const VIOLET     = '#a78bfa';    // antlers / highlights
 const PINK       = '#f472b6';    // sleigh / Santa
-const CYAN       = '#60a5fa';    // reins / rays
 const CREAM      = '#fef3c7';    // text
-const RED        = '#f43f5e';    // heart
 
 const DRONE_COUNT = 1200;
 const STAGE_HOLD_MS  = 5000;
@@ -334,6 +332,33 @@ function sampleText(text: string, palette: readonly string[] | string = CREAM): 
 // Multi-tone rose colors + occasional gold "sparkle" points give the
 // drone-heart a spectacular galaxy feel when rotated in 3D.
 // ─────────────────────────────────────────────────────────────────────
+function sampleHeartCurve(count = 1600): Pt[] {
+  // Seeded LCG for deterministic reject sampling (React-19 pure)
+  let seed = 987654321;
+  const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const pts: Pt[] = [];
+  let attempts = 0;
+  let idx = 0;
+  while (pts.length < count && attempts < count * 40) {
+    attempts++;
+    const rx = (rand() - 0.5) * 2.6;
+    const ry = (rand() - 0.5) * 2.6;
+    const a = rx * rx + ry * ry - 1;
+    if (a * a * a - rx * rx * ry * ry * ry > 0) continue;
+    const dist = Math.hypot(rx, ry);
+    // BRIGHT RED palette — 3 red tones + occasional cream sparkle
+    // makes the heart glow like burning ember, not muted rose.
+    let color: string;
+    if (idx % 13 === 0)      color = '#fef3c7';           // sparkle cream
+    else if (dist < 0.35)    color = '#dc2626';           // deep blood red centre
+    else if (dist < 0.75)    color = '#ef4444';           // bright hot red mid
+    else                     color = '#f87171';           // bright coral rim
+    idx++;
+    pts.push({ x: rx, y: -ry, color });                    // flip Y for canvas
+  }
+  return pts;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Draw a REALISTIC 3D-looking Christmas gift box on the canvas:
 //   • Rectangular box body (bright RED)
@@ -430,33 +455,6 @@ function sampleGiftBox(): Pt[] {
   return pts;
 }
 
-function sampleHeartCurve(count = 1600): Pt[] {
-  // Seeded LCG for deterministic reject sampling (React-19 pure)
-  let seed = 987654321;
-  const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  const pts: Pt[] = [];
-  let attempts = 0;
-  let idx = 0;
-  while (pts.length < count && attempts < count * 40) {
-    attempts++;
-    const rx = (rand() - 0.5) * 2.6;
-    const ry = (rand() - 0.5) * 2.6;
-    const a = rx * rx + ry * ry - 1;
-    if (a * a * a - rx * rx * ry * ry * ry > 0) continue;
-    const dist = Math.hypot(rx, ry);
-    // BRIGHT RED palette — 3 red tones + occasional cream sparkle
-    // makes the heart glow like burning ember, not muted rose.
-    let color: string;
-    if (idx % 13 === 0)      color = '#fef3c7';           // sparkle cream
-    else if (dist < 0.35)    color = '#dc2626';           // deep blood red centre
-    else if (dist < 0.75)    color = '#ef4444';           // bright hot red mid
-    else                     color = '#f87171';           // bright coral rim
-    idx++;
-    pts.push({ x: rx, y: -ry, color });                    // flip Y for canvas
-  }
-  return pts;
-}
-
 function packToCount(pts: Pt[], n: number): Pt[] {
   if (pts.length === 0) return Array.from({ length: n }).map(() => ({ x: 0, y: 0 }));
   if (pts.length >= n) {
@@ -543,6 +541,21 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number>(0);
   const [stage, setStage] = useState(0);
+  // The sender's message now lives on a flippable "back of the card"
+  // instead of sitting over the heart — keeps the heart moment focused
+  // on the photo, and gives the message its own postcard-style beat.
+  const [showBack, setShowBack] = useState(false);
+  // Whether the message has EVER been opened — unlike `showBack` (which
+  // toggles off once the user flips back), this stays true so the
+  // reveal only refuses to close before the FIRST viewing, not every
+  // time the card is face-down.
+  const [messageSeen, setMessageSeen] = useState(false);
+  const openMessage = () => { setShowBack(true); setMessageSeen(true); };
+
+  // Which uploaded photo is currently showing inside the heart —
+  // cycles through all of them (not just the first) so a sender who
+  // uploaded several photos actually gets to show them all off.
+  const [heartPhotoIdx, setHeartPhotoIdx] = useState(0);
 
   // ─── Stage sequence ─────────────────────────────────────────
   // Reverted to the ORIGINAL simple emoji-per-stage sequence — the
@@ -581,7 +594,10 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
     if (!cfg) return;
     if (cfg.kind === 'gift') return;                         // wait for tap
     if (stage === stagesConfig.length - 1) {
-      // Final stage — savour then close
+      // Final stage — savour then close. But if there's a message the
+      // sender hasn't seen yet, don't auto-close out from under them —
+      // wait indefinitely until they've opened it at least once.
+      if (kiss.message && !messageSeen) return;
       const t = window.setTimeout(() => onClose?.(), STAGE_HOLD_MS * 2.5);
       return () => window.clearTimeout(t);
     }
@@ -590,7 +606,17 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
       STAGE_HOLD_MS + STAGE_MORPH_MS,
     );
     return () => window.clearTimeout(t);
-  }, [stage, stagesConfig, onClose]);
+  }, [stage, stagesConfig, onClose, kiss.message, messageSeen]);
+
+  // Cycle the photo shown inside the heart — only while the heart
+  // stage (2) is on screen and there's more than one to show.
+  useEffect(() => {
+    if (stage !== 2 || photos.length <= 1) return;
+    const t = window.setInterval(() => {
+      setHeartPhotoIdx(i => (i + 1) % photos.length);
+    }, 2500);
+    return () => window.clearInterval(t);
+  }, [stage, photos.length]);
 
   // Bridge React stage → RAF loop via ref
   const latestStageRef = useRef(0);
@@ -732,11 +758,17 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
       className="fixed inset-0 z-[200] overflow-hidden select-none"
       style={{ background: '#020212', fontFamily: "'Playfair Display', Georgia, serif" }}
       onClick={() => {
-        // On the gift stage, tap OPENS the gift (advances to heart).
-        // On any other stage, tap closes the reveal.
+        // On the gift stage, tap OPENS the gift (advances to the heart).
+        // On the final (heart) stage, if there's a message the sender
+        // hasn't seen yet, the first tap opens it instead of closing —
+        // the reveal can't be dismissed before the message is read at
+        // least once. Once seen, tap closes normally like any other
+        // stage.
         const cfg = stagesConfig[stage];
         if (cfg?.kind === 'gift') {
           setStage(s => s + 1);
+        } else if (isFinalStage && kiss.message && !messageSeen) {
+          openMessage();
         } else {
           onClose?.();
         }
@@ -811,6 +843,39 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
             <path d="M 10 -14 Q 8 -22 12 -28" fill="none" stroke="rgba(200,200,210,0.4)" strokeWidth="1.5" strokeLinecap="round" />
           </g>
 
+          {/* SNOWMAN · standing on the snow bank. Scaled up + given a
+              stronger halo so it reads clearly as its own character
+              instead of a small background prop; the surrounding front-
+              row pines are gapped (see x 80–220 skip above) so nothing
+              clips it now that it's bigger. Blue scarf instead of red —
+              keeps red reserved for the big heart centrepiece. */}
+          <g transform="translate(150 320) scale(1.8)">
+            {/* halo so it doesn't vanish into the dark background */}
+            <ellipse cx="0" cy="-20" rx="26" ry="30" fill="rgba(224,231,255,0.3)" style={{ filter: 'blur(7px)' }} />
+            {/* body — 3 stacked snowballs */}
+            <circle cx="0" cy="-13" r="13" fill="#eef3ff" />
+            <circle cx="0" cy="-31" r="9.5" fill="#f3f7ff" />
+            <circle cx="0" cy="-45" r="7" fill="#f7faff" />
+            {/* arms — thin twig sticks */}
+            <path d="M -8 -31 L -20 -38" stroke="#6b4a2a" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+            <path d="M 8 -31 L 19 -25" stroke="#6b4a2a" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+            {/* scarf — blue, not red */}
+            <rect x="-7" y="-39" width="14" height="4" fill="#2563eb" />
+            <path d="M 4 -35 L 8 -27 L 3 -28 Z" fill="#1d4ed8" />
+            {/* top hat */}
+            <rect x="-8" y="-53" width="16" height="2.5" fill="#1a1a1a" />
+            <rect x="-5" y="-62" width="10" height="10" fill="#1a1a1a" />
+            {/* coal eyes + button mouth hint */}
+            <circle cx="-2.5" cy="-46" r="1" fill="#1a1a1a" />
+            <circle cx="2.5" cy="-46" r="1" fill="#1a1a1a" />
+            {/* carrot nose */}
+            <path d="M 0 -44 L 7 -43 L 0 -42 Z" fill="#fb923c" />
+            {/* coal buttons */}
+            <circle cx="0" cy="-30" r="1" fill="#1a1a1a" />
+            <circle cx="0" cy="-15" r="1" fill="#1a1a1a" />
+            <circle cx="0" cy="-9" r="1" fill="#1a1a1a" />
+          </g>
+
           {/* Pine forest — back row */}
           <g fill="#05070f">
             {Array.from({ length: 24 }).map((_, i) => {
@@ -851,6 +916,8 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
               const x = 30 + i * 85;
               // Leave a gap in the middle for the couple silhouette
               if (x > 500 && x < 700) return null;
+              // Leave a gap around the (now bigger) snowman so it doesn't clip trees
+              if (x > 80 && x < 220) return null;
               const h = 60 + ((i * 41) % 32);
               return (
                 <polygon key={`front-${i}`} points={`${x - 20},380 ${x - 4},${380 - h} ${x + 20},380`} />
@@ -1035,7 +1102,7 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
 
       {/* ── DRONE CANVAS ────────────────────────────────────────
              Stage 0 · gallop: horizontal jitter + bob → running feel
-             Stage 1 · 3D rotateY spin around Y-axis → galaxy heart
+             Stage 2 · 3D rotateY spin around Y-axis → galaxy heart
              Other stages · stationary. */}
       <motion.div
         className="absolute inset-0 pointer-events-none"
@@ -1117,7 +1184,7 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
       {/* (Removed: persistent message. Only shown on final stage
           via the existing block below.) */}
 
-      {/* "Em Yêu" HERO TEXT · huge cursive title above the drone
+      {/* RECIPIENT NAME HERO TEXT · huge cursive title above the drone
           show on Phase 0. Handwritten warm rose glow — sets the
           emotional tone of the whole reveal. */}
       {stage === 0 && (
@@ -1128,19 +1195,6 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 1.6, delay: 0.8, ease: [0.16, 1, 0.3, 1] }}
         >
-          <div style={{
-            fontFamily: "'Cormorant Garamond', 'Playfair Display', Georgia, serif",
-            fontStyle: 'italic',
-            fontWeight: 500,
-            fontSize: 'clamp(20px, 3.4vw, 34px)',
-            color: 'rgba(255,255,255,0.85)',
-            letterSpacing: '0.15em',
-            textTransform: 'uppercase',
-            textShadow: '0 2px 12px rgba(0,0,0,0.7)',
-            marginBottom: 6,
-          }}>
-            Em Yêu
-          </div>
           {/* Personalized recipient name — the true hero line */}
           <div style={{
             fontFamily: "'Playfair Display', 'Cormorant Garamond', Georgia, serif",
@@ -1280,109 +1334,94 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
         </motion.div>
       )}
 
-      {/* PHOTO GARLAND · hanging polaroid ornaments strung across the
-          top of the sky in a gentle downward ARC (like a party
-          banner). Each ornament drops from the top with a soft
-          bounce, alternating tilt for warmth, gently swaying idle.
-          Positions computed on a parametric arc so the layout reads
-          as a coherent decoration, not random scatter. */}
-      {isFinalStage && photos.length > 0 && (
-        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 8 }}>
-          {photos.map((url, i) => {
-            const n = photos.length;
-            // Even fraction 0..1 across the strand
-            const t = n === 1 ? 0.5 : i / (n - 1);
-            // Horizontal: spread 10-90 vw
-            const x = 10 + t * 80;
-            // Arc: dips down in the middle like a hanging garland
-            // (max sag ~4vh at t=0.5)
-            const sag = 4 * Math.sin(t * Math.PI);
-            const y = 22 + sag;
-            // Photo tilts slightly to sit naturally on the string
-            const tiltAngle = (t - 0.5) * 20;     // -10° left → +10° right
-            // String length above each photo (varies slightly for depth)
-            const stringLen = 8 + (i % 3) * 3;    // 8/11/14 vh
-            const stringTop = y - 8;              // where string ends (top of photo)
-            const stringStart = stringTop - stringLen;
+      {/* PHOTO IN THE HEART · the sender's own photo, centred right
+          inside the drone-formed heart (same centre the canvas uses:
+          cx=W/2, cy=H*0.48) — the heart moment now doubles as a photo
+          frame instead of just abstract sparkle dots. When more than
+          one photo was uploaded, they cross-fade through one another
+          (see the cycling effect above) instead of only ever showing
+          the first. */}
+      {stage === 2 && photos.length > 0 && (
+        <motion.div
+          className="absolute pointer-events-none"
+          style={{
+            left: '50%', top: '48%', width: 132, height: 132,
+            marginLeft: -66, marginTop: -66, zIndex: 6,
+          }}
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1, delay: 1.2, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div
+            className="relative size-full overflow-hidden rounded-full"
+            style={{
+              border: '3px solid #fff',
+              boxShadow: '0 0 0 1px rgba(244,63,94,0.5), 0 14px 40px rgba(0,0,0,0.6), 0 0 30px rgba(244,63,94,0.5)',
+            }}
+          >
+            <AnimatePresence>
+              <motion.img
+                key={heartPhotoIdx}
+                src={photos[heartPhotoIdx % photos.length]}
+                alt=""
+                className="absolute inset-0 size-full object-cover"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.8 }}
+              />
+            </AnimatePresence>
+          </div>
+        </motion.div>
+      )}
 
+      {/* PHOTO KEEPSAKE · a small fanned stack of polaroids propped in
+          the snow next to the lantern (not strung across the sky —
+          that competed with the heart/message for attention). Warm
+          gold-edge glow gives it a "worth what you paid for it" look.
+          Capped at 3 shown even if more were uploaded, so the stack
+          stays a tidy little pile instead of sprawling. */}
+      {isFinalStage && photos.length > 0 && (
+        <div
+          className="absolute pointer-events-none"
+          style={{ left: '50%', bottom: '9%', transform: 'translateX(28%)', zIndex: 6 }}
+        >
+          {photos.slice(0, 3).map((url, i) => {
+            const n = Math.min(photos.length, 3);
+            // Fan out from centre: middle photo (or the only one) sits
+            // straight, others tilt/step to either side like a hand of
+            // cards propped against the lantern.
+            const mid = (n - 1) / 2;
+            const off = i - mid;
+            const tiltAngle = off * 11;
+            const xOffset = off * 14;
             return (
               <motion.div
                 key={`p-${i}`}
                 className="absolute"
-                style={{ left: `${x}vw`, top: 0, width: 0, height: 0 }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, delay: 2.0 + i * 0.28 }}
+                style={{
+                  left: xOffset,
+                  bottom: 0,
+                  padding: 4,
+                  paddingBottom: 10,
+                  background: '#fffbf6',
+                  borderRadius: 3,
+                  border: '1px solid #fbbf2488',
+                  boxShadow: '0 10px 22px rgba(0,0,0,0.6), 0 0 18px #fbbf2455',
+                  transform: `translateX(-50%) rotate(${tiltAngle}deg)`,
+                  transformOrigin: '50% 100%',
+                  zIndex: 10 - Math.abs(off),
+                }}
+                initial={{ y: 40, opacity: 0, rotate: tiltAngle }}
+                animate={{ y: 0, opacity: 1, rotate: tiltAngle }}
+                transition={{ duration: 0.9, delay: 2.0 + i * 0.25, ease: [0.16, 1, 0.3, 1] }}
               >
-                {/* STRING · thin line from sky-top to top of ornament */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: `${stringStart}vh`,
-                    height: `${stringLen}vh`,
-                    width: 1,
-                    background: 'linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.7))',
-                    transform: 'translateX(-50%)',
-                    filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.5))',
-                  }}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt=""
+                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 2, display: 'block' }}
                 />
-                {/* Tiny "pinch" knot where string meets the ornament */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: `${stringTop - 0.4}vh`,
-                    width: 4, height: 4,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    transform: 'translateX(-50%)',
-                    boxShadow: '0 0 4px rgba(255,255,255,0.6)',
-                  }}
-                />
-                {/* POLAROID ornament — drops in from top, sways gently */}
-                <motion.div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: `${y}vh`,
-                    padding: 5,
-                    paddingBottom: 14,
-                    background: '#fffbf6',
-                    borderRadius: 3,
-                    boxShadow: `0 12px 24px rgba(0,0,0,0.6), 0 0 22px ${CYAN}33`,
-                    transform: `translate(-50%, 0) rotate(${tiltAngle}deg)`,
-                    transformOrigin: '50% -10%',      // pivot near the pinch knot
-                  }}
-                  initial={{ y: -220, rotate: tiltAngle - 25, opacity: 0 }}
-                  animate={{
-                    y: 0,
-                    rotate: [tiltAngle, tiltAngle + 3, tiltAngle - 3, tiltAngle],
-                    opacity: 1,
-                  }}
-                  transition={{
-                    y:       { duration: 1.1, delay: 2.2 + i * 0.28, ease: [0.34, 1.25, 0.64, 1] },
-                    opacity: { duration: 0.6, delay: 2.2 + i * 0.28 },
-                    rotate: {
-                      duration: 3 + (i % 3),
-                      delay: 3.6 + i * 0.28,
-                      repeat: Infinity,
-                      ease: 'easeInOut',
-                    },
-                  }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={url}
-                    alt=""
-                    style={{
-                      width: 96, height: 96,
-                      objectFit: 'cover',
-                      borderRadius: 2,
-                      display: 'block',
-                    }}
-                  />
-                </motion.div>
               </motion.div>
             );
           })}
@@ -1392,45 +1431,148 @@ export default function XmasSnowReveal({ kiss, onClose }: TemplateProps) {
       {/* Sender message + signature — positioned below the photo
           garland arc + above the drone text, so the eye reads:
           garland → note → title → cottage. */}
-      {isFinalStage && kiss.message && (
-        <motion.div
-          className="absolute inset-x-0 pointer-events-none text-center px-8"
-          style={{ top: '38%', zIndex: 10 }}
-          initial={{ opacity: 0, y: -12 }}
+      {/* "Flip the card" button — the message no longer sits over the
+          heart; tapping this opens it on its own postcard-back screen.
+          stopPropagation so it doesn't trigger the container's
+          tap-to-close. */}
+      {isFinalStage && kiss.message && !showBack && (
+        <motion.button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); openMessage(); }}
+          className="absolute inset-x-0 flex justify-center cursor-pointer"
+          style={{ bottom: '2%', zIndex: 12 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.4, delay: 1.6, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 1, delay: 2.2 }}
         >
-          <div className="max-w-lg mx-auto" style={{
-            fontFamily: "'Cormorant Garamond', Georgia, serif",
-            fontStyle: 'italic',
-            fontSize: 'clamp(18px, 2.8vw, 26px)',
-            color: 'rgba(255,240,240,0.95)',
-            textShadow: `
-              0 2px 14px rgba(0,0,0,0.85),
-              0 0 22px rgba(244,63,94,0.4),
-              0 0 44px rgba(251,191,36,0.25)
-            `,
-            lineHeight: 1.45,
-            letterSpacing: '0.01em',
-          }}>
-            &ldquo;{kiss.message}&rdquo;
-          </div>
-          {kiss.sender_name && (
-            <div style={{
-              marginTop: 10,
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 12,
-              fontWeight: 500,
-              letterSpacing: '0.2em',
-              textTransform: 'uppercase',
-              color: PINK,
-              textShadow: '0 2px 8px rgba(0,0,0,0.7)',
-            }}>
-              — {kiss.sender_name}
-            </div>
-          )}
-        </motion.div>
+          <span
+            className="pointer-events-none inline-flex items-center gap-1.5 rounded-full"
+            style={{
+              padding: '8px 18px',
+              background: 'rgba(0,0,0,0.55)',
+              border: `1px solid ${PINK}55`,
+              backdropFilter: 'blur(4px)',
+              fontFamily: "'Cormorant Garamond', Georgia, serif",
+              fontStyle: 'italic',
+              fontSize: 14,
+              color: 'rgba(255,255,255,0.9)',
+              boxShadow: `0 0 16px ${PINK}33`,
+            }}
+          >
+            💌 Tap to open the card
+          </span>
+        </motion.button>
       )}
+
+      {/* ── POSTCARD BACK ── the message, presented like the back of a
+          real greeting card (kraft paper, sender's signature) instead
+          of floating text over the heart scene. Tap anywhere to flip
+          back — its own onClick stops propagation from the container's
+          tap-to-close. */}
+      <AnimatePresence>
+        {showBack && (
+          <motion.div
+            className="fixed inset-0 z-300 flex items-center justify-center px-6 cursor-pointer"
+            style={{ background: 'rgba(2,2,18,0.88)' }}
+            onClick={(e) => { e.stopPropagation(); setShowBack(false); }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <motion.div
+              className="relative w-full max-w-sm overflow-hidden rounded-2xl"
+              style={{
+                background: 'linear-gradient(160deg, #fdf6e8 0%, #f3e6c8 100%)',
+                boxShadow: '0 30px 70px rgba(0,0,0,0.6)',
+                fontFamily: "'Cormorant Garamond', Georgia, serif",
+              }}
+              initial={{ opacity: 0, scale: 0.9, rotateY: -14 }}
+              animate={{ opacity: 1, scale: 1, rotateY: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {/* Candy-cane stripe banner across the top */}
+              <div style={{
+                height: 8,
+                background: 'repeating-linear-gradient(-45deg, #c1272d 0px, #c1272d 10px, #fdf6e8 10px, #fdf6e8 20px, #1a5c3a 20px, #1a5c3a 30px, #fdf6e8 30px, #fdf6e8 40px)',
+              }} />
+
+              {/* Faint scattered-snowflake texture behind the text —
+                  cheap CSS radial-gradient repeat, very low opacity so
+                  it reads as paper texture, not clutter. */}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  backgroundImage: 'radial-gradient(circle, #c1272d22 1.5px, transparent 1.5px), radial-gradient(circle, #1a5c3a1f 1.5px, transparent 1.5px)',
+                  backgroundSize: '38px 38px, 26px 26px',
+                  backgroundPosition: '0 0, 13px 13px',
+                }}
+              />
+
+              {/* Gold double-line frame, inset from the card edge */}
+              <div
+                className="pointer-events-none absolute rounded-xl"
+                style={{ inset: 10, border: '1px solid #c9973bcc' }}
+              />
+              <div
+                className="pointer-events-none absolute rounded-lg"
+                style={{ inset: 14, border: '1px solid #c9973b55' }}
+              />
+
+              {/* Holly sprig corner ornaments */}
+              <svg width="46" height="46" viewBox="0 0 46 46" className="pointer-events-none absolute left-2 top-3" style={{ opacity: 0.9 }}>
+                <g fill="#1a5c3a">
+                  <path d="M6 20 C2 14 6 6 14 8 C12 2 20 0 22 6 C28 2 34 8 30 14 C36 14 36 22 30 22 C34 28 26 32 22 26 C20 32 12 30 12 24 C6 26 2 20 6 20 Z" />
+                </g>
+                <circle cx="16" cy="14" r="3" fill="#c1272d" />
+                <circle cx="24" cy="10" r="3" fill="#c1272d" />
+                <circle cx="12" cy="21" r="3" fill="#c1272d" />
+              </svg>
+              <svg width="46" height="46" viewBox="0 0 46 46" className="pointer-events-none absolute right-2 top-3" style={{ opacity: 0.9, transform: 'scaleX(-1)' }}>
+                <g fill="#1a5c3a">
+                  <path d="M6 20 C2 14 6 6 14 8 C12 2 20 0 22 6 C28 2 34 8 30 14 C36 14 36 22 30 22 C34 28 26 32 22 26 C20 32 12 30 12 24 C6 26 2 20 6 20 Z" />
+                </g>
+                <circle cx="16" cy="14" r="3" fill="#c1272d" />
+                <circle cx="24" cy="10" r="3" fill="#c1272d" />
+                <circle cx="12" cy="21" r="3" fill="#c1272d" />
+              </svg>
+
+              <div className="relative px-8 pb-8 pt-11 text-center">
+                <div style={{ fontSize: 20, marginBottom: 14, letterSpacing: 4 }}>✨ 🎄 ✨</div>
+                <p
+                  className="italic"
+                  style={{ fontSize: 'clamp(17px, 3vw, 21px)', color: '#3a2a1a', lineHeight: 1.55 }}
+                >
+                  &ldquo;{kiss.message}&rdquo;
+                </p>
+                {kiss.sender_name && (
+                  <>
+                    <div style={{ margin: '16px auto 0', width: 60, height: 1, background: '#c9973b99' }} />
+                    <div style={{
+                      marginTop: 12,
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      letterSpacing: '0.2em',
+                      textTransform: 'uppercase',
+                      color: '#a8471f',
+                    }}>
+                      — {kiss.sender_name}
+                    </div>
+                  </>
+                )}
+                <div
+                  className="mt-6 text-xs"
+                  style={{ color: '#8a7250', fontFamily: "'Inter', sans-serif" }}
+                >
+                  Tap to flip the card back
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

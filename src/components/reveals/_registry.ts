@@ -35,6 +35,10 @@ import { SorryOrigamiConfig }    from './sorry-origami';
 import { PropRingConfig }        from './prop-ring';
 import { PropStarsConfig }       from './prop-stars';
 import { PropPetalsConfig }      from './prop-petals';
+import { TetMaiDaoConfig }       from './tet-mai-dao';
+import { TetFirecrackerConfig }  from './tet-firecracker';
+import { NewyearCountdownConfig } from './newyear-countdown';
+import { TetLongDistanceConfig } from './tet-long-distance';
 
 // Daily — everyday casual gifts (no special occasion needed)
 import { DailyGoodnightConfig }   from './daily-goodnight';
@@ -65,6 +69,10 @@ export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [PropRingConfig.id]:      PropRingConfig,
   [PropStarsConfig.id]:     PropStarsConfig,
   [PropPetalsConfig.id]:    PropPetalsConfig,
+  [TetMaiDaoConfig.id]:        TetMaiDaoConfig,
+  [TetFirecrackerConfig.id]:   TetFirecrackerConfig,
+  [NewyearCountdownConfig.id]: NewyearCountdownConfig,
+  [TetLongDistanceConfig.id]:  TetLongDistanceConfig,
   // Daily
   [DailyGoodnightConfig.id]:   DailyGoodnightConfig,
   [DailyGoodnight2Config.id]:  DailyGoodnight2Config,

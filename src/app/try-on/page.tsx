@@ -325,7 +325,7 @@ function DiscoverView({
             Nails Studio
           </span>
           <span className="text-[9px] uppercase tracking-[0.25em] text-[#1a1a2e]/55">
-            by Gao Social
+            by LoVi
           </span>
         </div>
         <div className="h-9 w-9" />
@@ -422,7 +422,7 @@ function DiscoverView({
 
             {/* Desktop attribution — sits at the bottom of the left column */}
             <p className="hidden lg:block mt-10 text-[10px] uppercase tracking-[0.2em] text-[#1a1a2e]/35">
-              Powered by MediaPipe hand-tracking · made with ✨ by Gao Social
+              Powered by MediaPipe hand-tracking · made with ✨ by LoVi
             </p>
           </div>
 
@@ -529,7 +529,7 @@ function DiscoverView({
         </div>
 
         <p className="mt-2 shrink-0 text-center text-[9px] uppercase tracking-[0.18em] text-[#1a1a2e]/35 lg:hidden">
-          Powered by MediaPipe · made with ✨ by Gao Social
+          Powered by MediaPipe · made with ✨ by LoVi
         </p>
       </main>
     </div>
@@ -1203,7 +1203,7 @@ function CameraView({
           <ArrowLeft size={18} />
         </button>
         <div className="flex flex-col items-center">
-          <span className="text-[10px] uppercase tracking-[0.3em] text-white/60">Gao Social</span>
+          <span className="text-[10px] uppercase tracking-[0.3em] text-white/60">LoVi</span>
           <span className="text-sm font-bold flex items-center gap-1.5">
             <Sparkles size={14} className="text-[#00d4ff]" /> Nail try-on
           </span>

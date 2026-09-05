@@ -23,24 +23,24 @@ const caveat = Caveat({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Gao Social — Map-First Social Platform',
-    template: '%s | Gao Social',
+    default: 'LoVi — Map-First Social Platform',
+    template: '%s | LoVi',
   },
   description: 'Discover people, businesses, and events on a live world map. Connect, act, and explore — not scroll. The world, not the feed.',
   keywords: ['social network', 'map', 'discover', 'events', 'businesses', 'signals', 'real-time', 'location', 'PWA'],
   manifest: '/manifest.json',
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://app.gao.social'),
   openGraph: {
-    title: 'Gao Social — Map-First Social Platform',
+    title: 'LoVi — Map-First Social Platform',
     description: 'Discover people, businesses, and events on a live world map.',
-    siteName: 'Gao Social',
+    siteName: 'LoVi',
     type: 'website',
     locale: 'en_US',
-    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'Gao Social' }],
+    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'LoVi' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Gao Social',
+    title: 'LoVi',
     description: 'The world, not the feed.',
     images: ['/og-image.png'],
   },
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Gao Social',
+    title: 'LoVi',
   },
   other: {
     'mobile-web-app-capable': 'yes',

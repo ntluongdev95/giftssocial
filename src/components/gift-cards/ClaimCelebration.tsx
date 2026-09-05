@@ -532,7 +532,7 @@ export default function ClaimCelebration({
               textTransform: 'uppercase',
             }}
           >
-            ◆  Gao Social  ◆
+            ◆  LoVi  ◆
           </motion.text>
 
           {/* ── Card content rendered INSIDE the drone outline ─────────── */}
@@ -737,7 +737,7 @@ export default function ClaimCelebration({
                 textTransform: 'uppercase',
               }}
             >
-              ◆ Gao Social
+              ◆ LoVi
             </text>
           </motion.g>
 

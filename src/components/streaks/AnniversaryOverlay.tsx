@@ -312,7 +312,7 @@ export function AnniversaryOverlay({
           </div>
 
           <div className="mt-6 text-[10px] text-[#4a5068]">
-            via Gao Social
+            via LoVi
           </div>
         </motion.div>
 

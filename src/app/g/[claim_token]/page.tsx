@@ -184,7 +184,7 @@ export default function GiftCardClaimPage() {
           <ArrowLeft size={16} />
         </button>
         <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.3em] text-white/55">
-          <ShieldCheck size={12} className="text-[#00d4ff]" /> Gao Social Drop
+          <ShieldCheck size={12} className="text-[#00d4ff]" /> LoVi Drop
         </span>
         <div className="h-9 w-9" />
       </header>
@@ -367,7 +367,7 @@ export default function GiftCardClaimPage() {
                 )}
 
                 <p className="mt-3 text-center text-[11px] text-[#4a5068] lg:text-left lg:text-xs">
-                  After claiming, your card lives in your Gao Social wallet — show it at the shop to redeem.
+                  After claiming, your card lives in your LoVi wallet — show it at the shop to redeem.
                 </p>
               </motion.div>
             </div>

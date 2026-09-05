@@ -413,7 +413,7 @@ function CardDetailSheet({
           <div className="min-w-0">
             <h3 className="text-base font-bold truncate lg:text-lg">{c.name}</h3>
             <p className="mt-0.5 text-[11px] text-[#a3adc3] truncate lg:text-xs">
-              {c.business_name || 'Gao Social'}
+              {c.business_name || 'LoVi'}
             </p>
           </div>
           <button
@@ -453,7 +453,7 @@ function CardDetailSheet({
                   </p>
                   <p className="mt-0.5 text-sm font-bold truncate">
                     {c.gifter_display_name
-                      || (c.gifter_username ? `@${c.gifter_username}` : 'A Gao Social friend')}
+                      || (c.gifter_username ? `@${c.gifter_username}` : 'A LoVi friend')}
                   </p>
                   {c.gift_message && (
                     <p className="mt-1.5 text-xs text-white/80 italic leading-relaxed">

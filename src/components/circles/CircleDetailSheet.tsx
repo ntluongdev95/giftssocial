@@ -101,7 +101,7 @@ const CIRCLE_OFFERS: Record<string, Signal[]> = {
     },
     {
       id: 'offer_beauty_3', type: 'offer', owner_type: 'business', owner_id: 'biz_beauty_3', category: 'Beauty',
-      title: '$20 Off Hair Color — Studio 214', description: 'Mention Gao Social',
+      title: '$20 Off Hair Color — Studio 214', description: 'Mention LoVi',
       location: { type: 'Point', coordinates: [-96.790, 32.800] },
       radius: 2000, visibility: 'public', verified: false, trust_score_snapshot: 48,
       status: 'active', starts_at: new Date().toISOString(),

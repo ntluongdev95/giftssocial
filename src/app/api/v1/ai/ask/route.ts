@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1000,
-      system: `You are Ask Gao, a trusted local discovery assistant for Gao Social.
+      system: `You are Ask Gao, a trusted local discovery assistant for LoVi.
 Only recommend entities with trust_score >= 60 from the provided context.
 Return max 3 recommendations.
 Respond ONLY with valid JSON in this format:
