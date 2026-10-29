@@ -56,3 +56,7 @@ public/sw.js.map
 public/workbox-*.js
 public/workbox-*.js.map
 .claude
+
+# editor local-history backups — these have held raw .env snapshots
+# (found 4 timestamped .env copies in here uncommitted); never track
+.history/

@@ -20,14 +20,29 @@ import { getKissUrl } from '@/lib/kiss-slug';
 // with the journey (intro step) and carries through all steps —
 // otherwise the sender's song only plays inside the template reveal,
 // which arrives many seconds after the flight.
-function readSongUrl(kiss: { template_data?: string | null }): string {
-  if (!kiss.template_data) return '';
-  try {
-    const d = JSON.parse(kiss.template_data);
-    return typeof d?.song === 'string' ? d.song : '';
-  } catch {
-    return '';
+//
+// If the sender left the optional song field empty, some templates
+// fall back to a curated default (see DEFAULT_SONG_BY_TEMPLATE) so the
+// reveal never plays silently.
+const DEFAULT_SONG_BY_TEMPLATE: Record<string, string> = {
+  // Yiruma – River Flows In You (official, Mind Tailor Music). Gentle
+  // instrumental, no lyrics to compete with the on-screen message —
+  // fits the goodnight/confession mood.
+  'daily-goodnight': 'https://www.youtube.com/watch?v=9Z_9VUrLUE4',
+};
+
+function readSongUrl(kiss: { template_data?: string | null; template_id?: string | null }): string {
+  let fromSender = '';
+  if (kiss.template_data) {
+    try {
+      const d = JSON.parse(kiss.template_data);
+      fromSender = typeof d?.song === 'string' ? d.song : '';
+    } catch {
+      fromSender = '';
+    }
   }
+  if (fromSender) return fromSender;
+  return (kiss.template_id && DEFAULT_SONG_BY_TEMPLATE[kiss.template_id]) || '';
 }
 
 // Extract the sender's password + hint (if set) from template_data JSON.
@@ -165,7 +180,8 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
   const stopBgMusicRef = useRef<(() => void) | null>(null);
   const hasFlownRef = useRef(false);
 
-  // Sender's chosen song URL (if any). When set, we skip the synth
+  // Sender's chosen song URL, or a per-template default if they left it
+  // blank (see DEFAULT_SONG_BY_TEMPLATE). When set, we skip the synth
   // playRomanticBg() so the two audio streams don't clash — AudioPlayer
   // handles it end-to-end from the intro step.
   const senderSong = readSongUrl(kiss);
@@ -378,10 +394,16 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           <AudioPlayer
             url={senderSong}
             accent="#ec4899"
-            // Auto-start the moment the receiver reaches the template
-            // reveal step (they already tapped to open the kiss, so
-            // this counts as a user gesture for browser autoplay).
-            autoStart={step === 'template'}
+            // Auto-start immediately — this overlay only ever mounts
+            // because the receiver just tapped to open the kiss (a
+            // notification, a share link, a map pin), which counts as
+            // the user gesture browsers require for autoplay. Used to
+            // gate this on step === 'template', so the song stayed
+            // silent through the whole intro → flying → password
+            // journey and only started partway through — contradicting
+            // the "AudioPlayer handles it end-to-end from the intro
+            // step" intent stated where senderSong is read above.
+            autoStart
           />
         )}
 
@@ -394,9 +416,15 @@ export default function KissReplayOverlay({ kiss, onClose, onFlyStart }: Props) 
           >
             {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
-          <button onClick={onClose} className="h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white cursor-pointer transition-colors" style={{ background: 'rgba(0,0,0,0.5)' }}>
-            <X size={18} />
-          </button>
+          {/* daily-goodnight has no way back in once closed (it's a
+              one-time gift moment, not a page you revisit) — hide the
+              manual close so a stray tap can't lose it. Other
+              templates keep the escape hatch. */}
+          {kiss.template_id !== 'daily-goodnight' && (
+            <button onClick={onClose} className="h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white cursor-pointer transition-colors" style={{ background: 'rgba(0,0,0,0.5)' }}>
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         {/* ── Step 1: Cinematic Intro — gifts + letters drop, then the

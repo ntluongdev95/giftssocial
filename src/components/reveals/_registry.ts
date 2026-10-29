@@ -20,6 +20,7 @@ import { HeartBlastConfig }      from './val-heart-blast/config';
 import { XmasSnowConfig }        from './xmas-snow/config';
 import { BdayPartyConfig }       from './bday-party/config';
 import { BdayJourneyConfig }     from './bday-journey';
+import { SilkBlossomConfig }     from './silk-blossom/config';
 
 // Scaffolds (using PlaceholderReveal) — customize by rewriting index.tsx
 import { ValLoveLetterConfig }   from './val-love-letter';
@@ -48,10 +49,12 @@ import { DailyLunchConfig }       from './daily-lunch';
 import { DailyCoffeeConfig }      from './daily-coffee';
 import { DailyThinkingConfig }    from './daily-thinking';
 import { DailySorryConfig }       from './daily-sorry';
+import { DailySorryFlowerConfig } from './daily-sorry-flower';
 
 /** All registered templates, keyed by config.id. */
 export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [RoseRainConfig.id]:      RoseRainConfig,
+  [SilkBlossomConfig.id]:   SilkBlossomConfig,
   [HeartBlastConfig.id]:    HeartBlastConfig,
   [XmasSnowConfig.id]:      XmasSnowConfig,
   [BdayPartyConfig.id]:     BdayPartyConfig,
@@ -81,6 +84,7 @@ export const TEMPLATE_REGISTRY: Record<string, TemplateConfig> = {
   [DailyCoffeeConfig.id]:      DailyCoffeeConfig,
   [DailyThinkingConfig.id]:    DailyThinkingConfig,
   [DailySorryConfig.id]:       DailySorryConfig,
+  [DailySorryFlowerConfig.id]: DailySorryFlowerConfig,
 };
 
 /** Ordered list of every registered template. */

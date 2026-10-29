@@ -23,6 +23,11 @@ interface Props {
   onSuccess: () => void;
   senderName?: string;
   accent?: string;
+  /** Hide the "{sender} locked this away" + "Enter the code to unlock"
+   * lines, showing only `hint` (no "💡 Hint:" prefix). Off by default
+   * so existing callers (KissReplayOverlay, tet-firecracker) are
+   * unaffected. */
+  minimal?: boolean;
 }
 
 const MAX_LEN = 8;
@@ -33,7 +38,7 @@ const GOLD = '#d4a574';
 const GOLD_BRIGHT = '#fbbf24';
 
 export default function PasswordLock({
-  correct, hint, onSuccess, senderName, accent = '#ec4899',
+  correct, hint, onSuccess, senderName, accent = '#ec4899', minimal = false,
 }: Props) {
   const [entered, setEntered] = useState('');
   const [state, setState] = useState<'idle' | 'wrong' | 'correct'>('idle');
@@ -144,26 +149,30 @@ export default function PasswordLock({
       >
         {/* Sender + hint text — hovers above the door */}
         <div className="absolute -top-20 inset-x-0 text-center px-4 pointer-events-none">
-          <div
-            className="text-white/90 font-semibold"
-            style={{
-              fontFamily: '"Dancing Script", cursive',
-              fontSize: 22,
-              textShadow: `0 2px 12px rgba(0,0,0,0.8), 0 0 20px ${accent}66`,
-            }}
-          >
-            {senderName ? `${senderName} locked this away` : 'Something secret is waiting'}
-          </div>
-          <div className="text-[11px] text-white/60 mt-1">
-            {state === 'wrong'
-              ? `Not quite — try again (${attempts})`
-              : state === 'correct'
-              ? '🔓 Unlocking…'
-              : 'Enter the code to unlock'}
-          </div>
+          {!minimal && (
+            <div
+              className="text-white/90 font-semibold"
+              style={{
+                fontFamily: '"Dancing Script", cursive',
+                fontSize: 22,
+                textShadow: `0 2px 12px rgba(0,0,0,0.8), 0 0 20px ${accent}66`,
+              }}
+            >
+              {senderName ? `${senderName} locked this away` : 'Something secret is waiting'}
+            </div>
+          )}
+          {!minimal && (
+            <div className="text-[11px] text-white/60 mt-1">
+              {state === 'wrong'
+                ? `Not quite — try again (${attempts})`
+                : state === 'correct'
+                ? '🔓 Unlocking…'
+                : 'Enter the code to unlock'}
+            </div>
+          )}
           {hint && state === 'idle' && (
             <div className="text-[11px] italic mt-2 max-w-xs mx-auto" style={{ color: accent }}>
-              💡 Hint: {hint}
+              {minimal ? hint : `💡 Hint: ${hint}`}
             </div>
           )}
         </div>

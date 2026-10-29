@@ -77,6 +77,7 @@ export default async function KissSharePage({ params }: Props) {
   let exhausted = false;
   let senderName = '';
   let emoji = '💝';
+  let maxOpens = 20;
   // The URL segment may be a custom slug or the raw kiss ID — resolve to
   // the canonical ID so the /world?kiss= redirect target matches what the
   // map's already-loaded kiss list keys on.
@@ -91,7 +92,8 @@ export default async function KissSharePage({ params }: Props) {
     ).bind(id, id).first<{ id: string; emoji: string; open_count: number; max_opens: number; sender_name: string }>();
     if (row) {
       canonicalId = row.id;
-      exhausted = (row.open_count ?? 0) >= (row.max_opens ?? 20);
+      maxOpens = row.max_opens ?? 20;
+      exhausted = (row.open_count ?? 0) >= maxOpens;
       senderName = row.sender_name || '';
       emoji = row.emoji || '💝';
     }
@@ -105,7 +107,7 @@ export default async function KissSharePage({ params }: Props) {
           <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 10 }}>This gift is all used up</h1>
           <p style={{ fontSize: 14, color: '#a3adc3', lineHeight: 1.6, marginBottom: 24 }}>
             {senderName ? <><b style={{ color: '#f472b6' }}>{senderName}</b> sent a special gift,<br /></> : null}
-            but it has already been opened 5 times 💝
+            but it has already been opened {maxOpens} times 💝
           </p>
           <a href="/world" style={{ display: 'inline-block', padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg, #f472b6, #ec4899)', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>
             Back to home

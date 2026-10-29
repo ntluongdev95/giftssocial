@@ -3,9 +3,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut, Bell, Radio } from 'lucide-react';
-import dynamic from 'next/dynamic';
-const LivePanel = dynamic(() => import('@/components/live/LivePanel'), { ssr: false });
+import { Globe, MapPin, Users, Zap, User, Plus, ScanFace, LogOut, Bell, Heart } from 'lucide-react';
 import { DomainBadge } from '@/components/gao/DomainBadge';
 import { useAuthStore } from '@/stores/auth-store';
 import { useGaoIdStore } from '@/stores/gao-id-store';
@@ -31,7 +29,6 @@ export default function Sidebar() {
   const isLoggedIn = !!user || hasCookie;
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
-  const [showLive, setShowLive] = useState(false);
 
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -110,21 +107,20 @@ export default function Sidebar() {
             );
           })}
 
-          {/* Live */}
-          <button
-            onClick={() => setShowLive(true)}
-            title="Live"
-            className="flex items-center transition-colors cursor-pointer w-full lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium relative"
+          {/* Lovi — the landing page ("/"), where the mascot lives */}
+          <Link
+            href="/"
+            title="Lovi"
+            className="flex items-center transition-colors cursor-pointer lg:justify-center lg:w-11 lg:h-11 lg:rounded-xl xl:justify-start xl:w-auto xl:h-auto xl:gap-3 xl:rounded-xl xl:px-3 xl:py-2.5 xl:text-sm xl:font-medium"
             style={{
-              color: showLive ? '#f87171' : '#a3adc3',
-              background: showLive ? 'rgba(239,68,68,0.08)' : 'transparent',
-              borderLeft: showLive ? '3px solid #f87171' : '3px solid transparent',
+              color: pathname === '/' ? '#ff6f9c' : '#a3adc3',
+              background: pathname === '/' ? 'rgba(255,111,156,0.08)' : 'transparent',
+              borderLeft: pathname === '/' ? '3px solid #ff6f9c' : '3px solid transparent',
             }}
           >
-            <Radio size={18} strokeWidth={1.5} className={`shrink-0 ${showLive ? 'animate-pulse' : ''}`} />
-            <span className="hidden xl:inline">Live</span>
-            <span className="lg:absolute lg:top-2 lg:right-2 xl:static xl:ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-          </button>
+            <Heart size={18} strokeWidth={pathname === '/' ? 2.2 : 1.5} className="shrink-0" />
+            <span className="hidden xl:inline">Lovi</span>
+          </Link>
 
           {/* Notifications */}
           {isLoggedIn && (
@@ -208,7 +204,6 @@ export default function Sidebar() {
       </aside>
 
       <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
-      {showLive && <LivePanel isOpen={showLive} onClose={() => setShowLive(false)} />}
     </>
   );
 }

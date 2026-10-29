@@ -4,9 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Globe, MapPin, Users, Zap, User, ScanFace, Bell, Radio } from 'lucide-react';
-import dynamic from 'next/dynamic';
-const LivePanel = dynamic(() => import('@/components/live/LivePanel'), { ssr: false });
+import { Globe, MapPin, Users, Zap, User, ScanFace, Bell, Heart } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useNotifications } from '@/hooks/useNotifications';
 import AuthPopup from '@/components/ui/AuthPopup';
@@ -24,7 +22,6 @@ export default function BottomNav() {
   const isLoggedIn = useAuthStore((s) => s.isAuthed);
   const { unreadCount } = useNotifications();
   const [showAuth, setShowAuth] = useState(false);
-  const [showLive, setShowLive] = useState(false);
 
   return (
     <>
@@ -68,27 +65,24 @@ export default function BottomNav() {
           );
         })}
 
-        {/* Live */}
-        <button onClick={() => setShowLive(true)} className="flex flex-1 justify-center cursor-pointer">
+        {/* Lovi — the landing page ("/"), where the mascot lives */}
+        <Link href="/" className="flex flex-1 justify-center">
           <motion.div
             whileTap={{ scale: 0.92 }}
-            className="flex flex-col items-center gap-0.5 py-1 relative"
-            style={{ color: showLive ? '#f87171' : '#4a5068' }}
+            className="flex flex-col items-center gap-0.5 py-1"
+            style={{ color: pathname === '/' ? '#ff6f9c' : '#4a5068' }}
           >
             <span
               className="mb-0.5 h-1 w-1 rounded-full transition-all duration-200"
               style={{
-                background: showLive ? '#f87171' : 'transparent',
-                boxShadow: showLive ? '0 0 6px rgba(239,68,68,0.6)' : 'none',
+                background: pathname === '/' ? '#ff6f9c' : 'transparent',
+                boxShadow: pathname === '/' ? '0 0 6px rgba(255,111,156,0.6)' : 'none',
               }}
             />
-            <div className="relative">
-              <Radio size={24} strokeWidth={showLive ? 2.5 : 1.5} />
-              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-            </div>
-            <span className="text-[10px] font-medium">Live</span>
+            <Heart size={24} strokeWidth={pathname === '/' ? 2.5 : 1.5} />
+            <span className="text-[10px] font-medium">Lovi</span>
           </motion.div>
-        </button>
+        </Link>
 
         {/* Profile / Login */}
         {isLoggedIn ? (
@@ -127,7 +121,6 @@ export default function BottomNav() {
 
     </nav>
     <AuthPopup open={showAuth} onClose={() => setShowAuth(false)} />
-    {showLive && <LivePanel isOpen={showLive} onClose={() => setShowLive(false)} />}
   </>
   );
 }

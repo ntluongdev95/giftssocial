@@ -219,8 +219,13 @@ export default function AudioPlayer({ url, accent = '#ec4899', autoStart = false
         background: 'rgba(0,0,0,0.55)',
         border: `1px solid ${accent}55`,
         boxShadow: `0 8px 24px rgba(0,0,0,0.5)`,
-        width: kind === 'youtube' ? 280 : 300,
-        height: kind === 'youtube' ? 158 : kind === 'spotify' ? 80 : 120,
+        // YouTube shrunk from 280x158 — at full video-frame size it
+        // covered too much of whatever sits behind it (map labels, the
+        // reveal underneath). 182x102 keeps the same 16:9 frame, just
+        // ~36% less screen area, while staying big enough to still
+        // read as "a video is playing" rather than a blank box.
+        width: kind === 'youtube' ? 182 : 300,
+        height: kind === 'youtube' ? 102 : kind === 'spotify' ? 80 : 120,
       }}
       onClick={(e) => e.stopPropagation()}
     >

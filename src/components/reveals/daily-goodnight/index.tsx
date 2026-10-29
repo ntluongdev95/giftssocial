@@ -2,15 +2,11 @@
 
 
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { X } from 'lucide-react';
-import { getKissString } from '../_shared/useTemplateData';
+import { motion, AnimatePresence } from 'framer-motion';
+import { getKissString, parseKissData } from '../_shared/useTemplateData';
 import type { TemplateProps, TemplateConfig } from '../_types';
 import DailyGoodnight2Reveal from '../daily-goodnight-2';
-
-// Reveal auto-completes after this many ms — parent overlay advances
-// to the share step. User can also tap the button to advance sooner.
-const REVEAL_DURATION_MS = 32_000;
+import PasswordLock from '@/components/map/PasswordLock';
 
 // ─── Palette ─────────────────────────────────────────────────────────
 const ACCENT      = '#f59e0b';   // warm amber   // deep terracotta
@@ -130,9 +126,9 @@ function ParticleHeart({ delay = 0 }: { delay?: number }) {
         sx: heartCx + (Math.random() - 0.5) * W * 1.8,
         sy: heartCy + (Math.random() - 0.5) * H * 1.6,
         size: 0.7 + Math.random() * 1.5,
-        hue: 348 + Math.random() * 14,
-        light: 42 + dist * 24 + Math.random() * 10,
-        alpha: 0.6 + Math.random() * 0.35,
+        hue: 356 + Math.random() * 8,
+        light: 38 + dist * 22 + Math.random() * 8,
+        alpha: 0.7 + Math.random() * 0.3,
         twinkle: Math.random() * Math.PI * 2,
       });
     }
@@ -271,7 +267,7 @@ function ParticleHeart({ delay = 0 }: { delay?: number }) {
           y = gy + (p.ty - gy) * eased;
           colorH = 210 + (p.hue - 210) * eased;
           colorL = 82 + (p.light - 82) * eased;
-          colorS = 30 + (88 - 30) * eased;
+          colorS = 30 + (100 - 30) * eased;
         } else {
           // Heart phase 4: idle breathe
           const heartT = (elapsed - morphEnd) / 1000;
@@ -280,7 +276,7 @@ function ParticleHeart({ delay = 0 }: { delay?: number }) {
           const by = heartCy + (p.ty - heartCy) * breath;
           x = bx + (Math.random() - 0.5) * 0.8;
           y = by + (Math.random() - 0.5) * 0.8;
-          colorH = p.hue; colorL = p.light; colorS = 88;
+          colorH = p.hue; colorL = p.light; colorS = 100;
         }
 
         ctx.fillStyle = `hsla(${colorH}, ${colorS}%, ${colorL}%, ${p.alpha})`;
@@ -327,17 +323,220 @@ function ParticleHeart({ delay = 0 }: { delay?: number }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// DroneShow — small glowing "drones" fly in from off-screen and land
+// along the border of whatever they're revealing (here: the character
+// video card), like a real drone light show assembling a shape. Same
+// fly-in-and-land technique as HeroDroneText, generalized from
+// individual glyphs to points around a rectangle. Renders inside a
+// `position: relative` wrapper matching the target's own box so the
+// percentage landing points line up with its edges.
+// ─────────────────────────────────────────────────────────────────────
+function DroneShow() {
+  const drones = useMemo(() => (
+    Array.from({ length: 46 }).map((_, i) => {
+      const s = (i * 2654435761) >>> 0;
+      const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
+      const edge = i % 4;              // 0 top, 1 right, 2 bottom, 3 left
+      const t = r(1);
+      let tx: number, ty: number;
+      if (edge === 0) { tx = t * 100; ty = 0; }
+      else if (edge === 1) { tx = 100; ty = t * 100; }
+      else if (edge === 2) { tx = t * 100; ty = 100; }
+      else { tx = 0; ty = t * 100; }
+      return {
+        tx, ty,
+        fromX: (r(2) - 0.5) * 140,     // vw
+        fromY: (r(3) - 0.5) * 100 - 20, // vh, biased upward
+        delay: 0.2 + r(4) * 1.3,
+      };
+    })
+  ), []);
+
+  return (
+    <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 2 }}>
+      {drones.map((d, i) => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            left: `${d.tx}%`, top: `${d.ty}%`, width: 5, height: 5,
+            marginLeft: -2.5, marginTop: -2.5,
+            background: '#fff',
+            boxShadow: '0 0 6px #fff, 0 0 14px #93c5fd, 0 0 22px #93c5fd88',
+          }}
+          initial={{ x: `${d.fromX}vw`, y: `${d.fromY}vh`, opacity: 0, scale: 0.4 }}
+          animate={{ x: 0, y: 0, opacity: [0, 1, 1, 0.6], scale: [0.4, 1.3, 1, 0.8] }}
+          transition={{ duration: 1.4, delay: d.delay, ease: [0.16, 1, 0.3, 1] }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// MatrixRain — hacker-style falling/streaming text. Columns confined
+// to the left/right margins (skips the centre band) so nothing crosses
+// in front of the video card that sits there; a couple of rows drift
+// across the very top. Same technique already proven in
+// daily-sorry-flower, recoloured to this template's warm amber palette.
+// ─────────────────────────────────────────────────────────────────────
+function MatrixRain({ text }: { text: string }) {
+  const stream = useMemo(() => `${text}   `.repeat(4), [text]);
+
+  // Spread across the FULL width, including behind the video card —
+  // the card sits at a higher z-index and is opaque, so it naturally
+  // covers just its own rectangle while the empty space around/below
+  // it (where the card doesn't reach) still shows the stream passing
+  // through instead of a dead gap.
+  const columns = useMemo(() => (
+    Array.from({ length: 24 }).map((_, i) => {
+      const s = ((i + 300) * 2654435761) >>> 0;
+      const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
+      return {
+        left: r(1) * 100,
+        dur: 3.5 + r(2) * 2.5,
+        delay: r(3) * 4,
+        opacity: 0.4 + r(4) * 0.4,
+        fontSize: 16 + r(5) * 8,
+      };
+    })
+  ), []);
+
+  const rows = useMemo(() => (
+    Array.from({ length: 5 }).map((_, i) => {
+      const s = ((i + 700) * 2654435761) >>> 0;
+      const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
+      return {
+        top: 4 + (i / 5) * 14 + r(1) * 3,
+        dur: 5 + r(2) * 3,
+        delay: r(3) * 4,
+        reverse: i % 2 === 0,
+        opacity: 0.25 + r(4) * 0.3,
+      };
+    })
+  ), []);
+
+  const glowStyle = {
+    fontFamily: '"Courier New", monospace',
+    fontWeight: 700,
+    color: '#ff5fa8',
+    textShadow: '0 0 6px #ff5fa8, 0 0 14px #ff5fa888',
+    letterSpacing: '0.3em',
+    whiteSpace: 'nowrap' as const,
+  };
+
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+      {columns.map((c, i) => (
+        <motion.div
+          key={`col-${i}`}
+          className="absolute"
+          style={{ left: `${c.left}%`, top: '-25%', writingMode: 'vertical-rl', opacity: c.opacity, fontSize: c.fontSize, ...glowStyle }}
+          animate={{ top: ['-25%', '125%'] }}
+          transition={{ duration: c.dur, delay: c.delay, repeat: Infinity, ease: 'linear' }}
+        >
+          {stream}
+        </motion.div>
+      ))}
+      {rows.map((row, i) => (
+        <motion.div
+          key={`row-${i}`}
+          className="absolute"
+          style={{ top: `${row.top}%`, opacity: row.opacity, fontSize: 18, ...glowStyle }}
+          initial={{ left: row.reverse ? '115%' : '-70%' }}
+          animate={{ left: row.reverse ? '-70%' : '115%' }}
+          transition={{ duration: row.dur, delay: row.delay, repeat: Infinity, ease: 'linear' }}
+        >
+          {stream}
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────
+// useTypewriter — reveals `text` one character at a time.
+// ─────────────────────────────────────────────────────────────────────
+function useTypewriter(text: string, speed = 38, startDelay = 300) {
+  const [rendered, setRendered] = useState('');
+  useEffect(() => {
+    let i = 0;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const startTimer = setTimeout(() => {
+      interval = setInterval(() => {
+        i++;
+        setRendered(text.slice(0, i));
+        if (i >= text.length && interval) clearInterval(interval);
+      }, speed);
+    }, startDelay);
+    return () => {
+      clearTimeout(startTimer);
+      if (interval) clearInterval(interval);
+    };
+  }, [text, speed, startDelay]);
+  return { text: rendered, done: rendered.length >= text.length };
+}
+
+type Phase = 'confess' | 'heart' | 'close';
+
 function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
-  const photoUrl = getKissString(kiss, 'photo');
+  // Sender picks up to 6 photos (template_data.photos, an array) —
+  // shown falling in Phase 3, tap to enlarge. Falls back to the legacy
+  // singular `photo` field for kisses sent before this template
+  // switched to the multi-photo picker.
+  const galleryPhotos: string[] = (() => {
+    const raw = parseKissData(kiss).photos;
+    if (Array.isArray(raw)) {
+      const urls = raw.filter((u): u is string => typeof u === 'string' && !!u).slice(0, 6);
+      if (urls.length > 0) return urls;
+    }
+    const legacy = getKissString(kiss, 'photo');
+    return legacy ? [legacy] : [];
+  })();
   const rawName =
     (getKissString(kiss, 'name') || kiss.receiver_name || 'you').trim();
   const displayName = rawName || 'you';
+
+  // ── 3 gated phases — tap "Tiếp tục" advances, nothing auto-advances
+  // except Phase 3's own closing timer. ──
+  //   Phase 1 · CONFESS — drone show assembles to reveal the character
+  //     video, confession line types out below.
+  //   Phase 2 · HEART — the existing particle-galaxy → heart → photo
+  //     centrepiece, now its own dedicated beat.
+  //   Phase 3 · CLOSE — closing line + signature, auto-closes.
+  const [phase, setPhase] = useState<Phase>('confess');
+  // Phase 1 opens locked behind a birthday-passcode door before the
+  // video — this gates which of the two shows.
+  const [unlocked, setUnlocked] = useState(false);
+  const goToHeart = () => setPhase('heart');
+  const goToClose = () => setPhase('close');
+
+  // Phase 3's falling-photos gallery — tap one to enlarge; auto-clears
+  // so it falls back into the stream instead of staying stuck open.
+  const [enlargedIdx, setEnlargedIdx] = useState<number | null>(null);
+
+  // Phase 3's message types out over ~3s total (speed scales with its
+  // length) — gated on `phase` the same way the drone caption used to
+  // be, so it doesn't finish typing off-screen before Phase 3 is even
+  // reached. Only once it's done typing does the close timer start.
+  const messageSpeed = kiss.message ? Math.max(18, 2800 / kiss.message.length) : 40;
+  const messageTyped = useTypewriter(phase === 'close' ? (kiss.message || '') : '', messageSpeed, 300);
+
+  useEffect(() => {
+    if (phase !== 'close') return;
+    if (kiss.message && !messageTyped.done) return;
+    const t = setTimeout(() => onClose(), 2200);
+    return () => clearTimeout(t);
+  }, [phase, kiss.message, messageTyped.done, onClose]);
 
   // Ephemeral hearts spawned on tap — expire themselves after floating up.
   // Interactive delight: recipient taps anywhere → a small heart rises.
   const [tapHearts, setTapHearts] = useState<{ id: number; x: number; y: number; emoji: string; hue: number }[]>([]);
   const spawnHeart = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Ignore taps on interactive descendants (close button, music pill).
+    // Ignore taps on interactive descendants (close button, buttons).
     const target = e.target as HTMLElement;
     if (target.closest('button, a')) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -354,15 +553,9 @@ function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
     ].slice(-30));  // cap at 30 so DOM stays lean
   };
 
-  // Time limit — auto-advance to the share step after the story arc
-  // completes. Parent (KissReplayOverlay) turns onClose into setStep('share').
-  useEffect(() => {
-    const autoClose = setTimeout(() => onClose(), REVEAL_DURATION_MS);
-    return () => clearTimeout(autoClose);
-  }, [onClose]);
-
   // Stars — 220 across the upper 60% of sky, 3 brightness tiers so
-  // the field feels natural against pitch-black backdrop.
+  // the field feels natural against pitch-black backdrop. Persistent
+  // across all 3 phases.
   const stars = useMemo(() => (
     Array.from({ length: 220 }).map((_, i) => {
       const s = (i * 2654435761) >>> 0;
@@ -370,7 +563,11 @@ function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
       const tier = i % 8 === 0 ? 'bright' : i % 3 === 0 ? 'mid' : 'faint';
       return {
         left: r(1) * 100,
-        top:  r(2) * 60,
+        // Full height, not just the upper 60% — only Phase 2 has
+        // mountains/lake covering the lower portion (stars there just
+        // sit hidden behind it); Phase 1 and 3 have nothing down
+        // there, so capping stars at 60% left them looking empty.
+        top:  r(2) * 100,
         size: tier === 'bright' ? 1.8 + r(3) * 1.2
             : tier === 'mid'    ? 1.0 + r(3) * 0.6
             :                     0.5 + r(3) * 0.5,
@@ -383,46 +580,42 @@ function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
     })
   ), []);
 
-  // Shooting stars — SUBTLE accents. Real meteors are quick faint
-  // streaks (0.3-0.8s), thin, thin trail, no dramatic glow. They set
-  // atmosphere; the drone name is the hero. 4 sequenced streaks
-  // spaced ~10s apart so they feel like distinct occasional wishes.
+  // Shooting stars — SUBTLE accents, persistent across all 3 phases.
   const shootingStars = useMemo(() => {
     const COUNT = 4;
-    const GAP = 10;                                         // seconds between arrivals
-    const CYCLE = COUNT * GAP;                              // full loop ~40s
+    const GAP = 10;
+    const CYCLE = COUNT * GAP;
     return Array.from({ length: COUNT }).map((_, i) => {
       const s = (i * 2654435761) >>> 0;
       const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
 
-      const angleDeg = 30 + r(1) * 20;                      // 30-50°
+      const angleDeg = 30 + r(1) * 20;
       const angleRad = (angleDeg * Math.PI) / 180;
 
-      const distance = 55 + r(2) * 25;                      // 55-80vw — shorter travel
+      const distance = 55 + r(2) * 25;
       const dxSign = i % 2 === 0 ? 1 : -1;
       const dx = Math.cos(angleRad) * distance * dxSign;
       const dy = Math.sin(angleRad) * distance;
 
-      // Enter from top edge, exit lower down — like a real meteor
       const startX = dxSign > 0 ? 5 + r(4) * 30 : 65 + r(4) * 30;
-      const startY = -8 + r(5) * 8;                          // just above viewport
+      const startY = -8 + r(5) * 8;
 
       const trailAngle = (Math.atan2(dy, dx) * 180) / Math.PI;
-
-      const duration = 0.45 + r(6) * 0.35;                  // 0.45-0.8s — fast blink
+      const duration = 0.45 + r(6) * 0.35;
 
       return {
         id: i,
         startX, startY, dx, dy, trailAngle,
         duration,
-        delay:       i * GAP + r(7) * 1.5 + 4,              // first at ~4-5s
+        delay:       i * GAP + r(7) * 1.5 + 4,
         repeatDelay: CYCLE - duration,
-        length:      80 + r(9) * 40,                        // 80-120px — SHORT thin streak
+        length:      80 + r(9) * 40,
       };
     });
   }, []);
 
-  // 18 fireflies floating in the foreground near the shore
+  // 18 fireflies floating in the foreground — used in Phase 3's calmer
+  // closing scene.
   const fireflies = useMemo(() => (
     Array.from({ length: 18 }).map((_, i) => {
       const s = (i * 2654435761) >>> 0;
@@ -434,41 +627,23 @@ function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
         driftX: (r(3) - 0.5) * 80,
         driftY: (r(4) - 0.5) * 40,
         duration: 6 + r(5) * 4,
-        delay: 3 + r(6) * 8,
+        delay: 1 + r(6) * 4,
         size: 3 + r(7) * 3,
       };
     })
   ), []);
 
-  // Drone show — sample the receiver's name into pixel targets, then
-  // each dot becomes a bright LED "drone" that flies in from a random
-  // off-screen edge and assembles into the name shape. Feels like a
-  // modern drone light show writing across the night sky.
-  //
-  // Timeline (relative to reveal start):
-  //   0-2s   : sky quiet, first meteor
-  //   2-6s   : drones fly in from all 4 edges toward targets
-  //   6-9s   : drones lock into formation, gentle breathing pulse
-  //   9s+    : "chúc" / "ngủ ngon" text fades in around the formation
-  //   12-14s : sender message unfolds below
-  //   14-18s : photo reveals (if any) via chosen concept
-  //
-  // Text is rendered off-screen in a hidden canvas; pixels with
-  // alpha > threshold become target positions. ~100 drones total.
   return (
     <div className="fixed inset-0 z-[200] overflow-hidden cursor-pointer" onClick={spawnHeart}>
-      {/* ─── SKY BACKDROP · deep BLACK night sky ─────────────────────
-             Pure velvet black with only a whisper of navy at the very
-             top so the stars have something to breathe against. No
-             warm dusk / horizon glow — lanterns provide all the warmth
-             so they stand out against the darkness. */}
+      {/* ─── SKY BACKDROP · deep BLACK night sky — persistent across
+             all 3 phases. ─────────────────────────────────────────── */}
       <div className="absolute inset-0" style={{
         background:
           'radial-gradient(ellipse at 50% 15%, rgba(20,15,45,0.35) 0%, transparent 55%),' +
           'linear-gradient(180deg, #000105 0%, #010208 45%, #000104 100%)',
       }} />
 
-      {/* ─── STARS · 220 dots across upper 60%, 3 brightness tiers ── */}
+      {/* ─── STARS · persistent across all 3 phases ──────────────── */}
       {stars.map((s, i) => (
         <motion.div
           key={`star-${i}`}
@@ -477,9 +652,6 @@ function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
             left: `${s.left}%`, top: `${s.top}%`,
             width: s.size, height: s.size,
             background: '#ffffff',
-            // Every star gets a soft white halo — bigger stars glow
-            // stronger so they read as "sang" (bright) even against
-            // pitch-black sky.
             boxShadow: s.size > 1.4
               ? `0 0 ${s.size * 3}px rgba(255,255,255,0.9), 0 0 ${s.size * 6}px rgba(255,255,255,0.35)`
               : `0 0 ${s.size * 2}px rgba(255,255,255,0.55)`,
@@ -490,365 +662,541 @@ function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
         />
       ))}
 
-      {/* ─── SHOOTING STARS · 4 subtle streaks ~10s apart ────────────
-             Short thin streak with pre-rotated tapered gradient.
-             The whole streak is translated across the sky in a fast
-             ~0.6s pass. No scale, no dot, no dramatic glow. */}
+      {/* ─── SHOOTING STARS · persistent across all 3 phases ─────── */}
       {shootingStars.map(ss => (
         <motion.div
           key={`ss-${ss.id}`}
           className="absolute pointer-events-none"
           style={{ left: 0, top: 0 }}
-          initial={{
-            x: `${ss.startX}vw`,
-            y: `${ss.startY}vh`,
-            opacity: 0,
-          }}
+          initial={{ x: `${ss.startX}vw`, y: `${ss.startY}vh`, opacity: 0 }}
           animate={{
             x: `${ss.startX + ss.dx}vw`,
             y: `${ss.startY + ss.dy}vh`,
             opacity: [0, 0.7, 0.7, 0],
           }}
           transition={{
-            duration: ss.duration,
-            delay: ss.delay,
-            repeat: Infinity,
-            repeatDelay: ss.repeatDelay,
-            ease: 'linear',
-            times: [0, 0.15, 0.75, 1],
+            duration: ss.duration, delay: ss.delay, repeat: Infinity,
+            repeatDelay: ss.repeatDelay, ease: 'linear', times: [0, 0.15, 0.75, 1],
           }}
         >
-          <div
-            style={{
-              position: 'absolute',
-              right: 0,                          // head at outer origin
-              top: -0.75,
-              width: ss.length,
-              height: 1.5,                       // thin
-              transformOrigin: '100% 50%',
-              transform: `rotate(${ss.trailAngle}deg)`,
-              borderRadius: 1.5,
-              background:
-                'linear-gradient(to right,' +
-                '  rgba(255,255,255,0) 0%,' +
-                '  rgba(255,255,255,0.15) 60%,' +
-                '  rgba(255,255,255,0.7) 95%,' +
-                '  rgba(255,255,255,0.9) 100%)',
-              boxShadow: '0 0 3px rgba(255,255,255,0.4)',   // single soft glow
-            }}
-          />
+          <div style={{
+            position: 'absolute', right: 0, top: -0.75,
+            width: ss.length, height: 1.5, transformOrigin: '100% 50%',
+            transform: `rotate(${ss.trailAngle}deg)`, borderRadius: 1.5,
+            background: 'linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.15) 60%, rgba(255,255,255,0.7) 95%, rgba(255,255,255,0.9) 100%)',
+            boxShadow: '0 0 3px rgba(255,255,255,0.4)',
+          }} />
         </motion.div>
       ))}
 
-      {/* ─── PHOTO INSIDE THE HEART · heart-shaped clip, sits at the
-             centre of the particle heart. This template REQUIRES a
-             photo — the reveal is designed around it. Materializes at
-             ~7s after the particle heart completes its morph, so the
-             sequence reads: dust gathers → galaxy → heart forms from
-             particles → photo shimmers into life within the heart. */}
-      {photoUrl && (
-        // Outer wrapper handles STATIC centering via translate(-50%,-50%)
-        // — placed OUTSIDE the motion.div because framer-motion's own
-        // scale animation would otherwise overwrite the transform.
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left: '50%',
-            top: '22vh',                              // matches heartCy = H×0.22
-            transform: 'translate(-50%, -50%)',
-            width: 'clamp(150px, 32vw, 220px)',
-            height: 'clamp(150px, 32vw, 220px)',
-          }}
-        >
-        <motion.div
-          style={{ width: '100%', height: '100%' }}
-          initial={{ opacity: 0, scale: 0.35 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.8, delay: 7, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ overflow: 'visible' }}>
-            <defs>
-              <clipPath id="photo-heart-clip">
-                <path d="M50 88 C 20 66, 4 46, 4 30 C 4 14, 18 4, 30 4 C 40 4, 46 10, 50 20 C 54 10, 60 4, 70 4 C 82 4, 96 14, 96 30 C 96 46, 80 66, 50 88 Z" />
-              </clipPath>
-            </defs>
-            {/* Photo clipped to the heart curve */}
-            <image
-              href={photoUrl}
-              x="0" y="0" width="100" height="100"
-              preserveAspectRatio="xMidYMid slice"
-              clipPath="url(#photo-heart-clip)"
-              style={{ filter: 'drop-shadow(0 0 12px rgba(244,63,94,0.5))' }}
-            />
-            {/* Glowing rose rim outline */}
-            <path
-              d="M50 88 C 20 66, 4 46, 4 30 C 4 14, 18 4, 30 4 C 40 4, 46 10, 50 20 C 54 10, 60 4, 70 4 C 82 4, 96 14, 96 30 C 96 46, 80 66, 50 88 Z"
-              fill="none"
-              stroke="rgba(255,255,255,0.55)"
-              strokeWidth="1.2"
-              style={{ filter: 'drop-shadow(0 0 4px #ec4899) drop-shadow(0 0 12px rgba(244,63,94,0.55))' }}
-            />
-          </svg>
-        </motion.div>
-        </div>
-      )}
-
-      {/* ─── MOUNTAINS · silhouette range ─────────────────────── */}
-      <svg
-        viewBox="0 0 1000 220"
-        preserveAspectRatio="none"
-        className="absolute inset-x-0 w-full pointer-events-none"
-        style={{ bottom: '30%', height: '20%' }}
-      >
-        {/* Far mountains — cool near-black navy, blends with night sky */}
-        <path
-          d="M 0 220 L 0 140 Q 80 100 160 120 T 320 105 T 500 90 T 680 100 T 850 80 T 1000 105 L 1000 220 Z"
-          fill="#050a14"
-          opacity="0.9"
-        />
-        {/* Near mountains — pitch black silhouette */}
-        <path
-          d="M 0 220 L 0 170 Q 120 150 240 160 T 460 150 T 700 165 T 1000 155 L 1000 220 Z"
-          fill="#000104"
-        />
-      </svg>
-
-      {/* ─── MIST · cool low fog between mountains and water ──── */}
-      <div className="absolute inset-x-0 pointer-events-none" style={{
-        bottom: '28%', height: '10%',
-        background: 'linear-gradient(180deg, transparent, rgba(60,80,120,0.14) 40%, rgba(40,60,100,0.18))',
-        filter: 'blur(4px)',
-      }} />
-
-      {/* ─── SHORE + TWO SILHOUETTES · sitting side by side (distant
-             ambient — kept from start for scene depth) ────────── */}
-      <div className="absolute inset-x-0 pointer-events-none" style={{ bottom: '30%' }}>
-        <ShoreSilhouettes accent={ACCENT} />
-      </div>
-
-      {/* ─── SINGLE FIGURE · stands ON the galaxy, gazing up at the
-             heart. Feet anchored at the galaxy centreline. Fades in
-             after the heart wow so the eye lands on the heart first. */}
-      <motion.div
-        className="absolute pointer-events-none"
-        style={{
-          left: '50%',
-          top: '42vh',                             // head-top; feet land near galaxy center ~50vh
-          transform: 'translateX(-50%)',
-          width: 'clamp(70px, 10vw, 110px)',
-          height: 'clamp(120px, 17vw, 190px)',
-        }}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1.6, delay: 8, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <SingleFigure accent={ACCENT_HOT} />
-      </motion.div>
-
-      {/* ─── FLYING HEARTS · rise from the figure up to the photo in
-             the heart. 6 hearts on staggered infinite loops so there's
-             always at least one drifting upward. Each sways left-right
-             during the flight (sine drift) and fades near the top. */}
-      {[0, 1, 2, 3, 4, 5].map(i => {
-        const s = (i * 2654435761) >>> 0;
-        const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
-        const sway = (r(1) - 0.5) * 12;                    // ±6vw sway
-        const size = 14 + r(2) * 10;                       // 14-24px
-        const dur = 4.5 + r(3) * 1.5;                      // 4.5-6s ascent
-        return (
+      <AnimatePresence mode="wait">
+        {/* ─── Phase 1 · CONFESS — drone show reveals the character
+               video, confession line types out below. ─────────────── */}
+        {phase === 'confess' && (
           <motion.div
-            key={`fh-${i}`}
-            className="absolute pointer-events-none"
-            style={{
-              left: '50%',
-              top: '48vh',                                 // near figure's chest
-              transform: 'translateX(-50%)',
-              width: size,
-              height: size,
-            }}
-            initial={{ y: 0, x: 0, opacity: 0, scale: 0.3 }}
-            animate={{
-              y:       [0, `-32vh`],                       // travel up to heart center
-              x:       [0, `${sway}vw`, `${-sway}vw`, `${sway * 0.4}vw`],
-              opacity: [0, 0.95, 0.95, 0],
-              scale:   [0.3, 1, 1, 0.7],
-            }}
-            transition={{
-              duration: dur,
-              delay: 10 + i * 0.8,                         // start after figure lands
-              repeat: Infinity,
-              repeatDelay: 2 + (i % 3),
-              ease: 'easeOut',
-              times: [0, 0.2, 0.75, 1],
-            }}
+            key="confess"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.7 }}
           >
-            <svg viewBox="0 0 20 20" width="100%" height="100%" style={{ filter: 'drop-shadow(0 0 4px #ef4444) drop-shadow(0 0 10px rgba(244,63,94,0.6))' }}>
-              <path d="M 10 18 C 4 13, 1 9, 1 6 C 1 3, 3 1, 6 1 C 8 1, 9 2, 10 4 C 11 2, 12 1, 14 1 C 17 1, 19 3, 19 6 C 19 9, 16 13, 10 18 Z" fill="#ef4444" />
-              <path d="M 10 18 C 4 13, 1 9, 1 6 C 1 3, 3 1, 6 1 C 8 1, 9 2, 10 4 C 11 2, 12 1, 14 1 C 17 1, 19 3, 19 6 C 19 9, 16 13, 10 18 Z" fill="url(#fh-sheen)" opacity="0.7" />
-              <defs>
-                <radialGradient id="fh-sheen" cx="30%" cy="25%" r="50%">
-                  <stop offset="0%"   stopColor="#fff" stopOpacity="0.9" />
-                  <stop offset="60%"  stopColor="#fff" stopOpacity="0" />
-                </radialGradient>
-              </defs>
-            </svg>
+            {/* Matrix-style falling text behind everything else in this
+                phase — only once the door is unlocked. */}
+            {unlocked && <MatrixRain text={`${displayName} · I · YOU ·`} />}
+
+            <AnimatePresence mode="wait">
+              {!unlocked ? (
+                <PasswordLock
+                  key="password-lock"
+                  correct="1103"
+                  hint="Gợi ý: Ngày sinh nhật của bạn"
+                  minimal
+                  senderName={kiss.sender_name}
+                  accent={ACCENT}
+                  onSuccess={() => setUnlocked(true)}
+                />
+              ) : (
+                <motion.div
+                  key="video-confess"
+                  className="flex flex-col items-center gap-6"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.6 }}
+                >
+                  <div
+                    style={{
+                      position: 'relative',
+                      zIndex: 1,
+                      width: 'min(98vw, 560px)',
+                    }}
+                  >
+                    <DroneShow />
+                    <video
+                      src="/videos/video.mp4"
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full block"
+                    />
+                  </div>
+
+                  <motion.button
+                    type="button"
+                    onClick={goToHeart}
+                    className="cursor-pointer"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.9 }}
+                    transition={{ delay: 1, duration: 0.6 }}
+                    style={{
+                      fontFamily: '"Inter", sans-serif',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#fff',
+                      background: 'rgba(0,0,0,0.35)',
+                      border: `1px solid ${ACCENT}55`,
+                      borderRadius: 999,
+                      padding: '8px 20px',
+                    }}
+                  >
+                    Tiếp tục →
+                  </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
-        );
-      })}
+        )}
 
-      {/* ─── LAKE WATER · dark reflective surface ────────────── */}
-      <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{
-        height: '30%',
-        background:
-          'linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(20,10,25,0.85) 40%, #050208 100%)',
-      }}>
-        {/* Wave ripples — subtle horizontal streaks */}
-        {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
+        {/* ─── Phase 2 · HEART — particle-galaxy → heart → photo, the
+               centrepiece "khoảnh khắc thổ lộ" moment. Reuses the
+               original ParticleHeart canvas untouched; the surrounding
+               greeting/figure/hearts now run on shorter delays since
+               they no longer share one 32s timeline with Phase 1. ─── */}
+        {phase === 'heart' && (
           <motion.div
-            key={`wave-${i}`}
-            className="absolute inset-x-0"
-            style={{
-              top: `${8 + i * 11}%`,
-              height: 1,
-              background: `linear-gradient(90deg, transparent 10%, rgba(200,220,255,${0.08 + Math.random() * 0.08}) 50%, transparent 90%)`,
-              filter: 'blur(0.5px)',
-            }}
-            animate={{ opacity: [0.3, 0.7, 0.3] }}
-            transition={{ duration: 3 + i * 0.3, repeat: Infinity, ease: 'easeInOut', delay: i * 0.4 }}
-          />
-        ))}
-      </div>
-
-      {/* ─── FIREFLIES · foreground magic ────────────────────── */}
-      {fireflies.map(f => (
-        <motion.div
-          key={`ff-${f.id}`}
-          className="absolute pointer-events-none rounded-full"
-          style={{
-            left: `${f.left}%`,
-            bottom: `${f.bottom}%`,
-            width: f.size,
-            height: f.size,
-            background: FIREFLY,
-            boxShadow: `0 0 8px ${FIREFLY}, 0 0 16px ${FIREFLY}88, 0 0 32px ${FIREFLY}55`,
-          }}
-          initial={{ opacity: 0, x: 0, y: 0 }}
-          animate={{
-            x: [0, f.driftX, -f.driftX * 0.5, 0],
-            y: [0, f.driftY, -f.driftY, 0],
-            opacity: [0, 1, 0.4, 1, 0.3, 1, 0],
-          }}
-          transition={{
-            duration: f.duration,
-            delay: f.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-
-      {/* ─── 3D PARTICLE HEART · ~1400 rose-red dots forming the heart
-             curve, drifting/converging + subtle 3D swing + bloom halo.
-             Sits high in the sky. */}
-      <ParticleHeart delay={0.8} />
-
-
-      {/* ─── GREETING · "Chúc {name} ngủ ngon" under the heart ────── */}
-      <motion.div
-        className="absolute inset-x-0 pointer-events-none text-center px-6"
-        style={{ top: '66%' }}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1.6, delay: 6 }}
-      >
-        <div
-          style={{
-            fontFamily: '"Dancing Script", "Segoe Script", "Snell Roundhand", cursive',
-            fontSize: 'clamp(28px, 5vw, 56px)',
-            fontWeight: 500,
-            color: '#fff',
-            lineHeight: 1.1,
-            textShadow: `
-              0 0 18px ${ACCENT}88,
-              0 0 36px ${ACCENT}55,
-              0 4px 20px rgba(0,0,0,0.75)
-            `,
-          }}
-        >
-          Chúc {displayName} ngủ ngon
-        </div>
-        <motion.div
-          className="mx-auto mt-3 rounded-full"
-          initial={{ width: 0 }}
-          animate={{ width: 'clamp(140px, 26%, 300px)' }}
-          transition={{ duration: 1.8, delay: 7.5, ease: [0.16, 1, 0.3, 1] }}
-          style={{
-            height: 1.5,
-            background: `linear-gradient(90deg, transparent, ${ACCENT}, ${ACCENT_HOT}, ${ACCENT}, transparent)`,
-            filter: `drop-shadow(0 0 6px ${ACCENT})`,
-            opacity: 0.75,
-          }}
-        />
-      </motion.div>
-
-      {/* ─── SENDER MESSAGE · handwritten note, appears BELOW the
-             greeting after the heart + greeting settle. */}
-      {kiss.message && (
-        <motion.div
-          className="absolute inset-x-0 pointer-events-none px-8 text-center"
-          style={{ top: '78%' }}
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.6, delay: 9 }}
-        >
-          <div
-            className="max-w-lg mx-auto leading-relaxed"
-            style={{
-              fontFamily: '"Dancing Script", "Segoe Script", cursive',
-              color: 'rgba(255,240,220,0.95)',
-              textShadow: '0 2px 12px rgba(0,0,0,0.8)',
-              fontSize: 'clamp(20px, 3vw, 28px)',
-              fontStyle: 'italic',
-            }}
+            key="heart"
+            className="absolute inset-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8 }}
           >
-            &ldquo;{kiss.message}&rdquo;
-          </div>
-          {kiss.sender_name && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.8, delay: 11 }}
-              className="mt-3"
-              style={{
-                fontFamily: '"Dancing Script", cursive',
-                color: ACCENT,
-                fontSize: 20,
-                textShadow: `0 0 12px ${ACCENT}66`,
-              }}
+            {/* ─── MOUNTAINS ──────────────────────────────────────── */}
+            <svg
+              viewBox="0 0 1000 220" preserveAspectRatio="none"
+              className="absolute inset-x-0 w-full pointer-events-none"
+              style={{ bottom: '30%', height: '20%' }}
             >
-              — {kiss.sender_name}
-            </motion.div>
-          )}
-        </motion.div>
-      )}
+              <path d="M 0 220 L 0 140 Q 80 100 160 120 T 320 105 T 500 90 T 680 100 T 850 80 T 1000 105 L 1000 220 Z" fill="#050a14" opacity="0.9" />
+              <path d="M 0 220 L 0 170 Q 120 150 240 160 T 460 150 T 700 165 T 1000 155 L 1000 220 Z" fill="#000104" />
+            </svg>
 
-      {/* ─── TAP HEARTS · spawn on every tap, float up + fade ── */}
+            {/* ─── MIST ───────────────────────────────────────────── */}
+            <div className="absolute inset-x-0 pointer-events-none" style={{
+              bottom: '28%', height: '10%',
+              background: 'linear-gradient(180deg, transparent, rgba(60,80,120,0.14) 40%, rgba(40,60,100,0.18))',
+              filter: 'blur(4px)',
+            }} />
+
+            {/* ─── SHORE + TWO SILHOUETTES ────────────────────────── */}
+            <div className="absolute inset-x-0 pointer-events-none" style={{ bottom: '30%' }}>
+              <ShoreSilhouettes accent={ACCENT} />
+            </div>
+
+            {/* ─── SINGLE FIGURE ──────────────────────────────────── */}
+            <motion.div
+              className="absolute pointer-events-none"
+              style={{
+                left: '50%', top: '42vh', transform: 'translateX(-50%)',
+                width: 'clamp(70px, 10vw, 110px)', height: 'clamp(120px, 17vw, 190px)',
+              }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.6, delay: 5, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <SingleFigure accent={ACCENT_HOT} />
+            </motion.div>
+
+            {/* ─── FLYING HEARTS ──────────────────────────────────── */}
+            {[0, 1, 2, 3, 4, 5].map(i => {
+              const s = (i * 2654435761) >>> 0;
+              const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
+              const sway = (r(1) - 0.5) * 12;
+              const size = 14 + r(2) * 10;
+              const dur = 4.5 + r(3) * 1.5;
+              return (
+                <motion.div
+                  key={`fh-${i}`}
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: '50%', top: '48vh', transform: 'translateX(-50%)',
+                    width: size, height: size,
+                  }}
+                  initial={{ y: 0, x: 0, opacity: 0, scale: 0.3 }}
+                  animate={{
+                    y: [0, `-32vh`],
+                    x: [0, `${sway}vw`, `${-sway}vw`, `${sway * 0.4}vw`],
+                    opacity: [0, 0.95, 0.95, 0],
+                    scale: [0.3, 1, 1, 0.7],
+                  }}
+                  transition={{
+                    duration: dur, delay: 6 + i * 0.8, repeat: Infinity,
+                    repeatDelay: 2 + (i % 3), ease: 'easeOut', times: [0, 0.2, 0.75, 1],
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" width="100%" height="100%" style={{ filter: 'drop-shadow(0 0 4px #ef4444) drop-shadow(0 0 10px rgba(244,63,94,0.6))' }}>
+                    <path d="M 10 18 C 4 13, 1 9, 1 6 C 1 3, 3 1, 6 1 C 8 1, 9 2, 10 4 C 11 2, 12 1, 14 1 C 17 1, 19 3, 19 6 C 19 9, 16 13, 10 18 Z" fill="#ef4444" />
+                    <path d="M 10 18 C 4 13, 1 9, 1 6 C 1 3, 3 1, 6 1 C 8 1, 9 2, 10 4 C 11 2, 12 1, 14 1 C 17 1, 19 3, 19 6 C 19 9, 16 13, 10 18 Z" fill="url(#fh-sheen)" opacity="0.7" />
+                    <defs>
+                      <radialGradient id="fh-sheen" cx="30%" cy="25%" r="50%">
+                        <stop offset="0%" stopColor="#fff" stopOpacity="0.9" />
+                        <stop offset="60%" stopColor="#fff" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
+                  </svg>
+                </motion.div>
+              );
+            })}
+
+            {/* ─── FLYING WORDS · pink love-words rising from the
+                   spinning galaxy below, same rise-and-sway motion as
+                   the hearts above. ──────────────────────────────── */}
+            {Array.from({ length: 14 }).map((_, i) => {
+              const words = ['Yêu thương', 'May mắn', 'Hạnh phúc', 'Mỉm cười', displayName];
+              const word = words[i % words.length];
+              const s = ((i + 40) * 2654435761) >>> 0;
+              const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
+              const sway = (r(1) - 0.5) * 16;
+              const dur = 5 + r(2) * 2;
+              const startX = (r(3) - 0.5) * 60;
+              return (
+                <motion.div
+                  key={`fw-${i}`}
+                  className="absolute pointer-events-none whitespace-nowrap"
+                  style={{
+                    left: '50%', top: '52vh', transform: 'translateX(-50%)',
+                    fontFamily: '"Dancing Script", "Segoe Script", cursive',
+                    fontSize: 'clamp(16px, 2.6vw, 22px)',
+                    fontWeight: 600,
+                    color: '#ff5fa8',
+                    textShadow: '0 0 8px #ff5fa8, 0 0 16px #ff5fa888',
+                  }}
+                  initial={{ y: 0, x: `${startX}vw`, opacity: 0, scale: 0.5 }}
+                  animate={{
+                    y: [0, '-34vh'],
+                    x: [`${startX}vw`, `${startX + sway}vw`, `${startX - sway}vw`, `${startX + sway * 0.4}vw`],
+                    opacity: [0, 0.95, 0.95, 0],
+                    scale: [0.5, 1, 1, 0.8],
+                  }}
+                  transition={{
+                    duration: dur, delay: 3 + i * 0.5, repeat: Infinity,
+                    repeatDelay: 1 + (i % 3) * 0.5, ease: 'easeOut', times: [0, 0.2, 0.75, 1],
+                  }}
+                >
+                  {word}
+                </motion.div>
+              );
+            })}
+
+            {/* ─── FLYING PHOTOS · uploaded photos rising from the
+                   galaxy too, same motion as the words above. ────── */}
+            {galleryPhotos.map((url, i) => {
+              const s = ((i + 500) * 2654435761) >>> 0;
+              const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
+              const sway = (r(1) - 0.5) * 18;
+              const dur = 6 + r(2) * 2.5;
+              const startX = (r(3) - 0.5) * 55;
+              const size = 74 + r(4) * 22;
+              const rot = (r(5) - 0.5) * 16;
+              return (
+                <motion.div
+                  key={`fp-${i}`}
+                  className="absolute cursor-pointer"
+                  style={{
+                    left: '50%', top: '52vh', transform: 'translateX(-50%)',
+                    width: size, height: size, padding: 4, background: '#fff', borderRadius: 5,
+                    boxShadow: '0 6px 16px rgba(0,0,0,0.5)',
+                    zIndex: 5,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEnlargedIdx(i);
+                    setTimeout(() => setEnlargedIdx(cur => (cur === i ? null : cur)), 2500);
+                  }}
+                  initial={{ y: 0, x: `${startX}vw`, opacity: 0, scale: 0.4, rotate: rot }}
+                  animate={{
+                    y: [0, '-36vh'],
+                    x: [`${startX}vw`, `${startX + sway}vw`, `${startX - sway}vw`, `${startX + sway * 0.4}vw`],
+                    opacity: [0, 0.95, 0.95, 0],
+                    scale: [0.4, 1, 1, 0.75],
+                    rotate: [rot, -rot, rot],
+                  }}
+                  transition={{
+                    duration: dur, delay: 4 + i * 1.4, repeat: Infinity,
+                    repeatDelay: 2 + (i % 3) * 0.6, ease: 'easeOut', times: [0, 0.2, 0.75, 1],
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="w-full h-full object-cover" style={{ borderRadius: 3 }} />
+                </motion.div>
+              );
+            })}
+
+            {/* Enlarged overlay — tap any flying photo above to zoom. */}
+            <AnimatePresence>
+              {enlargedIdx !== null && galleryPhotos[enlargedIdx] && (
+                <motion.div
+                  className="fixed inset-0 flex items-center justify-center pointer-events-none"
+                  style={{ zIndex: 60 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
+                  <motion.div
+                    className="relative"
+                    style={{ padding: 8, background: '#fff', borderRadius: 8, boxShadow: '0 20px 60px rgba(0,0,0,0.7)' }}
+                    initial={{ scale: 0.6, rotate: -4 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    exit={{ scale: 0.6, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={galleryPhotos[enlargedIdx]}
+                      alt=""
+                      style={{ maxWidth: 'min(80vw, 340px)', maxHeight: '60vh', width: 'auto', height: 'auto', borderRadius: 4, display: 'block' }}
+                    />
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ─── LAKE WATER ─────────────────────────────────────── */}
+            <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{
+              height: '30%',
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(20,10,25,0.85) 40%, #050208 100%)',
+            }}>
+              {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
+                <motion.div
+                  key={`wave-${i}`}
+                  className="absolute inset-x-0"
+                  style={{
+                    top: `${8 + i * 11}%`, height: 1,
+                    background: `linear-gradient(90deg, transparent 10%, rgba(200,220,255,0.12) 50%, transparent 90%)`,
+                    filter: 'blur(0.5px)',
+                  }}
+                  animate={{ opacity: [0.3, 0.7, 0.3] }}
+                  transition={{ duration: 3 + i * 0.3, repeat: Infinity, ease: 'easeInOut', delay: i * 0.4 }}
+                />
+              ))}
+            </div>
+
+            {/* ─── 3D PARTICLE HEART ──────────────────────────────── */}
+            <ParticleHeart delay={0.4} />
+
+            <motion.button
+              type="button"
+              onClick={goToClose}
+              className="absolute cursor-pointer"
+              style={{
+                left: '50%', bottom: '4%', transform: 'translateX(-50%)',
+                fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 600, color: '#fff',
+                background: 'rgba(0,0,0,0.35)', border: `1px solid ${ACCENT}55`, borderRadius: 999, padding: '8px 20px',
+              }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.9 }}
+              transition={{ delay: 7, duration: 0.8 }}
+            >
+              Tiếp tục →
+            </motion.button>
+          </motion.div>
+        )}
+
+        {/* ─── Phase 3 · CLOSE — closing line + signature, calm shore
+               scene, auto-closes after 10s. ──────────────────────── */}
+        {phase === 'close' && (
+          <motion.div
+            key="close"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-8 text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.9 }}
+          >
+            {/* Fireflies for a calmer, intimate closing atmosphere */}
+            {fireflies.map(f => (
+              <motion.div
+                key={`ff-${f.id}`}
+                className="absolute pointer-events-none rounded-full"
+                style={{
+                  left: `${f.left}%`, bottom: `${f.bottom}%`, width: f.size, height: f.size,
+                  background: FIREFLY,
+                  boxShadow: `0 0 8px ${FIREFLY}, 0 0 16px ${FIREFLY}88, 0 0 32px ${FIREFLY}55`,
+                }}
+                initial={{ opacity: 0, x: 0, y: 0 }}
+                animate={{
+                  x: [0, f.driftX, -f.driftX * 0.5, 0],
+                  y: [0, f.driftY, -f.driftY, 0],
+                  opacity: [0, 1, 0.4, 1, 0.3, 1, 0],
+                }}
+                transition={{ duration: f.duration, delay: f.delay, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            ))}
+
+            {/* ─── FALLING PHOTOS · up to 6, drifting down from the top
+                   like snow, endlessly looping. Tap one to enlarge —
+                   handled by a separate centered overlay below rather
+                   than animating the falling tile itself, so the two
+                   motions never fight each other. ─────────────────── */}
+            {galleryPhotos.map((url, i) => {
+              const s = ((i + 900) * 2654435761) >>> 0;
+              const r = (n: number) => (((s ^ (n * 0x9E3779B1)) >>> 0) % 10000) / 10000;
+              const left = 10 + (i / Math.max(galleryPhotos.length, 1)) * 80 + (r(1) - 0.5) * 8;
+              const size = 64 + r(2) * 20;
+              const dur = 13 + r(3) * 6;
+              const delay = r(4) * 8;
+              const rotFrom = (r(5) - 0.5) * 30;
+              return (
+                <motion.div
+                  key={`photo-${i}`}
+                  className="absolute cursor-pointer"
+                  style={{
+                    left: `${left}%`, top: '-14%', width: size, height: size,
+                    zIndex: 5,
+                    padding: 5, background: '#fff', borderRadius: 6,
+                    boxShadow: '0 8px 20px rgba(0,0,0,0.5)',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEnlargedIdx(i);
+                    setTimeout(() => setEnlargedIdx(cur => (cur === i ? null : cur)), 2500);
+                  }}
+                  initial={{ y: 0, rotate: rotFrom, opacity: 0 }}
+                  animate={{ y: '128vh', rotate: [rotFrom, -rotFrom, rotFrom], opacity: [0, 1, 1, 0] }}
+                  transition={{ duration: dur, delay, repeat: Infinity, repeatDelay: 1, ease: 'linear', opacity: { times: [0, 0.06, 0.92, 1] } }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="w-full h-full object-cover" style={{ borderRadius: 3 }} />
+                </motion.div>
+              );
+            })}
+
+            {/* Enlarged overlay — independent of the falling tiles. */}
+            <AnimatePresence>
+              {enlargedIdx !== null && galleryPhotos[enlargedIdx] && (
+                <motion.div
+                  className="fixed inset-0 flex items-center justify-center pointer-events-none"
+                  style={{ zIndex: 60 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
+                  <motion.div
+                    className="relative"
+                    style={{ padding: 8, background: '#fff', borderRadius: 8, boxShadow: '0 20px 60px rgba(0,0,0,0.7)' }}
+                    initial={{ scale: 0.6, rotate: -4 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    exit={{ scale: 0.6, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={galleryPhotos[enlargedIdx]}
+                      alt=""
+                      style={{ width: 'min(78vw, 320px)', height: 'min(78vw, 320px)', objectFit: 'cover', borderRadius: 4, display: 'block' }}
+                    />
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* First uploaded photo, shown as a small polaroid above the
+                closing message so it's the last thing the receiver sees
+                while it types out. */}
+            {galleryPhotos[0] && (
+              <motion.div
+                initial={{ opacity: 0, y: -12, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.8 }}
+                style={{
+                  padding: 6, background: '#fff', borderRadius: 8,
+                  boxShadow: '0 12px 30px rgba(0,0,0,0.6)',
+                  transform: 'rotate(-2deg)', zIndex: 6,
+                }}
+              >
+                {/* No fixed square + object-fit:cover here — that cropped
+                    portrait/landscape photos. maxWidth/maxHeight + auto
+                    width/height keeps the whole photo, uncropped. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={galleryPhotos[0]}
+                  alt=""
+                  style={{ maxWidth: 'min(78vw, 320px)', maxHeight: '42vh', width: 'auto', height: 'auto', borderRadius: 4, display: 'block' }}
+                />
+              </motion.div>
+            )}
+
+            {kiss.message && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7 }}
+                className="max-w-lg"
+                style={{
+                  fontFamily: '"Dancing Script", "Segoe Script", cursive',
+                  fontSize: 'clamp(17px, 2.4vw, 22px)', fontStyle: 'italic',
+                  color: 'rgba(255,240,220,0.8)', lineHeight: 1.5,
+                  minHeight: '2.6em',
+                  textShadow: '0 2px 12px rgba(0,0,0,0.8)',
+                }}
+              >
+                &ldquo;{messageTyped.text}
+                {!messageTyped.done && (
+                  <motion.span
+                    animate={{ opacity: [1, 0, 1] }}
+                    transition={{ duration: 0.9, repeat: Infinity }}
+                    style={{ marginLeft: 1, color: ACCENT_HOT }}
+                  >
+                    |
+                  </motion.span>
+                )}
+                {messageTyped.done && <>&rdquo;</>}
+              </motion.div>
+            )}
+
+            {kiss.sender_name && messageTyped.done && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.8 }}
+                style={{
+                  fontFamily: '"Dancing Script", cursive', color: ACCENT, fontSize: 20,
+                  textShadow: `0 0 12px ${ACCENT}66`,
+                }}
+              >
+                — {kiss.sender_name}
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── TAP HEARTS · spawn on every tap, float up + fade ────── */}
       {tapHearts.map(h => (
         <motion.div
           key={h.id}
           className="absolute pointer-events-none select-none"
           style={{
-            left: h.x - 16,
-            top:  h.y - 16,
-            fontSize: 32,
+            left: h.x - 16, top: h.y - 16, fontSize: 32,
             filter: `drop-shadow(0 0 10px ${ACCENT}88) hue-rotate(${h.hue}deg)`,
           }}
           initial={{ y: 0, scale: 0.4, opacity: 0 }}
-          animate={{
-            y: -180,
-            scale: [0.4, 1.4, 1.1, 0.9],
-            opacity: [0, 1, 1, 0],
-          }}
+          animate={{ y: -180, scale: [0.4, 1.4, 1.1, 0.9], opacity: [0, 1, 1, 0] }}
           transition={{ duration: 2.4, ease: 'easeOut' }}
           onAnimationComplete={() => setTapHearts(prev => prev.filter(x => x.id !== h.id))}
         >
@@ -856,27 +1204,10 @@ function DailyGoodnightReveal({ kiss, onClose }: TemplateProps) {
         </motion.div>
       ))}
 
-      {/* Tap hint · appears briefly at start */}
-      <motion.div
-        className="absolute inset-x-0 pointer-events-none text-center px-6"
-        style={{ bottom: '2%' }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 0.55, 0.55, 0] }}
-        transition={{ duration: 6, delay: 4, times: [0, 0.15, 0.75, 1] }}
-      >
-        <div className="text-[10px] uppercase tracking-[0.3em]" style={{ color: ACCENT, textShadow: `0 0 8px ${ACCENT}` }}>
-          ♥ chạm để thả tim ♥
-        </div>
-      </motion.div>
-
-      {/* Close button — highest z-index */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onClose(); }}
-        className="absolute top-4 right-4 z-[220] w-9 h-9 rounded-full bg-black/60 backdrop-blur text-white flex items-center justify-center cursor-pointer hover:bg-black/80"
-        style={{ boxShadow: `0 0 12px ${ACCENT}55` }}
-      >
-        <X size={18} />
-      </button>
+      {/* No manual close button — tapping it would exit the reveal for
+          good with no way back in (this is a one-time gift moment, not
+          a page you can revisit). The receiver moves through the 3
+          phases via "Tiếp tục →"; Phase 3 closes itself automatically. */}
 
       {/* AudioPlayer moved to KissReplayOverlay so music plays across
           the ENTIRE journey (intro → flying → template) instead of
