@@ -25,6 +25,7 @@ import CircleDetailSheet from '@/components/circles/CircleDetailSheet';
 import UserSheet from '@/components/map/UserSheet';
 import KissGlobe from '@/components/map/KissGlobe';
 import KissReplayOverlay from '@/components/map/KissReplayOverlay';
+import NearGiftClaimBanner from '@/components/map/NearGiftClaimBanner';
 import SearchOverlay from '@/components/map/SearchOverlay';
 import { StoriesRail } from '@/components/stories/StoriesRail';
 import { StoryComposer } from '@/components/stories/StoryComposer';
@@ -1143,6 +1144,23 @@ export default function WorldPage() {
             // KissGlobe handles the flight animation — no map manipulation here
           }}
         />
+      )}
+
+      {/* NEAR gift claim — separate from the reveal above. Only renders
+          when this kiss actually carries near_gift_status (migration-039). */}
+      {replayKiss && typeof replayKiss.near_gift_status === 'string' && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-6 z-[60] w-[min(92vw,380px)]">
+          <NearGiftClaimBanner
+            kissId={replayKiss.id as string}
+            nearGiftStatus={replayKiss.near_gift_status as 'locked' | 'claimed' | 'wilted'}
+            nearAmountYocto={replayKiss.near_amount_yocto as string | null}
+            nearClaimerAccountId={replayKiss.near_claimer_account_id as string | null}
+            receiverId={replayKiss.receiver_id as string | null}
+            onClaimed={() => {
+              fetch(`/api/v1/kisses/${replayKiss.id}`).then(r => r.json()).then(d => { if (d.data) setReplayKiss(d.data); }).catch(() => {});
+            }}
+          />
+        </div>
       )}
     </div>
   );

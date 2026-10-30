@@ -130,6 +130,37 @@ export function getKiss(tokenId: string) {
   return callView<KissInfo | null>('get_kiss', { token_id: tokenId });
 }
 
+// ── App-integrated money gift (lock at send time, mint at claim time) ──
+// See contracts/kiss-chain/src/lib.rs `lock_gift`/`claim_gift` and
+// migration-039 — these back the "Attach NEAR" option on a real Kiss
+// sent from the production app, not the standalone /near-demo page.
+
+export function lockGift(gaoKissId: string, expiresInHours: number, depositNear: string) {
+  return callWrite(
+    'lock_gift',
+    { gao_kiss_id: gaoKissId, expires_in_hours: expiresInHours },
+    nearToYocto(depositNear),
+  );
+}
+
+export function claimGift(gaoKissId: string) {
+  return callWrite('claim_gift', { gao_kiss_id: gaoKissId });
+}
+
+export function getGift(gaoKissId: string) {
+  return callView<KissInfo | null>('get_kiss', { token_id: `gift-${gaoKissId}` });
+}
+
+// Matches the server's genId('kiss_') scheme exactly (src/lib/db.ts) and
+// the POST /api/v1/kisses zod regex (^kiss_[0-9a-f]{16}$) — generated
+// client-side so the same id can be used both for the on-chain
+// `lock_gift` call and the DB row created right after it.
+export function genGaoKissId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `kiss_${hex}`;
+}
+
 export function nftTokensForOwner(accountId: string) {
   return callView<Array<{ token_id: string }>>('nft_tokens_for_owner', {
     account_id: accountId,

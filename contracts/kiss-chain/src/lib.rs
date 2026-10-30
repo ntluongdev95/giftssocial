@@ -200,6 +200,94 @@ impl Contract {
         token_id
     }
 
+    /// Escrow a money-carrying gift from the Gao Social app, BEFORE the
+    /// receiver has any NEAR account of their own. Keyed by the app's
+    /// own `gao_kiss_id` (not an auto-incrementing TokenId like
+    /// `mint_kiss`/`relay` use) so the app can look the gift back up by
+    /// an ID it already generated. No NFT owner exists yet — the token
+    /// is minted to the CONTRACT'S OWN account as a placeholder until
+    /// `claim_gift` hands it to whoever actually claims it. This is the
+    /// "lazy mint" half of the app-integrated flow: minting the real,
+    /// owned NFT only happens at claim time, not at send time, so a
+    /// gift with no wallet-less receiver yet doesn't need one to exist
+    /// in order to be sent.
+    #[payable]
+    pub fn lock_gift(&mut self, gao_kiss_id: String, expires_in_hours: u32) -> TokenId {
+        require!(expires_in_hours > 0 && expires_in_hours <= 24 * 14, "expires_in_hours must be 1..=336 (14 days)");
+        require!(!gao_kiss_id.is_empty() && gao_kiss_id.len() <= 64, "gao_kiss_id must be 1..=64 chars");
+        let locked_amount = env::attached_deposit();
+        require!(locked_amount.as_yoctonear() > 0, "Must attach NEAR to lock a gift");
+
+        let token_id: TokenId = format!("gift-{}", gao_kiss_id);
+        require!(self.kiss_data.get(&token_id).is_none(), "A gift was already locked for this gao_kiss_id");
+
+        let sender_id = env::predecessor_account_id();
+
+        let token_metadata = TokenMetadata {
+            title: Some(format!("Kiss gift from {}", sender_id)),
+            description: None,
+            media: None,
+            media_hash: None,
+            copies: Some(1),
+            issued_at: Some(env::block_timestamp().to_string()),
+            expires_at: None,
+            starts_at: None,
+            updated_at: None,
+            extra: None,
+            reference: None,
+            reference_hash: None,
+        };
+
+        // Placeholder owner: the contract itself. `claim_gift` transfers
+        // real ownership once someone actually claims it.
+        self.tokens
+            .internal_mint(token_id.clone(), env::current_account_id(), Some(token_metadata));
+
+        let expires_at = env::block_timestamp() + (expires_in_hours as u64) * 60 * 60 * 1_000_000_000;
+        self.kiss_data.insert(
+            &token_id,
+            &KissInfo {
+                sender_id: sender_id.clone(),
+                status: KissStatus::Pending,
+                locked_amount,
+                royalty_amount: NearToken::from_yoctonear(0),
+                expires_at,
+                parent_token_id: None,
+                root_sender_id: sender_id,
+                depth: 0,
+                relay_slots_remaining: MAX_RELAY_SLOTS,
+            },
+        );
+
+        token_id
+    }
+
+    /// The real receiver, now that they have a NEAR account (created via
+    /// NEAR Auth/passkey right before this call), claims a gift locked
+    /// by `lock_gift`. Mints real ownership to the caller, marks the
+    /// kiss Bloomed directly (claiming a gift from a named receiver IS
+    /// the reciprocation — there's no separate "accept" step in this
+    /// flow the way there is for the standalone mint_kiss/relay path),
+    /// and pays out the locked NEAR in the same call. First caller
+    /// wins: once claimed, status is no longer Pending and a second
+    /// claim attempt is rejected.
+    pub fn claim_gift(&mut self, gao_kiss_id: String) -> Promise {
+        let token_id: TokenId = format!("gift-{}", gao_kiss_id);
+        let mut info = self.kiss_data.get(&token_id).expect("Gift not found");
+        require!(info.status == KissStatus::Pending, "This gift was already claimed or has wilted");
+        require!(env::block_timestamp() <= info.expires_at, "This gift's claim window closed");
+
+        let receiver_id = env::predecessor_account_id();
+        self.tokens.internal_transfer_unguarded(&token_id, &env::current_account_id(), &receiver_id);
+
+        info.status = KissStatus::Bloomed;
+        let amount = info.locked_amount;
+        info.locked_amount = NearToken::from_yoctonear(0);
+        self.kiss_data.insert(&token_id, &info);
+
+        Promise::new(receiver_id).transfer(amount)
+    }
+
     /// The owner of a BLOOMED kiss relays it onward to someone new —
     /// a fresh child NFT, its own locked funds, its own deadline.
     /// `ROYALTY_BPS` of the attached deposit is set aside and paid to
@@ -601,5 +689,100 @@ mod tests {
         assert_eq!(child.status, KissStatus::Wilted);
         assert_eq!(child.locked_amount, NearToken::from_yoctonear(0));
         assert_eq!(child.royalty_amount, NearToken::from_yoctonear(0));
+    }
+
+    // ── App-integrated flow: lock_gift + claim_gift ─────────────────
+
+    #[test]
+    fn lock_gift_escrows_funds_to_contract_owned_placeholder() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let token_id = c.lock_gift("kiss_abc123".to_string(), 48);
+        assert_eq!(token_id, "gift-kiss_abc123");
+
+        let info = c.get_kiss(token_id.clone()).expect("gift should exist");
+        assert_eq!(info.status, KissStatus::Pending);
+        assert_eq!(info.locked_amount, NearToken::from_near(1));
+        assert_eq!(info.sender_id, alice());
+
+        let token = c.get_kiss_token(token_id).expect("nft should exist");
+        assert_eq!(token.owner_id, near_sdk::env::current_account_id());
+    }
+
+    #[test]
+    #[should_panic(expected = "Must attach NEAR to lock a gift")]
+    fn lock_gift_rejects_zero_deposit() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(0), 0).build());
+        let _ = c.lock_gift("kiss_nodeposit".to_string(), 48);
+    }
+
+    #[test]
+    #[should_panic(expected = "already locked")]
+    fn lock_gift_rejects_duplicate_gao_kiss_id() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let _ = c.lock_gift("kiss_dup".to_string(), 48);
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let _ = c.lock_gift("kiss_dup".to_string(), 48);
+    }
+
+    #[test]
+    fn claim_gift_transfers_ownership_and_pays_out_in_one_call() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(2), 0).build());
+        let token_id = c.lock_gift("kiss_claimme".to_string(), 48);
+
+        // Bob claims — no prior NFT ownership required, just the right
+        // gao_kiss_id and claiming before the window closes.
+        testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
+        let _ = c.claim_gift("kiss_claimme".to_string());
+
+        let info = c.get_kiss(token_id.clone()).unwrap();
+        assert_eq!(info.status, KissStatus::Bloomed);
+        assert_eq!(info.locked_amount, NearToken::from_yoctonear(0)); // paid out already
+
+        let token = c.get_kiss_token(token_id).unwrap();
+        assert_eq!(token.owner_id, bob());
+    }
+
+    #[test]
+    #[should_panic(expected = "already claimed or has wilted")]
+    fn claim_gift_cannot_be_claimed_twice() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let _ = c.lock_gift("kiss_onceonly".to_string(), 48);
+
+        testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
+        let _ = c.claim_gift("kiss_onceonly".to_string());
+
+        // Carol tries to claim the same gift after Bob already did.
+        testing_env!(context(carol(), NearToken::from_near(0), 2000).build());
+        let _ = c.claim_gift("kiss_onceonly".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "claim window closed")]
+    fn claim_gift_rejects_claim_after_expiry() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let _ = c.lock_gift("kiss_toolate".to_string(), 1); // 1h window
+
+        let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
+        testing_env!(context(bob(), NearToken::from_near(0), two_hours_ns).build());
+        let _ = c.claim_gift("kiss_toolate".to_string());
+    }
+
+    #[test]
+    fn sender_reclaims_an_unclaimed_gift_after_expiry() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let token_id = c.lock_gift("kiss_unclaimed".to_string(), 1);
+
+        let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
+        testing_env!(context(alice(), NearToken::from_near(0), two_hours_ns).build());
+        let _ = c.reclaim_if_wilted(token_id.clone());
+
+        assert_eq!(c.get_kiss(token_id).unwrap().status, KissStatus::Wilted);
     }
 }

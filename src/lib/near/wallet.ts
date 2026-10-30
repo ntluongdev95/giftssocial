@@ -1,17 +1,23 @@
 'use client';
 
-// Wallet connection for the Kiss Chain NEAR demo. Separate from the
-// production gift-sending flow on purpose — this wires a wallet
-// straight to the deployed testnet contract for the hackathon demo,
-// without touching anything the live app's users depend on.
+// Wallet connection for Kiss Chain — used both by the standalone
+// /near-demo page and the production "Attach NEAR"/claim flow in
+// KissGlobe.tsx. MyNearWallet is deliberately NOT included: it was
+// sunset by NEAR on 2026-10-31 in favor of near.com (passkey-native),
+// which has no wallet-selector module yet as of this writing — see
+// the "Attach NEAR" section of CLAUDE.md-adjacent project notes for
+// why NEAR Auth/FastAuth (which would need a self-hosted relayer) was
+// also ruled out. Meteor + Here both support creating a brand-new
+// wallet from inside the connect modal itself, so a receiver with no
+// NEAR account yet isn't stuck.
 
 import { setupWalletSelector, type WalletSelector } from '@near-wallet-selector/core';
 import { setupModal, type WalletSelectorModal } from '@near-wallet-selector/modal-ui';
-import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
 import { setupMeteorWallet } from '@near-wallet-selector/meteor-wallet';
+import { setupHereWallet } from '@near-wallet-selector/here-wallet';
+import { CONTRACT_ID, NETWORK } from './constants';
 
-export const CONTRACT_ID = 'kiss-chain-demo-2026.testnet';
-export const NETWORK = 'testnet' as const;
+export { CONTRACT_ID, NETWORK };
 
 let selectorPromise: Promise<WalletSelector> | null = null;
 
@@ -19,7 +25,7 @@ export function getSelector(): Promise<WalletSelector> {
   if (!selectorPromise) {
     selectorPromise = setupWalletSelector({
       network: NETWORK,
-      modules: [setupMyNearWallet(), setupMeteorWallet()],
+      modules: [setupMeteorWallet(), setupHereWallet()],
     });
   }
   return selectorPromise;

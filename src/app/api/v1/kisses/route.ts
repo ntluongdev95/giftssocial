@@ -5,6 +5,7 @@ import type { KissRow } from '@/types/d1';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 import { isValidSlug, SLUG_MIN, SLUG_MAX } from '@/lib/kiss-slug';
+import { verifyNearFunctionCall } from '@/lib/near/verify-tx';
 
 // ─── GET /api/v1/kisses — List public kisses (for globe) ───────────────
 
@@ -112,9 +113,22 @@ const kissSchema = z.object({
   // into effect params at reveal time. Capped at 4KB serialized to
   // prevent abuse.
   template_data: z.record(z.string(), z.unknown()).optional(),
+  // ── NEAR-backed money gift (optional — see migration-039) ──────────
+  // The sender's wallet already called `lock_gift` on the Kiss Chain
+  // contract BEFORE this POST; we verify that transaction on-chain
+  // below rather than trusting any amount the client claims. `id` must
+  // be the same gao_kiss_id the sender's wallet passed to `lock_gift`
+  // (the client generates it up front so the same id can be used for
+  // both the on-chain call and this DB row).
+  id: z.string().regex(/^kiss_[0-9a-f]{16}$/).optional(),
+  near_sender_account_id: z.string().min(2).max(64).optional(),
+  near_lock_tx_hash: z.string().min(10).max(128).optional(),
 }).refine(
   (d) => d.receiver_id || (d.receiver_name && d.receiver_lat != null && d.receiver_lng != null),
   { message: 'Pick a friend, or enter a name and address for someone without an account yet' },
+).refine(
+  (d) => !d.near_lock_tx_hash || (d.id && d.near_sender_account_id),
+  { message: 'id and near_sender_account_id are required alongside near_lock_tx_hash' },
 );
 
 export async function POST(req: NextRequest) {
@@ -182,15 +196,48 @@ export async function POST(req: NextRequest) {
       slug = d.slug;
     }
 
-    const id = genId('kiss_');
+    // NEAR-backed money gift: the sender's wallet already escrowed real
+    // NEAR via `lock_gift` before this request — verify that on-chain
+    // rather than trusting the client's say-so. Any mismatch (wrong
+    // method, wrong gao_kiss_id, wrong signer) rejects the whole send;
+    // we never record a "locked" gift the chain doesn't actually back.
+    let nearGift: { amountYocto: string; senderAccountId: string; tokenId: string } | null = null;
+    if (d.near_lock_tx_hash && d.id && d.near_sender_account_id) {
+      let verified;
+      try {
+        verified = await verifyNearFunctionCall(d.near_lock_tx_hash, d.near_sender_account_id);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Could not verify the NEAR transaction';
+        return NextResponse.json({ error: { code: 'near_verify_failed', message: msg } }, { status: 400 });
+      }
+      if (verified.methodName !== 'lock_gift') {
+        return NextResponse.json({ error: { code: 'near_verify_failed', message: `Expected a lock_gift call, got ${verified.methodName}` } }, { status: 400 });
+      }
+      if (verified.args.gao_kiss_id !== d.id) {
+        return NextResponse.json({ error: { code: 'near_verify_failed', message: 'This transaction locked a different gift' } }, { status: 400 });
+      }
+      if (!(BigInt(verified.depositYocto) > BigInt(0))) {
+        return NextResponse.json({ error: { code: 'near_verify_failed', message: 'No NEAR was attached in that transaction' } }, { status: 400 });
+      }
+      nearGift = {
+        amountYocto: verified.depositYocto,
+        senderAccountId: verified.signerId,
+        tokenId: `gift-${d.id}`,
+      };
+    }
+
+    const id = nearGift ? (d.id as string) : genId('kiss_');
     const row = await db.prepare(
-      `INSERT INTO kisses (id, sender_id, receiver_id, receiver_name, receiver_address, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title, template_id, template_data, max_opens, slug)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
+      `INSERT INTO kisses (id, sender_id, receiver_id, receiver_name, receiver_address, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title, template_id, template_data, max_opens, slug, near_amount_yocto, near_gift_status, near_token_id, near_sender_account_id, near_lock_tx_hash, near_locked_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
     ).bind(id, userId, d.receiver_id ?? null, d.receiver_id ? null : (d.receiver_name ?? null), d.receiver_address ?? null,
       d.message, d.emoji, d.visibility, d.kiss_type,
       sender.location_lat, sender.location_lng, recLat, recLng,
       JSON.stringify(d.photos), d.music_url ?? null, d.music_title ?? null,
-      d.template_id ?? null, templateDataJson, 20, slug).first<Record<string, unknown>>();
+      d.template_id ?? null, templateDataJson, 20, slug,
+      nearGift?.amountYocto ?? null, nearGift ? 'locked' : null, nearGift?.tokenId ?? null,
+      nearGift?.senderAccountId ?? null, d.near_lock_tx_hash ?? null,
+      nearGift ? new Date().toISOString() : null).first<Record<string, unknown>>();
 
     // Notify receiver — only possible when they actually have an account.
     // Guest recipients (no receiver_id) have nowhere to receive a notification.

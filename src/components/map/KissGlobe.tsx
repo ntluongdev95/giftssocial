@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import maplibregl from 'maplibre-gl';
 import { escapeHtml, sanitizeUrl } from '@/lib/sanitize';
-import { X } from 'lucide-react';
+import { X, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMap } from './WorldMap';
@@ -24,6 +24,8 @@ import { useOccasions } from '@/hooks/useOccasions';
 import { templatesByOccasion, getTemplate, TEMPLATE_REGISTRY } from '@/components/reveals/_registry';
 import DynamicForm from '@/components/reveals/DynamicForm';
 import DataDrivenReveal from '@/components/reveals/DataDrivenReveal';
+import { getSelector, getModal, getSignedInAccountId, CONTRACT_ID } from '@/lib/near/wallet';
+import { lockGift, genGaoKissId } from '@/lib/near/kiss-contract';
 
 /**
  * Unified shape for the template picker card. Merges two sources:
@@ -382,6 +384,33 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
       if (pickedFieldsSchema.length > 0 && Object.keys(templateData).length > 0) {
         payload.template_data = templateData;
       }
+
+      // Attach NEAR: escrow the real deposit on-chain BEFORE the kiss
+      // even exists in our DB — the POST below verifies this tx hash
+      // server-side, so if locking fails or is cancelled, no kiss is
+      // sent at all rather than sending a moneyless one by surprise.
+      if (attachNear) {
+        const amt = parseFloat(nearAmount);
+        if (!nearAmount || Number.isNaN(amt) || amt <= 0) { setSendError('Enter a NEAR amount greater than 0'); setSending(false); return; }
+        if (!nearAccountId) { setSendError('Connect your NEAR wallet first'); setSending(false); return; }
+        setNearLocking(true);
+        try {
+          const gaoKissId = genGaoKissId();
+          const result = await lockGift(gaoKissId, 48, nearAmount);
+          const txHash = (result as { transaction_outcome?: { id?: string } } | void)?.transaction_outcome?.id;
+          if (!txHash) throw new Error('NEAR wallet did not return a transaction hash');
+          payload.id = gaoKissId;
+          payload.near_sender_account_id = nearAccountId;
+          payload.near_lock_tx_hash = txHash;
+        } catch (e) {
+          setSendError(e instanceof Error ? e.message : 'Failed to lock NEAR for this gift');
+          setSending(false);
+          setNearLocking(false);
+          return;
+        }
+        setNearLocking(false);
+      }
+
       const res = await fetch('/api/v1/kisses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -490,6 +519,38 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
   const [extrasOpen, setExtrasOpen] = useState(false);
   // Reveal template picked for the current occasion (visual theme only).
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // ── Attach NEAR (optional money gift, escrowed on-chain) ────────────
+  // Separate from the rest of the send flow on purpose: this is the
+  // only part of sending a Kiss that needs a real wallet. Everything
+  // else above works exactly as before with no wallet at all.
+  const [attachNear, setAttachNear] = useState(false);
+  const [nearAmount, setNearAmount] = useState('1');
+  const [nearAccountId, setNearAccountId] = useState<string | null>(null);
+  const [nearConnecting, setNearConnecting] = useState(false);
+  const [nearLocking, setNearLocking] = useState(false);
+
+  const connectNearWallet = useCallback(async () => {
+    setNearConnecting(true);
+    try {
+      const existing = await getSignedInAccountId();
+      if (existing) { setNearAccountId(existing); return; }
+      const modal = await getModal();
+      const selector = await getSelector();
+      await new Promise<void>((resolve) => {
+        const off = selector.on('signedIn', ({ accounts }) => {
+          setNearAccountId(accounts[0]?.accountId ?? null);
+          off.remove();
+          resolve();
+        });
+        modal.show();
+      });
+    } catch {
+      setSendError('Could not open the NEAR wallet connector');
+    } finally {
+      setNearConnecting(false);
+    }
+  }, []);
   // Sender's answers to the picked template's fields_schema (migration 035).
   // Reset whenever a different template is chosen.
   const [templateData, setTemplateData] = useState<Record<string, unknown>>({});
@@ -1060,6 +1121,52 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
             )}
           </div>
 
+          {/* Attach NEAR — optional real-money gift, escrowed on-chain via
+              the Kiss Chain contract. Everything else about sending stays
+              exactly as before; this is purely additive. */}
+          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(0,236,151,0.05)', border: `1px solid rgba(0,236,151,${attachNear ? '0.35' : '0.15'})` }}>
+            <button type="button" onClick={() => setAttachNear(v => !v)} className="w-full flex items-center gap-2 px-3 py-2.5 cursor-pointer text-left hover:bg-white/[0.03]">
+              <Wallet size={15} style={{ color: '#00ec97' }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-bold text-white">Attach NEAR {attachNear && nearAmount && <span style={{ color: '#00ec97' }}>· {nearAmount} Ⓝ</span>}</div>
+                <div className="text-[9px] text-[#4a5068]">Lock real NEAR inside this kiss — only they can claim it</div>
+              </div>
+              <div className="w-8 h-[18px] rounded-full relative shrink-0 transition-colors" style={{ background: attachNear ? '#00ec97' : 'rgba(255,255,255,0.12)' }}>
+                <div className="absolute top-0.5 w-[14px] h-[14px] rounded-full bg-white transition-all" style={{ left: attachNear ? '17px' : '2px' }} />
+              </div>
+            </button>
+            {attachNear && (
+              <div className="px-3 pb-3 pt-1 space-y-2 border-t border-white/[0.04]">
+                <div className="flex items-center rounded-md px-3 py-2 gap-1.5" style={{ background: 'rgba(17,19,24,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={nearAmount}
+                    onChange={(e) => setNearAmount(e.target.value)}
+                    placeholder="1.0"
+                    className="flex-1 min-w-0 bg-transparent text-sm text-white outline-none placeholder:text-[#2d3548]"
+                  />
+                  <span className="text-[11px] font-bold" style={{ color: '#00ec97' }}>NEAR</span>
+                </div>
+                {nearAccountId ? (
+                  <p className="text-[9px] text-[#4a5068]">Wallet connected: <span className="text-white/70">{nearAccountId}</span></p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={connectNearWallet}
+                    disabled={nearConnecting}
+                    className="w-full rounded-md py-2 text-[11px] font-semibold cursor-pointer disabled:opacity-50"
+                    style={{ background: 'rgba(0,236,151,0.12)', color: '#00ec97', border: '1px solid rgba(0,236,151,0.3)' }}
+                  >
+                    {nearConnecting ? 'Connecting…' : 'Connect NEAR Wallet'}
+                  </button>
+                )}
+                <p className="text-[8px] text-[#4a5068]">Escrowed on {CONTRACT_ID} (testnet) — the receiver claims it with their own NEAR account, no wallet needed on your side after this.</p>
+              </div>
+            )}
+          </div>
+
           {/* Template-specific fields (data-driven templates only).
               Each template declares its own inputs in fields_schema JSON;
               the DynamicForm renders one input per field. Answers are
@@ -1304,7 +1411,9 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
             const readyToSend = hasRecipient && !!emoji;
             return (
               <button onClick={handleSend} disabled={sending || !readyToSend} className="w-full rounded-xl py-3 text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all" style={{ background: readyToSend ? 'linear-gradient(135deg, #f87171, #ec4899)' : 'rgba(255,255,255,0.06)', color: readyToSend ? 'white' : '#4a5068', boxShadow: readyToSend ? '0 4px 20px rgba(236,72,153,0.3)' : 'none' }}>
-                {sending
+                {nearLocking
+                  ? 'Locking NEAR in your wallet…'
+                  : sending
                   ? 'Sending…'
                   : !hasRecipient
                     ? (sendMode === 'guest' ? "Enter name + address" : 'Pick a recipient first')
