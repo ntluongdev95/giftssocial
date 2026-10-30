@@ -33,6 +33,7 @@
     "@anthropic-ai/sdk": "^0.80.0",
     "@huggingface/transformers": "^4.2.0",
     "@mediapipe/tasks-vision": "^0.10.35",
+    "@near-wallet-selector/bitte-wallet": "^10.1.4",
     "@near-wallet-selector/core": "^10.1.4",
     "@near-wallet-selector/here-wallet": "^10.1.4",
     "@near-wallet-selector/meteor-wallet": "^10.1.4",

@@ -142,6 +142,12 @@ export default function WorldPage() {
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [searchUser, setSearchUser] = useState<{ id: string; preview: { title: string; subtitle?: string; image?: string }; visibility?: { reason: string; event_id?: string; circle_id?: string } } | null>(null);
   const [replayKiss, setReplayKiss] = useState<Record<string, unknown> | null>(null);
+  // Claim secret carried in the ?k= URL param (see contracts/kiss-chain
+  // claim_secret_hash + migration-040) — only present for a money-gift
+  // kiss opened via its share link/QR, not via a notification click
+  // (registered receivers get it instead from the auth-gated
+  // GET /api/v1/kisses/[id]/claim-secret, inside NearGiftClaimBanner).
+  const [claimSecretFromUrl, setClaimSecretFromUrl] = useState<string | null>(null);
   const [nearbyList, setNearbyList] = useState<{ type: string; items: Array<{ id: string; title: string; sub: string; color: string; lng: number; lat: number }> } | null>(null);
   const [clusterUsers, setClusterUsers] = useState<{ users: Array<{ id: string; name: string; avatar: string; city: string; trust_level: string; lat: number; lng: number; visibility_reason?: string; shared_event_id?: string; shared_circle_id?: string }>; count: number; entityType?: string } | null>(null);
   const [clusterFilter, setClusterFilter] = useState('');
@@ -363,6 +369,7 @@ export default function WorldPage() {
     const params = new URLSearchParams(window.location.search);
     const kissId = params.get('kiss');
     if (!kissId) return;
+    setClaimSecretFromUrl(params.get('k'));
 
     // Delay to let map initialize
     const timer = setTimeout(() => {
@@ -1156,6 +1163,7 @@ export default function WorldPage() {
             nearAmountYocto={replayKiss.near_amount_yocto as string | null}
             nearClaimerAccountId={replayKiss.near_claimer_account_id as string | null}
             receiverId={replayKiss.receiver_id as string | null}
+            claimSecretFromUrl={claimSecretFromUrl}
             onClaimed={() => {
               fetch(`/api/v1/kisses/${replayKiss.id}`).then(r => r.json()).then(d => { if (d.data) setReplayKiss(d.data); }).catch(() => {});
             }}

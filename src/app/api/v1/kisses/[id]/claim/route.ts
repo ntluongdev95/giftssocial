@@ -90,6 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       notify(senderId, 'system', '💎 Your NEAR gift was claimed!', `${verified.signerId} just claimed the gift you sent.`, 'kiss', id);
     }
 
+    delete row.near_claim_secret;
     return NextResponse.json({ data: row });
   } catch (err) {
     console.error('[Kiss claim POST]', err);

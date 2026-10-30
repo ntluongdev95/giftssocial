@@ -25,7 +25,7 @@ import { templatesByOccasion, getTemplate, TEMPLATE_REGISTRY } from '@/component
 import DynamicForm from '@/components/reveals/DynamicForm';
 import DataDrivenReveal from '@/components/reveals/DataDrivenReveal';
 import { getSelector, getModal, getSignedInAccountId, CONTRACT_ID } from '@/lib/near/wallet';
-import { lockGift, genGaoKissId } from '@/lib/near/kiss-contract';
+import { lockGift, genGaoKissId, genClaimSecret } from '@/lib/near/kiss-contract';
 
 /**
  * Unified shape for the template picker card. Merges two sources:
@@ -389,6 +389,11 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
       // even exists in our DB — the POST below verifies this tx hash
       // server-side, so if locking fails or is cancelled, no kiss is
       // sent at all rather than sending a moneyless one by surprise.
+      // `claimSecret` is the REAL access control for claiming (see
+      // contracts/kiss-chain claim_secret_hash) — it must ride along in
+      // the share link below; the gao_kiss_id alone is not enough to
+      // claim with.
+      let claimSecret: string | null = null;
       if (attachNear) {
         const amt = parseFloat(nearAmount);
         if (!nearAmount || Number.isNaN(amt) || amt <= 0) { setSendError('Enter a NEAR amount greater than 0'); setSending(false); return; }
@@ -396,12 +401,14 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
         setNearLocking(true);
         try {
           const gaoKissId = genGaoKissId();
-          const result = await lockGift(gaoKissId, 48, nearAmount);
+          claimSecret = genClaimSecret();
+          const result = await lockGift(gaoKissId, 48, nearAmount, claimSecret);
           const txHash = (result as { transaction_outcome?: { id?: string } } | void)?.transaction_outcome?.id;
           if (!txHash) throw new Error('NEAR wallet did not return a transaction hash');
           payload.id = gaoKissId;
           payload.near_sender_account_id = nearAccountId;
           payload.near_lock_tx_hash = txHash;
+          payload.near_claim_secret = claimSecret;
         } catch (e) {
           setSendError(e instanceof Error ? e.message : 'Failed to lock NEAR for this gift');
           setSending(false);
@@ -423,7 +430,8 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
         if (kissId) {
           // Generate a pink-heart-themed QR encoding /kiss/[id or slug]
           const origin = typeof window !== 'undefined' ? window.location.origin : '';
-          const url = getKissUrl({ id: kissId, slug: kissSlug }, origin);
+          let url = getKissUrl({ id: kissId, slug: kissSlug }, origin);
+          if (claimSecret) url += `${url.includes('?') ? '&' : '?'}k=${claimSecret}`;
           try {
             const qrDataUrl = await QRCode.toDataURL(url, {
               width: 400, margin: 1, errorCorrectionLevel: 'H',
@@ -538,9 +546,18 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
       const modal = await getModal();
       const selector = await getSelector();
       await new Promise<void>((resolve) => {
-        const off = selector.on('signedIn', ({ accounts }) => {
+        const offSignedIn = selector.on('signedIn', ({ accounts }) => {
           setNearAccountId(accounts[0]?.accountId ?? null);
-          off.remove();
+          offHide.remove();
+          offSignedIn.remove();
+          resolve();
+        });
+        // Without this, closing the modal without picking a wallet leaves
+        // the button stuck on "Connecting…" forever — nothing else ever
+        // resolves this promise.
+        const offHide = modal.on('onHide', () => {
+          offHide.remove();
+          offSignedIn.remove();
           resolve();
         });
         modal.show();

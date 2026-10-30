@@ -5,9 +5,19 @@ import type { KissRow } from '@/types/d1';
 import { resolveUserId } from '@/lib/resolveUser';
 import { notify } from '@/lib/notify';
 import { isValidSlug, SLUG_MIN, SLUG_MAX } from '@/lib/kiss-slug';
-import { verifyNearFunctionCall } from '@/lib/near/verify-tx';
+import { verifyNearFunctionCall, sha256Hex } from '@/lib/near/verify-tx';
 
 // ─── GET /api/v1/kisses — List public kisses (for globe) ───────────────
+
+// near_claim_secret (migration-040) must never leave this endpoint —
+// it's the real access control for claiming a money gift, and this
+// list is read by everyone browsing the globe feed, not just a kiss's
+// own sender/receiver. Applied uniformly across every branch below
+// rather than selectively, so a future branch can't forget it.
+function stripClaimSecrets(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  for (const row of rows) delete row.near_claim_secret;
+  return rows;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -30,7 +40,7 @@ export async function GET(req: NextRequest) {
          WHERE k.sender_id = ?
          ORDER BY k.created_at DESC LIMIT ?`
       ).bind(userId, limit).all<Record<string, unknown>>();
-      return NextResponse.json({ data: result.results });
+      return NextResponse.json({ data: stripClaimSecrets(result.results) });
     } else if (mine && userId) {
       // My kisses (sent + received) — only within 24h or already opened
       const result = await db.prepare(
@@ -44,7 +54,7 @@ export async function GET(req: NextRequest) {
            AND (k.opened = 1 OR k.created_at > datetime('now', '-1 day'))
          ORDER BY k.created_at DESC LIMIT ?`
       ).bind(userId, userId, limit).all<Record<string, unknown>>();
-      return NextResponse.json({ data: result.results });
+      return NextResponse.json({ data: stripClaimSecrets(result.results) });
     } else if (userId) {
       // Public kisses + my private kisses — hide expired unopened
       const result = await db.prepare(
@@ -59,7 +69,7 @@ export async function GET(req: NextRequest) {
            AND (k.visibility = 'public' OR k.sender_id = ? OR k.receiver_id = ?)
          ORDER BY k.created_at DESC LIMIT ?`
       ).bind(userId, userId, limit).all<Record<string, unknown>>();
-      return NextResponse.json({ data: result.results });
+      return NextResponse.json({ data: stripClaimSecrets(result.results) });
     } else {
       // Not logged in — public only, hide expired
       const result = await db.prepare(
@@ -74,7 +84,7 @@ export async function GET(req: NextRequest) {
            AND k.created_at > datetime('now', '-7 days')
          ORDER BY k.created_at DESC LIMIT ?`
       ).bind(limit).all<Record<string, unknown>>();
-      return NextResponse.json({ data: result.results });
+      return NextResponse.json({ data: stripClaimSecrets(result.results) });
     }
   } catch (err) {
     console.error('[Kisses GET]', err);
@@ -123,12 +133,17 @@ const kissSchema = z.object({
   id: z.string().regex(/^kiss_[0-9a-f]{16}$/).optional(),
   near_sender_account_id: z.string().min(2).max(64).optional(),
   near_lock_tx_hash: z.string().min(10).max(128).optional(),
+  // The plaintext claim secret (see contracts/kiss-chain/src/lib.rs
+  // claim_secret_hash + migration-040) — re-hashed and checked against
+  // what the verified on-chain lock_gift call actually recorded before
+  // being trusted enough to cache in the DB.
+  near_claim_secret: z.string().min(16).max(128).optional(),
 }).refine(
   (d) => d.receiver_id || (d.receiver_name && d.receiver_lat != null && d.receiver_lng != null),
   { message: 'Pick a friend, or enter a name and address for someone without an account yet' },
 ).refine(
-  (d) => !d.near_lock_tx_hash || (d.id && d.near_sender_account_id),
-  { message: 'id and near_sender_account_id are required alongside near_lock_tx_hash' },
+  (d) => !d.near_lock_tx_hash || (d.id && d.near_sender_account_id && d.near_claim_secret),
+  { message: 'id, near_sender_account_id and near_claim_secret are required alongside near_lock_tx_hash' },
 );
 
 export async function POST(req: NextRequest) {
@@ -201,8 +216,8 @@ export async function POST(req: NextRequest) {
     // rather than trusting the client's say-so. Any mismatch (wrong
     // method, wrong gao_kiss_id, wrong signer) rejects the whole send;
     // we never record a "locked" gift the chain doesn't actually back.
-    let nearGift: { amountYocto: string; senderAccountId: string; tokenId: string } | null = null;
-    if (d.near_lock_tx_hash && d.id && d.near_sender_account_id) {
+    let nearGift: { amountYocto: string; senderAccountId: string; tokenId: string; claimSecret: string } | null = null;
+    if (d.near_lock_tx_hash && d.id && d.near_sender_account_id && d.near_claim_secret) {
       let verified;
       try {
         verified = await verifyNearFunctionCall(d.near_lock_tx_hash, d.near_sender_account_id);
@@ -219,17 +234,26 @@ export async function POST(req: NextRequest) {
       if (!(BigInt(verified.depositYocto) > BigInt(0))) {
         return NextResponse.json({ error: { code: 'near_verify_failed', message: 'No NEAR was attached in that transaction' } }, { status: 400 });
       }
+      // The claim secret is the real access control for this gift (see
+      // contracts/kiss-chain claim_secret_hash) — confirm the plaintext
+      // the client just handed us actually hashes to what's on chain
+      // before caching it, rather than trusting it blindly.
+      const expectedHash = await sha256Hex(d.near_claim_secret);
+      if (verified.args.claim_secret_hash !== expectedHash) {
+        return NextResponse.json({ error: { code: 'near_verify_failed', message: "Claim secret doesn't match the on-chain lock_gift call" } }, { status: 400 });
+      }
       nearGift = {
         amountYocto: verified.depositYocto,
         senderAccountId: verified.signerId,
         tokenId: `gift-${d.id}`,
+        claimSecret: d.near_claim_secret,
       };
     }
 
     const id = nearGift ? (d.id as string) : genId('kiss_');
     const row = await db.prepare(
-      `INSERT INTO kisses (id, sender_id, receiver_id, receiver_name, receiver_address, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title, template_id, template_data, max_opens, slug, near_amount_yocto, near_gift_status, near_token_id, near_sender_account_id, near_lock_tx_hash, near_locked_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
+      `INSERT INTO kisses (id, sender_id, receiver_id, receiver_name, receiver_address, message, emoji, visibility, kiss_type, sender_lat, sender_lng, receiver_lat, receiver_lng, photos, music_url, music_title, template_id, template_data, max_opens, slug, near_amount_yocto, near_gift_status, near_token_id, near_sender_account_id, near_lock_tx_hash, near_locked_at, near_claim_secret)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`
     ).bind(id, userId, d.receiver_id ?? null, d.receiver_id ? null : (d.receiver_name ?? null), d.receiver_address ?? null,
       d.message, d.emoji, d.visibility, d.kiss_type,
       sender.location_lat, sender.location_lng, recLat, recLng,
@@ -237,7 +261,7 @@ export async function POST(req: NextRequest) {
       d.template_id ?? null, templateDataJson, 20, slug,
       nearGift?.amountYocto ?? null, nearGift ? 'locked' : null, nearGift?.tokenId ?? null,
       nearGift?.senderAccountId ?? null, d.near_lock_tx_hash ?? null,
-      nearGift ? new Date().toISOString() : null).first<Record<string, unknown>>();
+      nearGift ? new Date().toISOString() : null, nearGift?.claimSecret ?? null).first<Record<string, unknown>>();
 
     // Notify receiver — only possible when they actually have an account.
     // Guest recipients (no receiver_id) have nowhere to receive a notification.

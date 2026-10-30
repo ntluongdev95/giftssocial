@@ -38,6 +38,18 @@ const ROYALTY_BPS: u128 = 500;
 // the whole design is for.
 const MAX_RELAY_SLOTS: u8 = 3;
 
+// No `hex` crate dependency for one 32-byte lowercase-hex encode — this
+// is the entire operation `claim_gift` needs it for.
+fn to_hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(DIGITS[(b >> 4) as usize] as char);
+        out.push(DIGITS[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
 // ── Kiss-specific state ─────────────────────────────────────────────
 
 // `serializers = [borsh, json]` — borsh is how this is stored on-chain
@@ -87,6 +99,19 @@ pub struct KissInfo {
     // relayed onward. Starts at MAX_RELAY_SLOTS, decrements by 1 each
     // time its owner calls `relay`, floors at 0.
     pub relay_slots_remaining: u8,
+    // Only ever Some(...) for a `lock_gift`-created gift (None for
+    // mint_kiss/relay, where real NEP-171 ownership is already the
+    // access control — only the actual key-holding owner can act on
+    // it). A `lock_gift` gift has NO owner yet (it's held by the
+    // contract's own account as a placeholder until claimed), so
+    // without this, knowing the gao_kiss_id string alone — which can
+    // leak via a shared link, a scraped OG image URL, etc. — would be
+    // enough for anyone to call `claim_gift` directly and steal the
+    // locked funds, bypassing the app's own receiver_id check
+    // entirely (that check only runs in the Next.js backend, not here
+    // on chain). This is hex(sha256(secret)) — the real secret never
+    // touches chain state, only this hash does.
+    pub claim_secret_hash: Option<String>,
 }
 
 #[derive(BorshSerialize, BorshStorageKey)]
@@ -194,6 +219,7 @@ impl Contract {
                 root_sender_id: sender_id,
                 depth: 0,
                 relay_slots_remaining: MAX_RELAY_SLOTS,
+                claim_secret_hash: None,
             },
         );
 
@@ -211,10 +237,15 @@ impl Contract {
     /// owned NFT only happens at claim time, not at send time, so a
     /// gift with no wallet-less receiver yet doesn't need one to exist
     /// in order to be sent.
+    /// `claim_secret_hash` is hex(sha256(secret)) for a random secret the
+    /// caller generated — never pass the plaintext secret here, only its
+    /// hash. The plaintext only ever needs to reach `claim_gift`, which
+    /// recomputes and compares the hash.
     #[payable]
-    pub fn lock_gift(&mut self, gao_kiss_id: String, expires_in_hours: u32) -> TokenId {
+    pub fn lock_gift(&mut self, gao_kiss_id: String, expires_in_hours: u32, claim_secret_hash: String) -> TokenId {
         require!(expires_in_hours > 0 && expires_in_hours <= 24 * 14, "expires_in_hours must be 1..=336 (14 days)");
         require!(!gao_kiss_id.is_empty() && gao_kiss_id.len() <= 64, "gao_kiss_id must be 1..=64 chars");
+        require!(claim_secret_hash.len() == 64 && claim_secret_hash.bytes().all(|b| b.is_ascii_hexdigit()), "claim_secret_hash must be a 64-char hex sha256 digest");
         let locked_amount = env::attached_deposit();
         require!(locked_amount.as_yoctonear() > 0, "Must attach NEAR to lock a gift");
 
@@ -256,6 +287,7 @@ impl Contract {
                 root_sender_id: sender_id,
                 depth: 0,
                 relay_slots_remaining: MAX_RELAY_SLOTS,
+                claim_secret_hash: Some(claim_secret_hash),
             },
         );
 
@@ -263,19 +295,29 @@ impl Contract {
     }
 
     /// The real receiver, now that they have a NEAR account (created via
-    /// NEAR Auth/passkey right before this call), claims a gift locked
-    /// by `lock_gift`. Mints real ownership to the caller, marks the
-    /// kiss Bloomed directly (claiming a gift from a named receiver IS
-    /// the reciprocation — there's no separate "accept" step in this
-    /// flow the way there is for the standalone mint_kiss/relay path),
-    /// and pays out the locked NEAR in the same call. First caller
-    /// wins: once claimed, status is no longer Pending and a second
-    /// claim attempt is rejected.
-    pub fn claim_gift(&mut self, gao_kiss_id: String) -> Promise {
+    /// a wallet connected right before this call), claims a gift locked
+    /// by `lock_gift` — and must prove they actually hold the claim
+    /// link/QR by supplying the plaintext secret whose hash was stored
+    /// at lock time (see `claim_secret_hash` on `KissInfo` for why this
+    /// exists: without it, knowing the gao_kiss_id alone would be
+    /// enough to steal the funds, bypassing the app's own receiver
+    /// check entirely since that check isn't enforced on chain).
+    /// Mints real ownership to the caller, marks the kiss Bloomed
+    /// directly (claiming a gift from a named receiver IS the
+    /// reciprocation — there's no separate "accept" step in this flow
+    /// the way there is for the standalone mint_kiss/relay path), and
+    /// pays out the locked NEAR in the same call. First caller wins:
+    /// once claimed, status is no longer Pending and a second claim
+    /// attempt is rejected.
+    pub fn claim_gift(&mut self, gao_kiss_id: String, claim_secret: String) -> Promise {
         let token_id: TokenId = format!("gift-{}", gao_kiss_id);
         let mut info = self.kiss_data.get(&token_id).expect("Gift not found");
         require!(info.status == KissStatus::Pending, "This gift was already claimed or has wilted");
         require!(env::block_timestamp() <= info.expires_at, "This gift's claim window closed");
+
+        let expected_hash = info.claim_secret_hash.as_deref().expect("This gift has no claim secret set");
+        let actual_hash = to_hex(&env::sha256(claim_secret.as_bytes()));
+        require!(actual_hash == expected_hash, "Incorrect claim secret");
 
         let receiver_id = env::predecessor_account_id();
         self.tokens.internal_transfer_unguarded(&token_id, &env::current_account_id(), &receiver_id);
@@ -362,6 +404,7 @@ impl Contract {
                 root_sender_id: parent.root_sender_id,
                 depth: parent.depth + 1,
                 relay_slots_remaining: MAX_RELAY_SLOTS,
+                claim_secret_hash: None,
             },
         );
 
@@ -693,17 +736,22 @@ mod tests {
 
     // ── App-integrated flow: lock_gift + claim_gift ─────────────────
 
+    fn secret_hash(secret: &str) -> String {
+        to_hex(&near_sdk::env::sha256(secret.as_bytes()))
+    }
+
     #[test]
     fn lock_gift_escrows_funds_to_contract_owned_placeholder() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let token_id = c.lock_gift("kiss_abc123".to_string(), 48);
+        let token_id = c.lock_gift("kiss_abc123".to_string(), 48, secret_hash("s3cr3t"));
         assert_eq!(token_id, "gift-kiss_abc123");
 
         let info = c.get_kiss(token_id.clone()).expect("gift should exist");
         assert_eq!(info.status, KissStatus::Pending);
         assert_eq!(info.locked_amount, NearToken::from_near(1));
         assert_eq!(info.sender_id, alice());
+        assert_eq!(info.claim_secret_hash, Some(secret_hash("s3cr3t")));
 
         let token = c.get_kiss_token(token_id).expect("nft should exist");
         assert_eq!(token.owner_id, near_sdk::env::current_account_id());
@@ -714,7 +762,7 @@ mod tests {
     fn lock_gift_rejects_zero_deposit() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(0), 0).build());
-        let _ = c.lock_gift("kiss_nodeposit".to_string(), 48);
+        let _ = c.lock_gift("kiss_nodeposit".to_string(), 48, secret_hash("s"));
     }
 
     #[test]
@@ -722,21 +770,29 @@ mod tests {
     fn lock_gift_rejects_duplicate_gao_kiss_id() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_dup".to_string(), 48);
+        let _ = c.lock_gift("kiss_dup".to_string(), 48, secret_hash("s"));
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_dup".to_string(), 48);
+        let _ = c.lock_gift("kiss_dup".to_string(), 48, secret_hash("s"));
+    }
+
+    #[test]
+    #[should_panic(expected = "64-char hex")]
+    fn lock_gift_rejects_a_malformed_secret_hash() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let _ = c.lock_gift("kiss_badhash".to_string(), 48, "not-a-real-hash".to_string());
     }
 
     #[test]
     fn claim_gift_transfers_ownership_and_pays_out_in_one_call() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(2), 0).build());
-        let token_id = c.lock_gift("kiss_claimme".to_string(), 48);
+        let token_id = c.lock_gift("kiss_claimme".to_string(), 48, secret_hash("correct-horse"));
 
         // Bob claims — no prior NFT ownership required, just the right
-        // gao_kiss_id and claiming before the window closes.
+        // gao_kiss_id + claim secret, and claiming before the window closes.
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
-        let _ = c.claim_gift("kiss_claimme".to_string());
+        let _ = c.claim_gift("kiss_claimme".to_string(), "correct-horse".to_string());
 
         let info = c.get_kiss(token_id.clone()).unwrap();
         assert_eq!(info.status, KissStatus::Bloomed);
@@ -747,18 +803,34 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Incorrect claim secret")]
+    fn claim_gift_rejects_the_wrong_secret() {
+        // This is the whole point of the mechanism: knowing the
+        // gao_kiss_id alone (e.g. from a leaked/guessed link) must NOT
+        // be enough to claim — the real secret from the actual share
+        // link/QR is required too.
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let _ = c.lock_gift("kiss_guessed".to_string(), 48, secret_hash("the-real-secret"));
+
+        testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
+        let _ = c.claim_gift("kiss_guessed".to_string(), "a-guessed-secret".to_string());
+    }
+
+    #[test]
     #[should_panic(expected = "already claimed or has wilted")]
     fn claim_gift_cannot_be_claimed_twice() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_onceonly".to_string(), 48);
+        let _ = c.lock_gift("kiss_onceonly".to_string(), 48, secret_hash("s"));
 
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
-        let _ = c.claim_gift("kiss_onceonly".to_string());
+        let _ = c.claim_gift("kiss_onceonly".to_string(), "s".to_string());
 
-        // Carol tries to claim the same gift after Bob already did.
+        // Carol tries to claim the same gift after Bob already did —
+        // even with the correct secret, it's already gone.
         testing_env!(context(carol(), NearToken::from_near(0), 2000).build());
-        let _ = c.claim_gift("kiss_onceonly".to_string());
+        let _ = c.claim_gift("kiss_onceonly".to_string(), "s".to_string());
     }
 
     #[test]
@@ -766,18 +838,18 @@ mod tests {
     fn claim_gift_rejects_claim_after_expiry() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_toolate".to_string(), 1); // 1h window
+        let _ = c.lock_gift("kiss_toolate".to_string(), 1, secret_hash("s")); // 1h window
 
         let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
         testing_env!(context(bob(), NearToken::from_near(0), two_hours_ns).build());
-        let _ = c.claim_gift("kiss_toolate".to_string());
+        let _ = c.claim_gift("kiss_toolate".to_string(), "s".to_string());
     }
 
     #[test]
     fn sender_reclaims_an_unclaimed_gift_after_expiry() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let token_id = c.lock_gift("kiss_unclaimed".to_string(), 1);
+        let token_id = c.lock_gift("kiss_unclaimed".to_string(), 1, secret_hash("s"));
 
         let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
         testing_env!(context(alice(), NearToken::from_near(0), two_hours_ns).build());

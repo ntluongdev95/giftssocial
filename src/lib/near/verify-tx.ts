@@ -59,3 +59,13 @@ export async function verifyNearFunctionCall(
     depositYocto: fc.deposit,
   };
 }
+
+// Server-side mirror of src/lib/near/kiss-contract.ts's sha256Hex — Web
+// Crypto, not node:crypto, so this runs the same way in the Cloudflare
+// Workers runtime this app actually deploys to. Used to confirm a
+// client-reported plaintext claim secret really hashes to what's on
+// chain before trusting it enough to cache in the DB.
+export async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}

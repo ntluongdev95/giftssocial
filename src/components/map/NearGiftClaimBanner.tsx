@@ -7,12 +7,19 @@
 // the CLAIM action, and only to the actual intended receiver.
 //
 // Wallet: same wallet-selector setup already used for the sender's
-// "Attach NEAR" flow (src/lib/near/wallet.ts) — Meteor + Here, both
-// support creating a brand-new wallet from inside the connect modal, so
-// a receiver with no NEAR account yet isn't stuck. (NEAR Auth/passkey
-// was investigated and ruled out for now — it needs a self-hosted
-// relayer this project doesn't have; MyNearWallet was ruled out because
-// NEAR sunset it on 2026-10-31.)
+// "Attach NEAR" flow (src/lib/near/wallet.ts) — Bitte Wallet is hosted
+// (no install needed, works for anyone), Meteor/Here kept as secondary
+// options. (NEAR Auth/passkey was investigated and ruled out for now —
+// it needs a self-hosted relayer this project doesn't have; MyNearWallet
+// was ruled out because NEAR sunset it on 2026-10-31.)
+//
+// Claim secret: the real access control for claiming (see
+// contracts/kiss-chain claim_secret_hash + migration-040) — a guest
+// kiss has no account to gate a server lookup with, so its secret can
+// only come from `claimSecretFromUrl` (the share link/QR); a
+// registered-receiver kiss instead fetches it from the auth-gated
+// GET /api/v1/kisses/[id]/claim-secret, so the link itself doesn't
+// need to carry it for that case.
 
 import { useState } from 'react';
 import { Wallet, Gem, CheckCircle2, Clock, Loader2 } from 'lucide-react';
@@ -28,10 +35,11 @@ interface Props {
   nearAmountYocto: string | null;
   nearClaimerAccountId: string | null;
   receiverId: string | null;
+  claimSecretFromUrl: string | null;
   onClaimed?: () => void;
 }
 
-export default function NearGiftClaimBanner({ kissId, nearGiftStatus, nearAmountYocto, nearClaimerAccountId, receiverId, onClaimed }: Props) {
+export default function NearGiftClaimBanner({ kissId, nearGiftStatus, nearAmountYocto, nearClaimerAccountId, receiverId, claimSecretFromUrl, onClaimed }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claimedLocally, setClaimedLocally] = useState(false);
@@ -75,16 +83,34 @@ export default function NearGiftClaimBanner({ kissId, nearGiftStatus, nearAmount
         const modal = await getModal();
         const selector = await getSelector();
         accountId = await new Promise<string | null>((resolve) => {
-          const off = selector.on('signedIn', ({ accounts }) => {
-            off.remove();
+          const offSignedIn = selector.on('signedIn', ({ accounts }) => {
+            offHide.remove();
+            offSignedIn.remove();
             resolve(accounts[0]?.accountId ?? null);
+          });
+          // Closing the modal without picking a wallet must still resolve
+          // this promise — otherwise the button hangs on "Claiming…" forever.
+          const offHide = modal.on('onHide', () => {
+            offHide.remove();
+            offSignedIn.remove();
+            resolve(null);
           });
           modal.show();
         });
       }
       if (!accountId) throw new Error('Connect a NEAR wallet to claim this gift');
 
-      const result = await claimGift(kissId);
+      let claimSecret = claimSecretFromUrl;
+      if (!claimSecret) {
+        const secretRes = await fetch(`/api/v1/kisses/${kissId}/claim-secret`);
+        const secretData = await secretRes.json();
+        if (!secretRes.ok || !secretData.data?.claim_secret) {
+          throw new Error(secretData.error?.message || 'Missing claim link — ask the sender to resend it');
+        }
+        claimSecret = secretData.data.claim_secret;
+      }
+
+      const result = await claimGift(kissId, claimSecret as string);
       const txHash = (result as { transaction_outcome?: { id?: string } } | void)?.transaction_outcome?.id;
       if (!txHash) throw new Error('NEAR wallet did not return a transaction hash');
 

@@ -135,16 +135,36 @@ export function getKiss(tokenId: string) {
 // migration-039 — these back the "Attach NEAR" option on a real Kiss
 // sent from the production app, not the standalone /near-demo page.
 
-export function lockGift(gaoKissId: string, expiresInHours: number, depositNear: string) {
+// hex(sha256(text)) via Web Crypto — used both to hash the claim secret
+// before sending it to `lock_gift` (the plaintext itself only ever
+// goes into the share link, never on chain) and, mirrored server-side
+// in verify-tx.ts, to confirm a client-reported plaintext secret
+// really matches what's on chain before trusting it.
+export async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// A random secret only the share link/QR ever carries — this, not the
+// gao_kiss_id, is the real access control for claiming (see
+// claim_secret_hash on KissInfo in the contract for why the id alone
+// isn't safe to rely on).
+export function genClaimSecret(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function lockGift(gaoKissId: string, expiresInHours: number, depositNear: string, claimSecret: string) {
+  const claimSecretHash = await sha256Hex(claimSecret);
   return callWrite(
     'lock_gift',
-    { gao_kiss_id: gaoKissId, expires_in_hours: expiresInHours },
+    { gao_kiss_id: gaoKissId, expires_in_hours: expiresInHours, claim_secret_hash: claimSecretHash },
     nearToYocto(depositNear),
   );
 }
 
-export function claimGift(gaoKissId: string) {
-  return callWrite('claim_gift', { gao_kiss_id: gaoKissId });
+export function claimGift(gaoKissId: string, claimSecret: string) {
+  return callWrite('claim_gift', { gao_kiss_id: gaoKissId, claim_secret: claimSecret });
 }
 
 export function getGift(gaoKissId: string) {

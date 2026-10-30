@@ -16,6 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       if (cached) {
         const data = JSON.parse(cached as string);
         if (data._private) return NextResponse.json({ error: { code: 'private', message: 'This kiss is private' } }, { status: 403 });
+        delete data.near_claim_secret;
         return NextResponse.json({ data }, {
           headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=600' },
         });
@@ -36,6 +37,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!kiss) {
       return NextResponse.json({ error: { code: 'not_found', message: 'Kiss not found' } }, { status: 404 });
     }
+
+    // This is a PUBLIC, cacheable, unauthenticated endpoint — the claim
+    // secret must never appear in its response or in the KV cache it
+    // writes below. A receiver gets the secret only via the share
+    // link/QR itself, or (if registered) the auth-gated
+    // GET /api/v1/kisses/[id]/claim-secret.
+    delete kiss.near_claim_secret;
 
     if (kiss.visibility === 'private') {
       try {

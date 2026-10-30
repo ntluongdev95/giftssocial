@@ -7,6 +7,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.gao.social';
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ k?: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -67,8 +68,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 // Revalidate every 10 min — gift expires in 24h, this ensures freshness
 export const revalidate = 600;
 
-export default async function KissSharePage({ params }: Props) {
+export default async function KissSharePage({ params, searchParams }: Props) {
   const { id } = await params;
+  // Forward the claim-secret query param (see contracts/kiss-chain
+  // claim_secret_hash + migration-040) through to /world — it's the
+  // real access control for claiming a NEAR gift, and this is the only
+  // hop it needs to survive for a QR/share-link open to carry it all
+  // the way to NearGiftClaimBanner.
+  const { k } = await searchParams;
 
   // Check the kiss's open-limit status server-side. If it's exhausted
   // (open_count >= max_opens), render a friendly "gift used up" page
@@ -117,5 +124,5 @@ export default async function KissSharePage({ params }: Props) {
     );
   }
 
-  redirect(`/world?kiss=${canonicalId}`);
+  redirect(`/world?kiss=${canonicalId}${k ? `&k=${encodeURIComponent(k)}` : ''}`);
 }
