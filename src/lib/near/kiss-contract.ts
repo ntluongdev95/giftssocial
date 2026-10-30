@@ -65,6 +65,22 @@ export interface KissInfo {
   root_sender_id: string;
   depth: number;
   relay_slots_remaining: number;
+  claim_secret_hash: string | null;
+  hop_lat: number;
+  hop_lng: number;
+}
+
+export interface JourneyHop {
+  token_id: string;
+  account_id: string;
+  lat: number;
+  lng: number;
+  depth: number;
+}
+
+export interface BadgeInfo {
+  bloom_count: number;
+  level: string;
 }
 
 async function callWrite(methodName: string, args: Record<string, unknown>, depositYocto = '0', gas = '30000000000000') {
@@ -98,10 +114,10 @@ async function callView<T>(methodName: string, args: Record<string, unknown>): P
   return text ? JSON.parse(text) : (null as T);
 }
 
-export function mintKiss(receiverId: string, message: string, expiresInHours: number, depositNear: string) {
+export function mintKiss(receiverId: string, message: string, expiresInHours: number, depositNear: string, lat: number, lng: number) {
   return callWrite(
     'mint_kiss',
-    { receiver_id: receiverId, message, expires_in_hours: expiresInHours },
+    { receiver_id: receiverId, message, expires_in_hours: expiresInHours, lat, lng },
     nearToYocto(depositNear),
   );
 }
@@ -114,10 +130,10 @@ export function claim(tokenId: string) {
   return callWrite('claim', { token_id: tokenId });
 }
 
-export function relay(tokenId: string, receiverId: string, message: string, expiresInHours: number, depositNear: string) {
+export function relay(tokenId: string, receiverId: string, message: string, expiresInHours: number, depositNear: string, lat: number, lng: number) {
   return callWrite(
     'relay',
-    { token_id: tokenId, receiver_id: receiverId, message, expires_in_hours: expiresInHours },
+    { token_id: tokenId, receiver_id: receiverId, message, expires_in_hours: expiresInHours, lat, lng },
     nearToYocto(depositNear),
   );
 }
@@ -154,11 +170,11 @@ export function genClaimSecret(): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function lockGift(gaoKissId: string, expiresInHours: number, depositNear: string, claimSecret: string) {
+export async function lockGift(gaoKissId: string, expiresInHours: number, depositNear: string, claimSecret: string, lat: number, lng: number) {
   const claimSecretHash = await sha256Hex(claimSecret);
   return callWrite(
     'lock_gift',
-    { gao_kiss_id: gaoKissId, expires_in_hours: expiresInHours, claim_secret_hash: claimSecretHash },
+    { gao_kiss_id: gaoKissId, expires_in_hours: expiresInHours, claim_secret_hash: claimSecretHash, lat, lng },
     nearToYocto(depositNear),
   );
 }
@@ -179,6 +195,19 @@ export function genGaoKissId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(8));
   const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
   return `kiss_${hex}`;
+}
+
+// This kiss's full relay chain as a route across the globe, root first.
+// Free (view call), but still bounded contract-side against a
+// pathologically long chain (see MAX_JOURNEY_HOPS in lib.rs).
+export function getJourney(tokenId: string) {
+  return callView<JourneyHop[]>('get_journey', { token_id: tokenId });
+}
+
+// An account's soulbound on-chain reputation (see BadgeInfo/award_bloom
+// in lib.rs) — null if they've never had a kiss reciprocated or claimed.
+export function getBadge(accountId: string) {
+  return callView<BadgeInfo | null>('get_badge', { account_id: accountId });
 }
 
 export function nftTokensForOwner(accountId: string) {

@@ -7,16 +7,31 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import '@near-wallet-selector/modal-ui/styles.css';
+import maplibregl from 'maplibre-gl';
 import {
   Heart, Wallet, Send, Sparkles, Clock, Users, Gift, Flower2,
-  ExternalLink, Loader2, CheckCircle2, AlertCircle, LogOut, Flame,
+  ExternalLink, Loader2, CheckCircle2, AlertCircle, LogOut, Flame, MapPin, Award,
 } from 'lucide-react';
 import { getSelector, getModal, getSignedInAccountId, signOut, CONTRACT_ID } from '@/lib/near/wallet';
 import {
   mintKiss, reciprocate, claim, relay, reclaimIfWilted,
   getKiss, nftTokensForOwner, yoctoToNear, extractReturnValue,
-  type KissInfo,
+  getJourney, getBadge, type KissInfo, type JourneyHop, type BadgeInfo,
 } from '@/lib/near/kiss-contract';
+
+// Stamps a real browser location onto each hop (see get_journey in
+// lib.rs) — falls back to (0,0) on denial/timeout rather than ever
+// blocking a mint/relay over a permission prompt.
+async function getBrowserCoords(): Promise<{ lat: number; lng: number }> {
+  try {
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
+    );
+    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+  } catch {
+    return { lat: 0, lng: 0 };
+  }
+}
 
 // nft_tokens_for_owner only returns kisses this wallet currently OWNS
 // (i.e. received) — a kiss someone sent is owned by the RECEIVER the
@@ -105,6 +120,17 @@ function KissCard({
 }) {
   const meta = statusMeta(k.status);
   const rt = relayTarget[k.token_id] ?? { receiverId: '', depositNear: '1' };
+  const [journeyOpen, setJourneyOpen] = useState(false);
+  const [journey, setJourney] = useState<JourneyHop[] | null>(null);
+  const [journeyLoading, setJourneyLoading] = useState(false);
+  const toggleJourney = async () => {
+    if (journeyOpen) { setJourneyOpen(false); return; }
+    setJourneyOpen(true);
+    if (journey) return;
+    setJourneyLoading(true);
+    try { setJourney(await getJourney(k.token_id)); } catch { setJourney([]); }
+    finally { setJourneyLoading(false); }
+  };
   return (
     <div
       className="rounded-xl p-3.5 text-xs"
@@ -206,7 +232,10 @@ function KissCard({
             disabled={!!busy || !rt.receiverId}
             onClick={() => onAction(
               k.token_id + ':relay',
-              () => relay(k.token_id, rt.receiverId, 'passing it on', 48, rt.depositNear || '0'),
+              async () => {
+                const { lat, lng } = await getBrowserCoords();
+                return relay(k.token_id, rt.receiverId, 'passing it on', 48, rt.depositNear || '0', lat, lng);
+              },
               'Relayed onward!',
             )}
             className="flex items-center gap-1 text-[11px] px-3 py-2 rounded-lg cursor-pointer disabled:opacity-40 hover:brightness-110 transition-all shrink-0"
@@ -217,8 +246,72 @@ function KissCard({
           </button>
         </div>
       )}
+
+      <button
+        onClick={toggleJourney}
+        className="flex items-center gap-1 text-[10px] text-white/40 hover:text-white/70 mt-2.5 cursor-pointer transition-colors"
+      >
+        <MapPin size={10} /> {journeyOpen ? 'Hide journey' : 'View journey on the map'}
+      </button>
+      {journeyOpen && (
+        journeyLoading
+          ? <div className="text-[10px] text-white/30 mt-1.5">Loading…</div>
+          : journey && journey.length > 0
+            ? <JourneyMap hops={journey} />
+            : <div className="text-[10px] text-white/30 mt-1.5">No journey data for this kiss (pre-journey-map or geolocation was denied).</div>
+      )}
     </div>
   );
+}
+
+// A relayed kiss's chain, root first, as an actual path across the
+// globe (get_journey in lib.rs) — same tile style the production
+// world map uses, so it looks like part of the same product, not a
+// bolted-on demo widget.
+function JourneyMap({ hops }: { hops: JourneyHop[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || hops.length === 0) return;
+    const key = process.env.NEXT_PUBLIC_MAPTILER_KEY || '';
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: `https://api.maptiler.com/maps/hybrid/style.json?key=${key}`,
+      center: [hops[0].lng, hops[0].lat],
+      zoom: 2,
+      interactive: true,
+      attributionControl: false,
+    });
+    map.on('load', () => {
+      map.addSource('journey-route', {
+        type: 'geojson',
+        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: hops.map((h) => [h.lng, h.lat]) } },
+      });
+      map.addLayer({
+        id: 'journey-route-line', type: 'line', source: 'journey-route',
+        paint: { 'line-color': ACCENT, 'line-width': 2.5, 'line-dasharray': [1, 1.5] },
+      });
+      hops.forEach((h, i) => {
+        const el = document.createElement('div');
+        el.style.cssText = `width:14px;height:14px;border-radius:50%;background:${i === 0 ? ACCENT : '#fff'};border:2px solid ${ACCENT};box-shadow:0 0 8px rgba(0,0,0,0.4);`;
+        new maplibregl.Marker({ element: el })
+          .setLngLat([h.lng, h.lat])
+          .setPopup(new maplibregl.Popup({ offset: 14 }).setText(`${h.account_id} — depth ${h.depth}`))
+          .addTo(map);
+      });
+      if (hops.length > 1) {
+        const bounds = hops.reduce(
+          (b, h) => b.extend([h.lng, h.lat]),
+          new maplibregl.LngLatBounds([hops[0].lng, hops[0].lat], [hops[0].lng, hops[0].lat])
+        );
+        map.fitBounds(bounds, { padding: 36, maxZoom: 6 });
+      }
+    });
+
+    return () => map.remove();
+  }, [hops]);
+
+  return <div ref={containerRef} className="w-full h-44 rounded-lg overflow-hidden mt-1.5" style={{ border: '1px solid rgba(255,255,255,0.08)' }} />;
 }
 
 // ── Kiss Tree — a real graph, not just the flat indented list above ──
@@ -302,6 +395,13 @@ function KissTree({ kisses, sentKisses }: { kisses: KissRow[]; sentKisses: KissR
 
 export default function NearDemoPage() {
   const [accountId, setAccountId] = useState<string | null>(null);
+  // Soulbound on-chain credential (see BadgeInfo/award_bloom in
+  // lib.rs) — how many kisses this wallet has actually had
+  // reciprocated or claimed, auto-tracked by the contract itself.
+  const [badge, setBadge] = useState<BadgeInfo | null>(null);
+  const refreshBadge = useCallback(async (id: string) => {
+    try { setBadge(await getBadge(id)); } catch { setBadge(null); }
+  }, []);
   const [loadingWallet, setLoadingWallet] = useState(true);
   const [busy, setBusy] = useState<string | null>(null); // which action is in flight, for per-button spinners
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -367,17 +467,18 @@ export default function NearDemoPage() {
         const id = await getSignedInAccountId();
         if (cancelled) return;
         setAccountId(id);
-        if (id) { await refreshKisses(id); await refreshSentKisses(id); }
+        if (id) { await refreshKisses(id); await refreshSentKisses(id); await refreshBadge(id); }
 
         selector.on('signedIn', async ({ accounts }) => {
           const newId = accounts[0]?.accountId ?? null;
           setAccountId(newId);
-          if (newId) { await refreshKisses(newId); await refreshSentKisses(newId); }
+          if (newId) { await refreshKisses(newId); await refreshSentKisses(newId); await refreshBadge(newId); }
         });
         selector.on('signedOut', () => {
           setAccountId(null);
           setKisses([]);
           setSentKisses([]);
+          setBadge(null);
         });
       } catch (e) {
         if (!cancelled) showToast({ kind: 'error', message: e instanceof Error ? e.message : 'Wallet init failed' });
@@ -386,7 +487,7 @@ export default function NearDemoPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [refreshKisses, refreshSentKisses, showToast]);
+  }, [refreshKisses, refreshSentKisses, refreshBadge, showToast]);
 
   // actionKey 'mint'/'<id>:relay' are the two actions that CREATE a new
   // token owned by someone else — their return value is the new
@@ -402,7 +503,7 @@ export default function NearDemoPage() {
         if (newTokenId) saveSentId(accountId, newTokenId);
       }
       showToast({ kind: 'success', message: successMsg, txHash });
-      if (accountId) { await refreshKisses(accountId); await refreshSentKisses(accountId); }
+      if (accountId) { await refreshKisses(accountId); await refreshSentKisses(accountId); await refreshBadge(accountId); }
     } catch (e) {
       showToast({ kind: 'error', message: e instanceof Error ? e.message : 'Transaction failed' });
     } finally {
@@ -462,6 +563,16 @@ export default function NearDemoPage() {
           </button>
         )}
 
+        {accountId && badge && (
+          <div className="flex items-center gap-2.5 mb-7 rounded-xl p-3.5" style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.25)' }}>
+            <Award size={18} style={{ color: '#fbbf24' }} className="shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm font-bold">{badge.level}</div>
+              <div className="text-[10px] text-white/40">Soulbound on-chain credential — {badge.bloom_count} kiss{badge.bloom_count === 1 ? '' : 'es'} reciprocated or claimed</div>
+            </div>
+          </div>
+        )}
+
         {accountId && (
           <>
             {/* ── Mint form ──────────────────────────────────────── */}
@@ -503,7 +614,10 @@ export default function NearDemoPage() {
                   disabled={busy === 'mint' || !receiverId || !message}
                   onClick={() => run(
                     'mint',
-                    () => mintKiss(receiverId, message, Number(hours) || 48, depositNear || '0'),
+                    async () => {
+                      const { lat, lng } = await getBrowserCoords();
+                      return mintKiss(receiverId, message, Number(hours) || 48, depositNear || '0', lat, lng);
+                    },
                     'Kiss sent!',
                   )}
                   className="flex items-center justify-center gap-2 rounded-lg py-3 text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all"

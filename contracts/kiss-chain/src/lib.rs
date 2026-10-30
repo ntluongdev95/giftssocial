@@ -37,6 +37,10 @@ const ROYALTY_BPS: u128 = 500;
 // through repeated relaying instead, which is the "lan tỏa" (spread)
 // the whole design is for.
 const MAX_RELAY_SLOTS: u8 = 3;
+// `get_journey` walks the parent_token_id chain — this is a view call
+// (free, no gas charged to the caller) but still bounded defensively
+// against a pathological chain length blowing the node's compute budget.
+const MAX_JOURNEY_HOPS: u32 = 64;
 
 // No `hex` crate dependency for one 32-byte lowercase-hex encode — this
 // is the entire operation `claim_gift` needs it for.
@@ -112,6 +116,47 @@ pub struct KissInfo {
     // on chain). This is hex(sha256(secret)) — the real secret never
     // touches chain state, only this hash does.
     pub claim_secret_hash: Option<String>,
+    // Where THIS hop happened — sender's coords for mint_kiss/lock_gift,
+    // relayer's coords for relay. `get_journey` walks parent_token_id
+    // links collecting these into a path, so a relayed-many-times kiss
+    // becomes a real route across the globe, not just a balance.
+    pub hop_lat: f64,
+    pub hop_lng: f64,
+}
+
+// Output-only shape for `get_journey` — one entry per hop in a kiss's
+// relay chain, root first. Not stored on chain itself (it's derived by
+// walking KissInfo.parent_token_id at view time), so JSON only.
+#[near(serializers = [json])]
+#[derive(Clone, Debug)]
+pub struct JourneyHop {
+    pub token_id: TokenId,
+    pub account_id: AccountId,
+    pub lat: f64,
+    pub lng: f64,
+    pub depth: u32,
+}
+
+// A soulbound (non-transferable — it's a plain account->record map, not
+// an NFT token, so there's no nft_transfer to even call on it) on-chain
+// credential: how many kisses this account has actually had reciprocated
+// or claimed. Auto-updated inside `reciprocate`/`claim_gift` — there's
+// no separate "mint my badge" call, it just reflects real behavior.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct BadgeInfo {
+    pub bloom_count: u32,
+    pub level: String,
+}
+
+fn badge_level_for(bloom_count: u32) -> String {
+    match bloom_count {
+        0 => "None",
+        1..=2 => "New Spark",
+        3..=9 => "Trusted Heart",
+        _ => "Beloved",
+    }
+    .to_string()
 }
 
 #[derive(BorshSerialize, BorshStorageKey)]
@@ -123,6 +168,7 @@ enum StorageKey {
     Enumeration,
     Approval,
     KissData,
+    Badges,
 }
 
 // ── Contract ─────────────────────────────────────────────────────────
@@ -130,6 +176,25 @@ enum StorageKey {
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
+    tokens: NonFungibleToken,
+    metadata: LazyOption<NFTContractMetadata>,
+    kiss_data: near_sdk::collections::LookupMap<TokenId, KissInfo>,
+    next_id: u64,
+    badges: near_sdk::collections::LookupMap<AccountId, BadgeInfo>,
+}
+
+// Exact shape of the contract's root state as deployed BEFORE this
+// migration (the journey-map + soulbound-badge upgrade) added the
+// `badges` field. Borsh state is positional, not named — redeploying
+// code whose root struct has new fields does NOT get a default value
+// for them on existing state, it fails to deserialize at all, on every
+// single call (see `migrate` below). `kiss_data`'s KissInfo value type
+// doesn't need its own "old" version here: a LookupMap's own Borsh
+// representation is just its storage-key prefix, not its entries, so
+// changing what it stores per-key (hop_lat/hop_lng, claim_secret_hash)
+// never affects how the ROOT Contract struct itself deserializes.
+#[near(serializers = [borsh])]
+struct ContractV1 {
     tokens: NonFungibleToken,
     metadata: LazyOption<NFTContractMetadata>,
     kiss_data: near_sdk::collections::LookupMap<TokenId, KissInfo>,
@@ -161,6 +226,25 @@ impl Contract {
             metadata: LazyOption::new(StorageKey::Metadata, Some(&metadata)),
             kiss_data: near_sdk::collections::LookupMap::new(StorageKey::KissData),
             next_id: 0,
+            badges: near_sdk::collections::LookupMap::new(StorageKey::Badges),
+        }
+    }
+
+    /// One-time upgrade from the pre-journey-map/badge contract state —
+    /// see `ContractV1` for why this is needed at all. `#[private]`
+    /// restricts it to the contract's own account (never callable by
+    /// anyone else); `ignore_state` is what lets it run even though
+    /// state already exists, which a normal `#[init]` refuses.
+    #[private]
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        let old: ContractV1 = env::state_read().expect("failed to read pre-migration state");
+        Self {
+            tokens: old.tokens,
+            metadata: old.metadata,
+            kiss_data: old.kiss_data,
+            next_id: old.next_id,
+            badges: near_sdk::collections::LookupMap::new(StorageKey::Badges),
         }
     }
 
@@ -175,6 +259,8 @@ impl Contract {
         receiver_id: AccountId,
         message: String,
         expires_in_hours: u32,
+        lat: f64,
+        lng: f64,
     ) -> TokenId {
         require!(expires_in_hours > 0 && expires_in_hours <= 24 * 14, "expires_in_hours must be 1..=336 (14 days)");
         require!(message.len() <= 500, "message too long (max 500 chars)");
@@ -220,6 +306,8 @@ impl Contract {
                 depth: 0,
                 relay_slots_remaining: MAX_RELAY_SLOTS,
                 claim_secret_hash: None,
+                hop_lat: lat,
+                hop_lng: lng,
             },
         );
 
@@ -242,7 +330,7 @@ impl Contract {
     /// hash. The plaintext only ever needs to reach `claim_gift`, which
     /// recomputes and compares the hash.
     #[payable]
-    pub fn lock_gift(&mut self, gao_kiss_id: String, expires_in_hours: u32, claim_secret_hash: String) -> TokenId {
+    pub fn lock_gift(&mut self, gao_kiss_id: String, expires_in_hours: u32, claim_secret_hash: String, lat: f64, lng: f64) -> TokenId {
         require!(expires_in_hours > 0 && expires_in_hours <= 24 * 14, "expires_in_hours must be 1..=336 (14 days)");
         require!(!gao_kiss_id.is_empty() && gao_kiss_id.len() <= 64, "gao_kiss_id must be 1..=64 chars");
         require!(claim_secret_hash.len() == 64 && claim_secret_hash.bytes().all(|b| b.is_ascii_hexdigit()), "claim_secret_hash must be a 64-char hex sha256 digest");
@@ -288,6 +376,8 @@ impl Contract {
                 depth: 0,
                 relay_slots_remaining: MAX_RELAY_SLOTS,
                 claim_secret_hash: Some(claim_secret_hash),
+                hop_lat: lat,
+                hop_lng: lng,
             },
         );
 
@@ -326,6 +416,7 @@ impl Contract {
         let amount = info.locked_amount;
         info.locked_amount = NearToken::from_yoctonear(0);
         self.kiss_data.insert(&token_id, &info);
+        self.award_bloom(&receiver_id);
 
         Promise::new(receiver_id).transfer(amount)
     }
@@ -343,6 +434,8 @@ impl Contract {
         receiver_id: AccountId,
         message: String,
         expires_in_hours: u32,
+        lat: f64,
+        lng: f64,
     ) -> TokenId {
         require!(expires_in_hours > 0 && expires_in_hours <= 24 * 14, "expires_in_hours must be 1..=336 (14 days)");
         require!(message.len() <= 500, "message too long (max 500 chars)");
@@ -405,6 +498,8 @@ impl Contract {
                 depth: parent.depth + 1,
                 relay_slots_remaining: MAX_RELAY_SLOTS,
                 claim_secret_hash: None,
+                hop_lat: lat,
+                hop_lng: lng,
             },
         );
 
@@ -438,6 +533,7 @@ impl Contract {
         info.royalty_amount = NearToken::from_yoctonear(0);
         let root_sender_id = info.root_sender_id.clone();
         self.kiss_data.insert(&token_id, &info);
+        self.award_bloom(&owner_id);
 
         if royalty_amount.as_yoctonear() > 0 {
             let _ = Promise::new(root_sender_id).transfer(royalty_amount);
@@ -495,6 +591,21 @@ impl Contract {
         Promise::new(sender).transfer(amount)
     }
 
+    // ── Internal ─────────────────────────────────────────────────────
+
+    // Called every time a kiss blooms for `account_id` (reciprocate or
+    // claim_gift) — purely additive, never fails, so it can't block the
+    // money/ownership move it's attached to.
+    fn award_bloom(&mut self, account_id: &AccountId) {
+        let mut badge = self.badges.get(account_id).unwrap_or(BadgeInfo {
+            bloom_count: 0,
+            level: badge_level_for(0),
+        });
+        badge.bloom_count += 1;
+        badge.level = badge_level_for(badge.bloom_count);
+        self.badges.insert(account_id, &badge);
+    }
+
     // ── Views ────────────────────────────────────────────────────────
 
     pub fn get_kiss(&self, token_id: TokenId) -> Option<KissInfo> {
@@ -503,6 +614,45 @@ impl Contract {
 
     pub fn get_kiss_token(&self, token_id: TokenId) -> Option<Token> {
         self.tokens.nft_token(token_id)
+    }
+
+    /// This kiss's full relay chain as a route across the globe, root
+    /// first — one hop per mint_kiss/lock_gift/relay call that led here.
+    /// A view call (free — no gas charged to whoever calls it), but
+    /// still bounded by MAX_JOURNEY_HOPS against a pathologically long
+    /// chain blowing the node's compute budget.
+    pub fn get_journey(&self, token_id: TokenId) -> Vec<JourneyHop> {
+        let mut hops = Vec::new();
+        let mut current_id = Some(token_id);
+        let mut iterations = 0u32;
+        while let Some(id) = current_id {
+            if iterations >= MAX_JOURNEY_HOPS {
+                break;
+            }
+            iterations += 1;
+            let info = match self.kiss_data.get(&id) {
+                Some(i) => i,
+                None => break,
+            };
+            let next_id = info.parent_token_id.clone();
+            hops.push(JourneyHop {
+                token_id: id,
+                account_id: info.sender_id,
+                lat: info.hop_lat,
+                lng: info.hop_lng,
+                depth: info.depth,
+            });
+            current_id = next_id;
+        }
+        hops.reverse();
+        hops
+    }
+
+    /// An account's soulbound on-chain reputation — how many kisses
+    /// they've actually had reciprocated or claimed, and the tier that
+    /// maps to. None if they've never bloomed one yet.
+    pub fn get_badge(&self, account_id: AccountId) -> Option<BadgeInfo> {
+        self.badges.get(&account_id)
     }
 }
 
@@ -554,7 +704,7 @@ mod tests {
     fn mint_locks_funds_in_pending_state() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
 
         let info = c.get_kiss(id.clone()).expect("kiss should exist");
         assert_eq!(info.status, KissStatus::Pending);
@@ -569,7 +719,7 @@ mod tests {
     fn receiver_can_reciprocate_then_claim_full_amount() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(2), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
 
         // Bob reciprocates before the 48h deadline.
         testing_env!(context(bob(), NearToken::from_near(0), 60 * 60 * 1_000_000_000).build());
@@ -585,7 +735,7 @@ mod tests {
     fn sender_cannot_reciprocate_their_own_kiss() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
 
         // Alice (the sender, not the receiver) tries to reciprocate.
         testing_env!(context(alice(), NearToken::from_near(0), 1000).build());
@@ -597,7 +747,7 @@ mod tests {
     fn reciprocating_after_deadline_wilts_instead() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 1); // 1 hour window
+        let id = c.mint_kiss(bob(), "hi".to_string(), 1, 10.0, 106.0); // 1 hour window
 
         // Bob tries 2 hours later — past the deadline.
         let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
@@ -609,7 +759,7 @@ mod tests {
     fn sender_reclaims_funds_from_a_wilted_kiss() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 1);
+        let id = c.mint_kiss(bob(), "hi".to_string(), 1, 10.0, 106.0);
 
         // Past the deadline, nobody reciprocated. Alice reclaims.
         let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
@@ -625,7 +775,7 @@ mod tests {
     fn cannot_claim_a_still_pending_kiss() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
 
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
         let _ = c.claim(id); // never reciprocated
@@ -637,7 +787,7 @@ mod tests {
     fn relay_splits_deposit_into_royalty_and_locked() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let root_id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let root_id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
 
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
         c.reciprocate(root_id.clone());
@@ -645,7 +795,7 @@ mod tests {
         // Bob relays to Carol with 1 NEAR attached: 5% (0.05) should be
         // set aside as royalty, 0.95 as Carol's own locked_amount.
         testing_env!(context(bob(), NearToken::from_near(1), 1000).build());
-        let child_id = c.relay(root_id.clone(), carol(), "pass it on".to_string(), 48);
+        let child_id = c.relay(root_id.clone(), carol(), "pass it on".to_string(), 48, 35.0, 139.0);
 
         let child = c.get_kiss(child_id).unwrap();
         assert_eq!(child.locked_amount, NearToken::from_millinear(950));
@@ -662,12 +812,12 @@ mod tests {
     fn root_receives_royalty_the_instant_the_child_blooms() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let root_id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let root_id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
         c.reciprocate(root_id.clone());
 
         testing_env!(context(bob(), NearToken::from_near(1), 1000).build());
-        let child_id = c.relay(root_id, carol(), "pass it on".to_string(), 48);
+        let child_id = c.relay(root_id, carol(), "pass it on".to_string(), 48, 35.0, 139.0);
         assert_eq!(c.get_kiss(child_id.clone()).unwrap().royalty_amount, NearToken::from_millinear(50));
 
         // Carol reciprocates — this should zero the royalty (paid out
@@ -684,11 +834,11 @@ mod tests {
     fn cannot_relay_a_kiss_that_has_not_bloomed() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
 
         // Bob never reciprocated — tries to relay a still-pending kiss.
         testing_env!(context(bob(), NearToken::from_near(1), 1000).build());
-        let _ = c.relay(id, carol(), "too soon".to_string(), 48);
+        let _ = c.relay(id, carol(), "too soon".to_string(), 48, 35.0, 139.0);
     }
 
     #[test]
@@ -696,30 +846,30 @@ mod tests {
     fn relay_slots_run_out_after_max_relay_slots_uses() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(10), 0).build());
-        let id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
         c.reciprocate(id.clone());
 
         // Exhaust all MAX_RELAY_SLOTS...
         for i in 0..MAX_RELAY_SLOTS {
             testing_env!(context(bob(), NearToken::from_near(1), 1000 + i as u64).build());
-            let _ = c.relay(id.clone(), carol(), "again".to_string(), 48);
+            let _ = c.relay(id.clone(), carol(), "again".to_string(), 48, 35.0, 139.0);
         }
         // ...the next one should fail.
         testing_env!(context(bob(), NearToken::from_near(1), 9999).build());
-        let _ = c.relay(id, carol(), "one too many".to_string(), 48);
+        let _ = c.relay(id, carol(), "one too many".to_string(), 48, 35.0, 139.0);
     }
 
     #[test]
     fn wilted_relay_refunds_both_locked_and_royalty_to_its_own_sender() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let root_id = c.mint_kiss(bob(), "hi".to_string(), 48);
+        let root_id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
         c.reciprocate(root_id.clone());
 
         testing_env!(context(bob(), NearToken::from_near(1), 1000).build());
-        let child_id = c.relay(root_id, carol(), "pass it on".to_string(), 1); // 1h window
+        let child_id = c.relay(root_id, carol(), "pass it on".to_string(), 1, 35.0, 139.0); // 1h window
 
         // Carol never reciprocates. Bob (the relayer/sender of this
         // child kiss) reclaims after the deadline — gets the FULL 1
@@ -744,7 +894,7 @@ mod tests {
     fn lock_gift_escrows_funds_to_contract_owned_placeholder() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let token_id = c.lock_gift("kiss_abc123".to_string(), 48, secret_hash("s3cr3t"));
+        let token_id = c.lock_gift("kiss_abc123".to_string(), 48, secret_hash("s3cr3t"), 10.0, 106.0);
         assert_eq!(token_id, "gift-kiss_abc123");
 
         let info = c.get_kiss(token_id.clone()).expect("gift should exist");
@@ -762,7 +912,7 @@ mod tests {
     fn lock_gift_rejects_zero_deposit() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(0), 0).build());
-        let _ = c.lock_gift("kiss_nodeposit".to_string(), 48, secret_hash("s"));
+        let _ = c.lock_gift("kiss_nodeposit".to_string(), 48, secret_hash("s"), 10.0, 106.0);
     }
 
     #[test]
@@ -770,9 +920,9 @@ mod tests {
     fn lock_gift_rejects_duplicate_gao_kiss_id() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_dup".to_string(), 48, secret_hash("s"));
+        let _ = c.lock_gift("kiss_dup".to_string(), 48, secret_hash("s"), 10.0, 106.0);
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_dup".to_string(), 48, secret_hash("s"));
+        let _ = c.lock_gift("kiss_dup".to_string(), 48, secret_hash("s"), 10.0, 106.0);
     }
 
     #[test]
@@ -780,14 +930,14 @@ mod tests {
     fn lock_gift_rejects_a_malformed_secret_hash() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_badhash".to_string(), 48, "not-a-real-hash".to_string());
+        let _ = c.lock_gift("kiss_badhash".to_string(), 48, "not-a-real-hash".to_string(), 10.0, 106.0);
     }
 
     #[test]
     fn claim_gift_transfers_ownership_and_pays_out_in_one_call() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(2), 0).build());
-        let token_id = c.lock_gift("kiss_claimme".to_string(), 48, secret_hash("correct-horse"));
+        let token_id = c.lock_gift("kiss_claimme".to_string(), 48, secret_hash("correct-horse"), 10.0, 106.0);
 
         // Bob claims — no prior NFT ownership required, just the right
         // gao_kiss_id + claim secret, and claiming before the window closes.
@@ -811,7 +961,7 @@ mod tests {
         // link/QR is required too.
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_guessed".to_string(), 48, secret_hash("the-real-secret"));
+        let _ = c.lock_gift("kiss_guessed".to_string(), 48, secret_hash("the-real-secret"), 10.0, 106.0);
 
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
         let _ = c.claim_gift("kiss_guessed".to_string(), "a-guessed-secret".to_string());
@@ -822,7 +972,7 @@ mod tests {
     fn claim_gift_cannot_be_claimed_twice() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_onceonly".to_string(), 48, secret_hash("s"));
+        let _ = c.lock_gift("kiss_onceonly".to_string(), 48, secret_hash("s"), 10.0, 106.0);
 
         testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
         let _ = c.claim_gift("kiss_onceonly".to_string(), "s".to_string());
@@ -838,7 +988,7 @@ mod tests {
     fn claim_gift_rejects_claim_after_expiry() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let _ = c.lock_gift("kiss_toolate".to_string(), 1, secret_hash("s")); // 1h window
+        let _ = c.lock_gift("kiss_toolate".to_string(), 1, secret_hash("s"), 10.0, 106.0); // 1h window
 
         let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
         testing_env!(context(bob(), NearToken::from_near(0), two_hours_ns).build());
@@ -849,12 +999,93 @@ mod tests {
     fn sender_reclaims_an_unclaimed_gift_after_expiry() {
         let mut c = setup();
         testing_env!(context(alice(), NearToken::from_near(1), 0).build());
-        let token_id = c.lock_gift("kiss_unclaimed".to_string(), 1, secret_hash("s"));
+        let token_id = c.lock_gift("kiss_unclaimed".to_string(), 1, secret_hash("s"), 10.0, 106.0);
 
         let two_hours_ns = 2 * 60 * 60 * 1_000_000_000;
         testing_env!(context(alice(), NearToken::from_near(0), two_hours_ns).build());
         let _ = c.reclaim_if_wilted(token_id.clone());
 
         assert_eq!(c.get_kiss(token_id).unwrap().status, KissStatus::Wilted);
+    }
+
+    // ── Journey map + soulbound badge ───────────────────────────────
+
+    #[test]
+    fn get_journey_walks_the_full_relay_chain_root_first() {
+        let mut c = setup();
+        // Alice mints from Ho Chi Minh City (10.0, 106.0) to Bob.
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let root_id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
+
+        testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
+        c.reciprocate(root_id.clone());
+
+        // Bob relays from Tokyo (35.0, 139.0) to Carol.
+        testing_env!(context(bob(), NearToken::from_near(1), 1000).build());
+        let child_id = c.relay(root_id.clone(), carol(), "pass it on".to_string(), 48, 35.0, 139.0);
+
+        let journey = c.get_journey(child_id.clone());
+        assert_eq!(journey.len(), 2);
+        // Root first: Alice in Ho Chi Minh City.
+        assert_eq!(journey[0].token_id, root_id);
+        assert_eq!(journey[0].account_id, alice());
+        assert_eq!(journey[0].lat, 10.0);
+        assert_eq!(journey[0].lng, 106.0);
+        assert_eq!(journey[0].depth, 0);
+        // Then the relay hop: Bob in Tokyo.
+        assert_eq!(journey[1].token_id, child_id);
+        assert_eq!(journey[1].account_id, bob());
+        assert_eq!(journey[1].lat, 35.0);
+        assert_eq!(journey[1].lng, 139.0);
+        assert_eq!(journey[1].depth, 1);
+    }
+
+    #[test]
+    fn get_journey_for_a_root_kiss_is_a_single_hop() {
+        let mut c = setup();
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let id = c.lock_gift("kiss_journey1".to_string(), 48, secret_hash("s"), 21.0, 105.8);
+
+        let journey = c.get_journey(id.clone());
+        assert_eq!(journey.len(), 1);
+        assert_eq!(journey[0].token_id, id);
+        assert_eq!(journey[0].lat, 21.0);
+        assert_eq!(journey[0].lng, 105.8);
+    }
+
+    #[test]
+    fn get_badge_is_none_until_the_first_bloom() {
+        let c = setup();
+        assert!(c.get_badge(bob()).is_none());
+    }
+
+    #[test]
+    fn get_badge_levels_up_as_bloom_count_grows() {
+        let mut c = setup();
+
+        // Bob reciprocates 1 kiss — "New Spark".
+        testing_env!(context(alice(), NearToken::from_near(1), 0).build());
+        let id = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
+        testing_env!(context(bob(), NearToken::from_near(0), 1000).build());
+        c.reciprocate(id);
+        let badge = c.get_badge(bob()).unwrap();
+        assert_eq!(badge.bloom_count, 1);
+        assert_eq!(badge.level, "New Spark");
+
+        // Claiming a gift counts too, towards the same badge.
+        testing_env!(context(alice(), NearToken::from_near(1), 2000).build());
+        let _ = c.lock_gift("kiss_badge2".to_string(), 48, secret_hash("s"), 10.0, 106.0);
+        testing_env!(context(bob(), NearToken::from_near(0), 3000).build());
+        let _ = c.claim_gift("kiss_badge2".to_string(), "s".to_string());
+        assert_eq!(c.get_badge(bob()).unwrap().bloom_count, 2);
+        assert_eq!(c.get_badge(bob()).unwrap().level, "New Spark");
+
+        // One more bloom (3rd) crosses into "Trusted Heart".
+        testing_env!(context(alice(), NearToken::from_near(1), 4000).build());
+        let id3 = c.mint_kiss(bob(), "hi".to_string(), 48, 10.0, 106.0);
+        testing_env!(context(bob(), NearToken::from_near(0), 5000).build());
+        c.reciprocate(id3);
+        assert_eq!(c.get_badge(bob()).unwrap().bloom_count, 3);
+        assert_eq!(c.get_badge(bob()).unwrap().level, "Trusted Heart");
     }
 }

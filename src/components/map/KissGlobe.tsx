@@ -402,7 +402,19 @@ export function SendKissModal({ onClose, onSent, defaultReceiverId, inline = fal
         try {
           const gaoKissId = genGaoKissId();
           claimSecret = genClaimSecret();
-          const result = await lockGift(gaoKissId, 48, nearAmount, claimSecret);
+          // Stamp this hop's location onto the chain (see get_journey in
+          // lib.rs) — the sender's already-saved profile location, since
+          // sending a kiss already requires having one (see the
+          // no_location gate below), no extra permission prompt needed.
+          let hopLat = 0;
+          let hopLng = 0;
+          try {
+            const meRes = await fetch('/api/v1/users/me');
+            const meData = await meRes.json();
+            hopLat = meData.data?.location_lat ?? 0;
+            hopLng = meData.data?.location_lng ?? 0;
+          } catch { /* fall back to 0,0 — journey is cosmetic, never blocks sending */ }
+          const result = await lockGift(gaoKissId, 48, nearAmount, claimSecret, hopLat, hopLng);
           const txHash = (result as { transaction_outcome?: { id?: string } } | void)?.transaction_outcome?.id;
           if (!txHash) throw new Error('NEAR wallet did not return a transaction hash');
           payload.id = gaoKissId;
