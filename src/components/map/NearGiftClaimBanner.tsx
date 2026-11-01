@@ -7,9 +7,9 @@
 // the CLAIM action, and only to the actual intended receiver.
 //
 // Wallet: same wallet-selector setup already used for the sender's
-// "Attach NEAR" flow (src/lib/near/wallet.ts) — Bitte Wallet is hosted
-// (no install needed, works for anyone), Meteor/Here kept as secondary
-// options. (NEAR Auth/passkey was investigated and ruled out for now —
+// "Attach NEAR" flow (src/lib/near/wallet.ts) — Meteor + Here; see that
+// file for why Bitte Wallet isn't one of them (its testnet deployment
+// is dead). (NEAR Auth/passkey was investigated and ruled out for now —
 // it needs a self-hosted relayer this project doesn't have; MyNearWallet
 // was ruled out because NEAR sunset it on 2026-10-31.)
 //
